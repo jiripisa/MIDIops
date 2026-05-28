@@ -1,0 +1,22 @@
+# PlatformIO build artifacts
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Claude Code session state
+.claude/
+
+# macOS
+.DS_Store
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Local environment
+*.local
+
+# Personal photos / wiring snapshots — kept locally, not tracked
+photos/
