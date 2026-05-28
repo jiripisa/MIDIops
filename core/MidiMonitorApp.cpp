@@ -147,11 +147,20 @@ void MidiMonitorApp::setChannel(uint8_t channel) {
     if (channel > 16) channel = 0;
     if (channel == channel_) return;
     channel_ = channel;
-    // Wipe the visible note/worm state — leftovers from the previous
-    // channel would otherwise sit on screen even though their source can
-    // no longer talk to us through the filter.
+    // Keyboard highlights and chord names reflect "what's happening right
+    // now" on the listened channel — clear them so the new channel starts
+    // with a fresh view.
     for (int i = 0; i < 128; ++i) notePressedBy_[i] = 0;
-    for (int i = 0; i < kMaxWorms; ++i) worms_[i].live = false;
+    // Worms that were already on screen keep their natural trajectory.
+    // Released worms continue scrolling toward the top until they leave
+    // the roll area. Growing worms (whose source is still holding the
+    // note) are flipped to released — their NoteOff would now be filtered
+    // out, so we let them scroll away instead of growing forever.
+    for (int i = 0; i < kMaxWorms; ++i) {
+        if (worms_[i].live && worms_[i].growing) {
+            worms_[i].growing = false;
+        }
+    }
 }
 
 void MidiMonitorApp::onChannelKnob(int delta) {
