@@ -345,6 +345,14 @@ void MidiMonitorApp::drawChordNames(Display& d) const {
 }
 
 void MidiMonitorApp::drawWorms(Display& d) const {
+    // Per-row rendering. At each y we look up which channels currently have
+    // a live worm covering (w.note, y) and split the key column into equal
+    // sub-rects ordered left-to-right by channel number. With only one
+    // channel active the row fills the full key width — identical to the
+    // pre-split behaviour.
+    constexpr uint16_t kBottomFactor = 256;
+    constexpr uint16_t kTopFactor    = 160;
+
     for (int i = 0; i < kMaxWorms; ++i) {
         const Worm& w = worms_[i];
         if (!w.live) continue;
@@ -357,26 +365,44 @@ void MidiMonitorApp::drawWorms(Display& d) const {
         if (y1 >= kRollBottom) y1 = kRollBottom - 1;
         if (y1 < y0) continue;
 
-        const uint16_t base = channelColor(w.channel);
-        const int fullH = w.bottomY - w.topY + 1;  // pre-clip conceptual height
+        const uint16_t base  = channelColor(w.channel);
+        const int      fullH = w.bottomY - w.topY + 1;
+        const int      denom = (fullH > 1) ? (fullH - 1) : 1;
+        const uint16_t myBit = static_cast<uint16_t>(1u << (w.channel - 1));
 
-        if (fullH <= 2) {
-            d.fillRect(kr.x, y0, kr.w, y1 - y0 + 1, base);
-            continue;
-        }
-
-        // Vertical gradient: bottom (newest edge) = full colour, top end
-        // tapers to ~63 % brightness. Drawn row-by-row so the worm always
-        // looks the same regardless of how much of it is currently on-screen.
-        constexpr uint16_t kBottomFactor = 256;
-        constexpr uint16_t kTopFactor    = 160;
-        const int denom = fullH - 1;
         for (int y = y0; y <= y1; ++y) {
+            // Bitmask of distinct channels with a live worm covering this
+            // row on the same note. Same-channel duplicates collapse to one
+            // bit so re-triggers don't split the column further.
+            uint16_t chMask = 0;
+            for (int j = 0; j < kMaxWorms; ++j) {
+                const Worm& o = worms_[j];
+                if (!o.live || o.note != w.note) continue;
+                if (y < o.topY || y > o.bottomY) continue;
+                chMask |= static_cast<uint16_t>(1u << (o.channel - 1));
+            }
+
+            // Total channels and this worm's slot (count of lower-numbered
+            // channels also active in this row).
+            int slot = 0, total = 0;
+            for (uint16_t m = chMask; m; m &= (m - 1)) ++total;
+            for (uint16_t m = chMask & (myBit - 1); m; m &= (m - 1)) ++slot;
+            if (total == 0) continue;
+
+            // Proportional slot split: each slot gets ceil(kr.w / total)-ish
+            // pixels, with rounding distributed so the last slot fills the
+            // remainder. Avoids 1 px gaps and keeps widths balanced.
+            const int slotStart = (kr.w * slot) / total;
+            const int slotEnd   = (kr.w * (slot + 1)) / total;
+            const int subX      = kr.x + slotStart;
+            const int subW      = slotEnd - slotStart;
+            if (subW <= 0) continue;
+
             const int rowsFromBottom = w.bottomY - y;
             const uint16_t factor = static_cast<uint16_t>(
                 kBottomFactor -
                 ((kBottomFactor - kTopFactor) * rowsFromBottom) / denom);
-            d.fillRect(kr.x, y, kr.w, 1, scaleRgb565(base, factor));
+            d.fillRect(subX, y, subW, 1, scaleRgb565(base, factor));
         }
     }
 }
