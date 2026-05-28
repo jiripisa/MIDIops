@@ -54,10 +54,11 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
     std::fprintf(stderr,
                  "jp4midi simulator running.\n"
-                 "  A..G    inject Note On/Off\n"
-                 "  1..9    set the test injection channel (default 1)\n"
-                 "  SPACE   toggle MIDI monitoring on/off\n"
-                 "  ESC     quit\n");
+                 "  A..G          inject Note On/Off\n"
+                 "  1..9          set the test injection channel (default 1)\n"
+                 "  LEFT / RIGHT  cycle monitored channel (OMNI..16)\n"
+                 "  SPACE         toggle MIDI monitoring on/off\n"
+                 "  ESC           quit\n");
 
     // Test injection state. Each held note remembers which channel it was
     // pressed on so that NoteOff goes back to the same channel even if the
@@ -88,6 +89,20 @@ int main(int /*argc*/, char* /*argv*/[]) {
                         app.toggleMonitoring();
                         std::fprintf(stderr, "[sim] monitoring = %s\n",
                                      app.monitoring() ? "ON" : "OFF");
+                        break;
+                    }
+
+                    // Arrow keys simulate the rotary encoder one detent
+                    // at a time. RIGHT = clockwise (channel++), LEFT =
+                    // counter-clockwise (channel--).
+                    if (ev.key.keysym.sym == SDLK_RIGHT ||
+                        ev.key.keysym.sym == SDLK_LEFT) {
+                        app.onChannelKnob(
+                            ev.key.keysym.sym == SDLK_RIGHT ? +1 : -1);
+                        char buf[8];
+                        if (app.channel() == 0) std::snprintf(buf, sizeof(buf), "OMNI");
+                        else std::snprintf(buf, sizeof(buf), "%u", app.channel());
+                        std::fprintf(stderr, "[sim] monitored channel = %s\n", buf);
                         break;
                     }
 

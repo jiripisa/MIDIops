@@ -27,6 +27,12 @@ public:
     void    setChannel(uint8_t channel);
     uint8_t channel() const { return channel_; }
 
+    // Increments / decrements the listened channel by `delta` detents.
+    // Range is [0..16] where 0 = OMNI; values are clamped at both ends so
+    // turning past the limits is a no-op. Clears the visible note/worm
+    // state on actual change.
+    void onChannelKnob(int delta);
+
     // Master monitoring switch. When OFF, incoming MIDI is ignored and the
     // held-note + worm state is cleared so the screen reflects "muted".
     void setMonitoring(bool on);

@@ -17,6 +17,7 @@
 #include "core/MidiMonitorApp.h"
 #include "platform/teensy/TeensyButton.h"
 #include "platform/teensy/TeensyDisplay.h"
+#include "platform/teensy/TeensyEncoder.h"
 #include "platform/teensy/TeensyMidiInput.h"
 
 // ============================================================
@@ -33,18 +34,26 @@ constexpr uint8_t kPinTftDc  = 9;   // data/command
 constexpr uint8_t kPinTftRst = 8;   // reset
 
 // ============================================================
-//  Front-panel buttons
+//  Front-panel buttons & encoder
 // ------------------------------------------------------------
-//  Single momentary push button that toggles MIDI monitoring
-//  on/off. Wired as active-low: button signal goes to GND when
-//  pressed, INPUT_PULLUP is enabled internally.
+//  - Monitor button: latching front-panel switch. Active-LOW
+//    via INPUT_PULLUP — see TeensyButton.cpp for polarity notes.
+//  - Channel encoder: KY-040 with CLK on `kPinEncoderClk`, DT on
+//    `kPinEncoderDt`. Each detent click steps the listened
+//    channel by ±1 (CW = +, CCW = −).
+//    The integrated SW pin is wired to `kPinEncoderSw` but not
+//    used yet — reserved for a future short-press action.
 // ============================================================
 constexpr uint8_t kPinMonitorButton = 2;
+constexpr uint8_t kPinEncoderSw     = 3;
+constexpr uint8_t kPinEncoderClk    = 4;
+constexpr uint8_t kPinEncoderDt     = 5;
 
-static ILI9341_t3n    tft(kPinTftCs, kPinTftDc, kPinTftRst);
-static TeensyDisplay  display(tft);
+static ILI9341_t3n     tft(kPinTftCs, kPinTftDc, kPinTftRst);
+static TeensyDisplay   display(tft);
 static TeensyMidiInput midi;
 static TeensyButton    monitorButton(kPinMonitorButton);
+static TeensyEncoder   channelKnob(kPinEncoderClk, kPinEncoderDt);
 static core::MidiMonitorApp app;
 
 void setup() {
@@ -60,6 +69,11 @@ void loop() {
     // mechanical position. Mirror that position into the app so the
     // monitoring state always matches what the user sees on the panel.
     app.setMonitoring(monitorButton.pollOn());
+
+    const int detents = channelKnob.poll();
+    if (detents != 0) {
+        app.onChannelKnob(detents);
+    }
 
     core::MidiMessage msg;
     while (midi.poll(msg)) {

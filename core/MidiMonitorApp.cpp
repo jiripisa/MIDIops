@@ -145,7 +145,20 @@ MidiMonitorApp::MidiMonitorApp() = default;
 
 void MidiMonitorApp::setChannel(uint8_t channel) {
     if (channel > 16) channel = 0;
+    if (channel == channel_) return;
     channel_ = channel;
+    // Wipe the visible note/worm state — leftovers from the previous
+    // channel would otherwise sit on screen even though their source can
+    // no longer talk to us through the filter.
+    for (int i = 0; i < 128; ++i) notePressedBy_[i] = 0;
+    for (int i = 0; i < kMaxWorms; ++i) worms_[i].live = false;
+}
+
+void MidiMonitorApp::onChannelKnob(int delta) {
+    int next = static_cast<int>(channel_) + delta;
+    if (next < 0)  next = 0;
+    if (next > 16) next = 16;
+    setChannel(static_cast<uint8_t>(next));
 }
 
 void MidiMonitorApp::setMonitoring(bool on) {
