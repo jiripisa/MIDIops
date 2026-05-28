@@ -54,11 +54,11 @@ private:
     static constexpr int kBlackKeyH   = 32;
 
     // Keyboard window. Must start on a C and end on a B.
-    static constexpr uint8_t kLowestNote  = 48;   // C3
+    static constexpr uint8_t kLowestNote  = 36;   // C2
     static constexpr uint8_t kHighestNote = 83;   // B5
-    static constexpr int     kWhiteKeysVisible = 21;          // 3 octaves
-    static constexpr int     kWhiteKeyW = 15;
-    static constexpr int     kBlackKeyW = 9;
+    static constexpr int     kWhiteKeysVisible = 28;          // 4 octaves
+    static constexpr int     kWhiteKeyW = 11;                 // 28 * 11 = 308
+    static constexpr int     kBlackKeyW = 7;
     static constexpr int     kKeyboardX0 =
         (kScreenW - kWhiteKeysVisible * kWhiteKeyW) / 2;
 
