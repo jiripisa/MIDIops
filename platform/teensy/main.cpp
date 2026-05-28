@@ -53,7 +53,11 @@ static ILI9341_t3n     tft(kPinTftCs, kPinTftDc, kPinTftRst);
 static TeensyDisplay   display(tft);
 static TeensyMidiInput midi;
 static TeensyButton    monitorButton(kPinMonitorButton);
-static TeensyEncoder   channelKnob(kPinEncoderClk, kPinEncoderDt);
+// Pin order here picks the direction: passing DT first yields CW = positive
+// (channel goes up) on the KY-040 module silkscreen we have. If you ever
+// swap to a differently-laid-out encoder and find rotation reversed, swap
+// these two arguments — no wiring change needed.
+static TeensyEncoder   channelKnob(kPinEncoderDt, kPinEncoderClk);
 static core::MidiMonitorApp app;
 
 void setup() {
