@@ -77,24 +77,25 @@ constexpr ChordPattern kChordPatterns[] = {
     {0x095, "add9"},   // 0,2,4,7
 };
 
-// Blit a 1-bpp glyph. Width must be ≤ 8 (rows are packed in a single byte,
-// most-significant bit = leftmost pixel). Runs of consecutive set bits in
-// a row are coalesced into a single fillRect call to keep the per-pixel
-// rate down — important on Teensy where each fillRect dispatches through
-// the framebuffer.
+// Blit a 1-bpp glyph. Width up to 16 px; rows are packed into one uint16_t
+// each, most-significant bit = leftmost pixel. Runs of consecutive set
+// bits in a row are coalesced into a single fillRect call to keep the
+// per-pixel rate down — important on Teensy where each fillRect dispatches
+// through the framebuffer.
 void drawGlyph(Display& d, int x, int y,
-               const uint8_t* rows, int width, int height,
+               const uint16_t* rows, int width, int height,
                uint16_t color) {
     for (int row = 0; row < height; ++row) {
-        const uint8_t bits = rows[row];
+        const uint16_t bits = rows[row];
         int col = 0;
         while (col < width) {
-            const uint8_t mask = static_cast<uint8_t>(1u << (width - 1 - col));
+            const uint16_t mask =
+                static_cast<uint16_t>(1u << (width - 1 - col));
             if (bits & mask) {
                 int runEnd = col + 1;
                 while (runEnd < width) {
-                    const uint8_t m2 =
-                        static_cast<uint8_t>(1u << (width - 1 - runEnd));
+                    const uint16_t m2 =
+                        static_cast<uint16_t>(1u << (width - 1 - runEnd));
                     if (!(bits & m2)) break;
                     ++runEnd;
                 }
