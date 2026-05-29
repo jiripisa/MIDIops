@@ -90,12 +90,6 @@ void setup() {
 }
 
 void loop() {
-    // Flush any MIDI clock pulses queued by the IntervalTimer ISR. This
-    // is cheap when nothing is pending and keeps usbMIDI accesses on the
-    // main-loop side, so the USB driver never sees concurrent TX/RX
-    // pokes that delay incoming notes.
-    midiOut.drainClockQueue();
-
     // The button is a latching switch — its LED reflects the switch's
     // mechanical position. Mirror that position into the app so the
     // monitoring state always matches what the user sees on the panel.

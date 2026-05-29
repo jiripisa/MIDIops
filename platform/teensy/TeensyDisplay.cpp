@@ -11,7 +11,14 @@ DMAMEM static uint16_t kFramebuffer[320 * 240];
 TeensyDisplay::TeensyDisplay(ILI9341_t3n& tft) : tft_(tft) {}
 
 void TeensyDisplay::begin() {
-    tft_.begin();
+    // 40 MHz is the comfortable middle ground for ILI9341 over typical
+    // dupont breadboard wiring: faster than the library default ~30 MHz
+    // (which made a synchronous updateScreen() take ~41 ms — longer
+    // than a 30 fps render cycle), but not pushing the wires hard
+    // enough to produce the white-flicker we saw at 60 MHz. If your
+    // own jumper-wire setup is short and tidy you can bump this back
+    // to 60000000; if you ever see corruption, drop it to 30000000.
+    tft_.begin(40000000);
     tft_.setRotation(1);             // landscape: 320x240
     tft_.setFrameBuffer(kFramebuffer);
     tft_.useFrameBuffer(true);

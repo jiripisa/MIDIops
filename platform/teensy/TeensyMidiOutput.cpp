@@ -6,21 +6,16 @@
 
 namespace {
 
-// Hardware timer + companion state for the autonomous clock master.
-// Static-global so the ISR (a free function) can reach the counter
-// without bouncing through `this`.
 IntervalTimer g_clockTimer;
 uint16_t      g_currentBpm = 0;
 
-// Pulses queued by the ISR, drained by the main loop. Declared volatile
-// because the ISR writes to it concurrently with main-loop reads.
-volatile uint32_t g_pendingPulses = 0;
-
 void clockIsr() {
-    // Keep the ISR tiny — incrementing a counter is ~µs. The main loop
-    // will pick this up on the next drainClockQueue() and push the
-    // pulses through usbMIDI from a safe context.
-    g_pendingPulses++;
+    // Send the clock pulse straight from the ISR — usbMIDI's TX path
+    // queues the single-byte real-time message in an interrupt-safe way
+    // and the USB controller picks it up on the next 1 ms micro-frame.
+    // Hardware-timer-driven pulses ⇒ sub-microsecond jitter, which is
+    // exactly what an external DAW slave needs to lock cleanly.
+    usbMIDI.sendRealTime(usbMIDI.Clock);
 }
 
 } // namespace
@@ -46,18 +41,6 @@ void TeensyMidiOutput::setClockBpm(uint16_t bpm) {
         g_clockTimer.update(periodUs);
     }
     g_currentBpm = bpm;
-}
-
-void TeensyMidiOutput::drainClockQueue() {
-    // Snapshot-and-clear the counter with interrupts disabled so the
-    // ISR can't increment it between the read and the reset.
-    noInterrupts();
-    uint32_t n = g_pendingPulses;
-    g_pendingPulses = 0;
-    interrupts();
-    while (n--) {
-        usbMIDI.sendRealTime(usbMIDI.Clock);
-    }
 }
 
 void TeensyMidiOutput::sendStart()    { usbMIDI.sendRealTime(usbMIDI.Start);    }
