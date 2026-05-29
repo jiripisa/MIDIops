@@ -23,6 +23,11 @@ int TeensyDisplay::width()  const { return tft_.width(); }
 int TeensyDisplay::height() const { return tft_.height(); }
 
 void TeensyDisplay::clear(uint16_t color) {
+    // clear() opens every render frame, so this is also the natural barrier
+    // that waits for the previous frame's async DMA push to finish before
+    // we start mutating the framebuffer again. The wait is a no-op when
+    // the DMA already completed during the loop's idle time.
+    tft_.waitUpdateAsyncComplete();
     tft_.fillScreen(color);
 }
 
@@ -39,8 +44,11 @@ void TeensyDisplay::drawText(int x, int y, const char* text,
 }
 
 void TeensyDisplay::present() {
-    // Push the framebuffer to the display in a single SPI burst. Blocks for
-    // ~15-20 ms at default SPI speed; that's the whole point — no partial
-    // updates ever land on the panel.
-    tft_.updateScreen();
+    // Kick off a DMA-driven SPI push of the framebuffer and return
+    // immediately. The main loop keeps running through the ~20 ms it
+    // takes to clock the pixels out — without this the loop would
+    // block, USB MIDI input would queue up on the Mac side, the encoder
+    // wouldn't be polled, and IntervalTimer-queued clock pulses would
+    // pile up behind the SPI burst.
+    tft_.updateScreenAsync();
 }

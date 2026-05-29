@@ -6,17 +6,21 @@
 
 namespace {
 
-// IntervalTimer + companion state. Static-global so the ISR (a free
-// function) can reach the timer without bouncing through `this`.
+// Hardware timer + companion state for the autonomous clock master.
+// Static-global so the ISR (a free function) can reach the counter
+// without bouncing through `this`.
 IntervalTimer g_clockTimer;
 uint16_t      g_currentBpm = 0;
 
+// Pulses queued by the ISR, drained by the main loop. Declared volatile
+// because the ISR writes to it concurrently with main-loop reads.
+volatile uint32_t g_pendingPulses = 0;
+
 void clockIsr() {
-    // The Teensy 4 USB MIDI ring buffer is interrupt-safe for short
-    // status bytes, so we can call sendRealTime() directly from the
-    // timer ISR — the clock pulse is queued and picked up by the USB
-    // ISR on the next 1 ms USB micro-frame.
-    usbMIDI.sendRealTime(usbMIDI.Clock);
+    // Keep the ISR tiny — incrementing a counter is ~µs. The main loop
+    // will pick this up on the next drainClockQueue() and push the
+    // pulses through usbMIDI from a safe context.
+    g_pendingPulses++;
 }
 
 } // namespace
@@ -42,6 +46,18 @@ void TeensyMidiOutput::setClockBpm(uint16_t bpm) {
         g_clockTimer.update(periodUs);
     }
     g_currentBpm = bpm;
+}
+
+void TeensyMidiOutput::drainClockQueue() {
+    // Snapshot-and-clear the counter with interrupts disabled so the
+    // ISR can't increment it between the read and the reset.
+    noInterrupts();
+    uint32_t n = g_pendingPulses;
+    g_pendingPulses = 0;
+    interrupts();
+    while (n--) {
+        usbMIDI.sendRealTime(usbMIDI.Clock);
+    }
 }
 
 void TeensyMidiOutput::sendStart()    { usbMIDI.sendRealTime(usbMIDI.Start);    }
