@@ -16,6 +16,7 @@
 #include "core/MidiMessage.h"
 #include "core/MidiMonitorApp.h"
 #include "platform/host/RtMidiInput.h"
+#include "platform/host/RtMidiOutput.h"
 #include "platform/host/SdlDisplay.h"
 
 namespace {
@@ -46,17 +47,21 @@ int main(int /*argc*/, char* /*argv*/[]) {
         return 1;
     }
 
-    SdlDisplay  display(kLogicalW, kLogicalH, kScale, "jp4midi simulator");
-    RtMidiInput midi("TeensyArp");
+    SdlDisplay   display(kLogicalW, kLogicalH, kScale, "jp4midi simulator");
+    RtMidiInput  midiIn("TeensyArp");
+    RtMidiOutput midiOut("JP4Midi Clock");
     core::MidiMonitorApp app;
 
-    midi.begin();
+    midiIn.begin();
+    midiOut.begin();
+    app.setMidiOutput(&midiOut);
 
     std::fprintf(stderr,
                  "jp4midi simulator running.\n"
                  "  A..G          inject Note On/Off\n"
                  "  1..9          set the test injection channel (default 1)\n"
                  "  LEFT / RIGHT  cycle monitored channel (OMNI..16)\n"
+                 "  UP / DOWN     adjust BPM (MIDI Clock master)\n"
                  "  SPACE         toggle MIDI monitoring on/off\n"
                  "  F5            restart app (re-show splash)\n"
                  "  ESC           quit\n");
@@ -99,9 +104,8 @@ int main(int /*argc*/, char* /*argv*/[]) {
                         break;
                     }
 
-                    // Arrow keys simulate the rotary encoder one detent
-                    // at a time. RIGHT = clockwise (channel++), LEFT =
-                    // counter-clockwise (channel--).
+                    // Horizontal arrows = channel encoder. RIGHT = CW
+                    // (channel++), LEFT = CCW (channel--).
                     if (ev.key.keysym.sym == SDLK_RIGHT ||
                         ev.key.keysym.sym == SDLK_LEFT) {
                         app.onChannelKnob(
@@ -110,6 +114,15 @@ int main(int /*argc*/, char* /*argv*/[]) {
                         if (app.channel() == 0) std::snprintf(buf, sizeof(buf), "OMNI");
                         else std::snprintf(buf, sizeof(buf), "%u", app.channel());
                         std::fprintf(stderr, "[sim] monitored channel = %s\n", buf);
+                        break;
+                    }
+
+                    // Vertical arrows = BPM encoder.
+                    if (ev.key.keysym.sym == SDLK_UP ||
+                        ev.key.keysym.sym == SDLK_DOWN) {
+                        app.onBpmKnob(
+                            ev.key.keysym.sym == SDLK_UP ? +1 : -1);
+                        std::fprintf(stderr, "[sim] BPM = %u\n", app.bpm());
                         break;
                     }
 
@@ -135,7 +148,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
                         m.channel = injectChannel;
                         m.data1   = static_cast<uint8_t>(note);
                         m.data2   = 100;
-                        midi.inject(m);
+                        midiIn.inject(m);
                     }
                     break;
                 }
@@ -152,7 +165,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
                         m.channel = ch;
                         m.data1   = static_cast<uint8_t>(note);
                         m.data2   = 0;
-                        midi.inject(m);
+                        midiIn.inject(m);
                     }
                     break;
                 }
@@ -163,7 +176,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
         }
 
         core::MidiMessage msg;
-        while (midi.poll(msg)) {
+        while (midiIn.poll(msg)) {
             app.onMessage(msg);
         }
 

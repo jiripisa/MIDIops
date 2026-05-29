@@ -14,9 +14,12 @@ constants change.
 A Teensy 4.1 sitting on a full-size breadboard, driving an ILI9341 2.8"
 TFT display through SPI, with:
 - A latching panel switch (DFRobot DFR0789) controlling monitoring on/off
-- A rotary encoder (KY-040) controlling the monitored MIDI channel
-- The encoder's shaft button replaying the boot splash (so you can test
+- A rotary encoder (KY-040) controlling the monitored MIDI channel; the
+  same encoder's shaft button replays the boot splash (so you can test
   the startup screen without unplugging USB)
+- A second rotary encoder (KY-040) setting the BPM that the device
+  broadcasts as a MIDI Clock master to any DAW listening on the
+  `JP4Midi` USB MIDI device
 
 ## 1. Tools and parts
 
@@ -25,9 +28,9 @@ Check `HARDWARE.md` for the complete bill of materials. The short list:
 - Teensy 4.1 with male headers already soldered along both long edges
 - ILI9341 2.8" SPI display (red PCB, 14-pin header)
 - One DFR0789 panel switch
-- One KY-040 rotary encoder
+- Two KY-040 rotary encoders (channel + BPM)
 - Full-size breadboard (MB-102 or equivalent)
-- About 20 dupont jumper wires (mix of M-M for breadboard rails and
+- About 25 dupont jumper wires (mix of M-M for breadboard rails and
   signal hops, M-F for connecting modules with their own headers)
 - USB-Micro data cable
 
@@ -139,7 +142,7 @@ The firmware mirrors the switch's mechanical position into the app's
 monitoring state, so the LED on the panel and the monitor on/off state
 always match.
 
-## 7. Wire the rotary encoder (KY-040)
+## 7. Wire the channel encoder (KY-040 #1)
 
 Five pins along the bottom edge, labeled `GND, +, SW, DT, CLK` on the
 silkscreen:
@@ -161,6 +164,30 @@ instead of increases, the easiest fix is to swap the two constructor
 arguments in `platform/teensy/main.cpp` (`TeensyEncoder(...)`) — see the
 comment there. You can also just physically swap `CLK ↔ DT` on the
 breadboard; either way works.
+
+## 7b. Wire the BPM encoder (KY-040 #2)
+
+Identical module as #1. Place it on the **opposite long edge** of the
+Teensy from the channel encoder so the two strips of breadboard don't
+get tangled.
+
+| Encoder pin | Goes to |
+|-------------|---------|
+| `GND`       | − rail |
+| `+`         | + rail |
+| `SW`        | Teensy pin **16** |
+| `DT`        | Teensy pin **15** |
+| `CLK`       | Teensy pin **14** |
+
+Range 30..300 BPM, default 120, one detent = ±1 BPM. The device sends
+MIDI Clock pulses (24 per quarter note) continuously, so any DAW with
+its tempo source set to `JP4Midi` will follow the BPM you set with this
+knob.
+
+`SW` is wired but currently has no software behaviour — reserved for a
+future use (likely tap-tempo).
+
+Same direction-reversal trick applies as the channel encoder.
 
 ## 8. Pre-power checklist
 
@@ -198,11 +225,15 @@ Before you connect USB:
 
 ## 10. Smoke test
 
-- Turn the encoder clockwise: the header should cycle `OMNI → 1 → 2 …`.
-  Counter-clockwise reverses, stopping at `OMNI`.
-- Press the encoder shaft button: the splash should re-appear for 3
-  seconds, then resume the normal view in OMNI mode with the keyboard
-  and roll empty.
+- Turn the **channel** encoder clockwise: the header should cycle
+  `OMNI → 1 → 2 …`. Counter-clockwise reverses, stopping at `OMNI`.
+- Press the channel-encoder shaft button: the splash should re-appear
+  for 3 seconds, then resume the normal view in OMNI mode with the
+  keyboard and roll empty.
+- Turn the **BPM** encoder: the number in the top-right corner of the
+  header should change by 1 BPM per detent (range 30..300). In Ableton,
+  set the tempo source to `JP4Midi` and confirm the project tempo
+  follows what's showing on the display.
 - Toggle the panel switch: header bar flips between the normal
   `CH:OMNI` (gray) and a red `MONITOR OFF` strip.
 - Send MIDI from your Mac (Ableton via the IAC Driver routed to `JP4Midi`,

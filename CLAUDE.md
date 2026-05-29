@@ -39,12 +39,15 @@ Both environments live in `platformio.ini`. `build_src_filter` enforces the
 
 ## Where future milestones plug in
 
-* **5 rotary encoders** (channel select, tempo, gate, etc.): add
-  `core/Encoders.h` defining an abstract `EncoderInput` with
-  `bool poll(EncoderEvent&)`, plus implementations in
-  `platform/teensy/TeensyEncoders.cpp` (interrupt-driven, Bounce2 or the
-  `Encoder` library) and `platform/host/SdlEncoders.cpp` (map arrow keys or
-  mouse wheel). `core/MidiMonitorApp` then grows a `void onEncoder(...)` method.
+* **More rotary encoders** (gate length, swing, pattern length, etc.):
+  the abstraction exists as `core::EncoderInput` (`core/Encoder.h`) and
+  the Teensy implementation in `platform/teensy/TeensyEncoder.*` wraps
+  the PJRC `Encoder` library. Currently two encoders are wired (channel
+  on pins 4/5 + SW 3, BPM on pins 14/15 + SW 16). Add another by
+  reserving 3 GPIOs (CLK/DT/SW), creating a `TeensyEncoder` instance in
+  `platform/teensy/main.cpp`, and adding a polling line to `loop()`
+  that forwards detents to a new `MidiMonitorApp::on*Knob()` method.
+  In the simulator, bind an unused key pair (e.g. `,`/`.` or PgUp/PgDn).
 * **Arpeggiator engine**: pure `core/` code. Build it as `core/Arpeggiator`
   (note buffer + pattern generator) that consumes `MidiMessage` and emits
   `MidiMessage` via a new `MidiOutput` abstract interface. Teensy

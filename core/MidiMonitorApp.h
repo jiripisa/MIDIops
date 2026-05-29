@@ -8,6 +8,7 @@
 namespace core {
 
 class Display;
+class MidiOutput;
 
 // Note-focused MIDI monitor: a piano keyboard at the bottom of the screen
 // lights up under pressed notes, and "worms" (piano-roll bars) scroll upward
@@ -32,6 +33,16 @@ public:
     // turning past the limits is a no-op. Clears the visible note/worm
     // state on actual change.
     void onChannelKnob(int delta);
+
+    // Where to send outgoing real-time MIDI messages (clock pulses,
+    // transport). May be nullptr — in which case clock generation runs
+    // internally but emits nothing.
+    void setMidiOutput(MidiOutput* out) { midiOut_ = out; }
+
+    // Tempo in BPM for the MIDI Clock master. Clamped to [kBpmMin..kBpmMax].
+    void     setBpm(uint16_t bpm);
+    uint16_t bpm() const { return bpm_; }
+    void     onBpmKnob(int delta);
 
     // Master monitoring switch. When OFF, incoming MIDI is ignored and the
     // held-note + worm state is cleared so the screen reflects "muted".
@@ -77,6 +88,11 @@ private:
     // Scroll speed for the worm roll.
     static constexpr uint32_t kScrollPxPerSec = 50;
 
+    // MIDI Clock tempo bounds and default.
+    static constexpr uint16_t kBpmMin     = 30;
+    static constexpr uint16_t kBpmMax     = 300;
+    static constexpr uint16_t kBpmDefault = 120;
+
     // Boot splash: how long the "JP4Midi" title sits on the screen before
     // the monitor view takes over.
     static constexpr uint32_t kSplashDurationMs = 3000;
@@ -110,6 +126,10 @@ private:
     uint32_t splashStartMs_          = 0;
     bool     splashActive_           = true;
 
+    MidiOutput* midiOut_             = nullptr;
+    uint16_t    bpm_                 = kBpmDefault;
+    uint64_t    clockAccumUs_        = 0;
+
     // ---- Helpers -----------------------------------------------------
     void onNoteOn (const MidiMessage& msg);
     void onNoteOff(const MidiMessage& msg);
@@ -119,6 +139,7 @@ private:
     void drawWorms(Display& d)  const;
     void drawKeyboard(Display& d) const;
     void drawSplash(Display& d) const;
+    void drawChordNames(Display& d, int rightEdge) const;
 
     static bool     isBlackPc(int pc);
     static int      whiteKeyIdx(uint8_t note);   // white-key index from kLowestNote
@@ -139,8 +160,6 @@ private:
     // Writes an empty string otherwise.
     void detectChordOnChannel(uint8_t ch,
                               char* out, std::size_t outSize) const;
-
-    void drawChordNames(Display& d) const;
 };
 
 } // namespace core

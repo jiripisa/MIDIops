@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "Display.h"
+#include "MidiOutput.h"
 
 #ifndef JP4MIDI_VERSION
 #define JP4MIDI_VERSION "dev"
@@ -177,6 +178,23 @@ void MidiMonitorApp::onChannelKnob(int delta) {
     setChannel(static_cast<uint8_t>(next));
 }
 
+void MidiMonitorApp::setBpm(uint16_t bpm) {
+    if (bpm < kBpmMin) bpm = kBpmMin;
+    if (bpm > kBpmMax) bpm = kBpmMax;
+    if (bpm == bpm_) return;
+    bpm_ = bpm;
+    // Restart the clock accumulator so the new tempo takes effect from
+    // "now" instead of carrying over fractional pulse phase from the old.
+    clockAccumUs_ = 0;
+}
+
+void MidiMonitorApp::onBpmKnob(int delta) {
+    int next = static_cast<int>(bpm_) + delta;
+    if (next < kBpmMin) next = kBpmMin;
+    if (next > kBpmMax) next = kBpmMax;
+    setBpm(static_cast<uint16_t>(next));
+}
+
 void MidiMonitorApp::restart() {
     splashActive_  = true;
     splashStartMs_ = lastTickMs_;   // lastTickMs_ already holds "now"
@@ -312,6 +330,23 @@ void MidiMonitorApp::tick(uint32_t nowMs) {
         }
     }
     if (dy > 0) advanceWorms(dy);
+
+    // ---- MIDI Clock master ---------------------------------------------
+    // 24 pulses per quarter note. Track the accumulator in microseconds so
+    // BPM doesn't get quantised to whole-millisecond periods (at 120 BPM
+    // that would be ~5 % tempo jitter per pulse).
+    clockAccumUs_ += static_cast<uint64_t>(elapsed) * 1000ull;
+    const uint64_t periodUs = 60000000ull /
+        (static_cast<uint64_t>(bpm_) * 24ull);
+    if (clockAccumUs_ > periodUs * 4ull) {
+        // Big stall — drop the catch-up so we don't burst a flurry of
+        // clock pulses into downstream gear.
+        clockAccumUs_ = 0;
+    }
+    while (clockAccumUs_ >= periodUs) {
+        clockAccumUs_ -= periodUs;
+        if (midiOut_) midiOut_->sendClock();
+    }
 }
 
 // ---------- Drawing ------------------------------------------------------
@@ -326,15 +361,25 @@ void MidiMonitorApp::drawHeader(Display& d) const {
 
     d.fillRect(0, 0, kScreenW, kHeaderH, color::DarkGray);
 
-    char buf[16];
-    if (channel_ == 0) std::snprintf(buf, sizeof(buf), "CH:OMNI");
-    else               std::snprintf(buf, sizeof(buf), "CH:%u", channel_);
-    d.drawText(4, 4, buf, color::White, color::DarkGray, 2);
+    // ---- Channel filter (left) -----------------------------------------
+    char chBuf[16];
+    if (channel_ == 0) std::snprintf(chBuf, sizeof(chBuf), "CH:OMNI");
+    else               std::snprintf(chBuf, sizeof(chBuf), "CH:%u", channel_);
+    d.drawText(4, 4, chBuf, color::White, color::DarkGray, 2);
 
-    drawChordNames(d);
+    // ---- BPM tempo (right) ---------------------------------------------
+    constexpr int kCharW = 12;       // size-2 font glyph stride
+    char bpmBuf[16];
+    std::snprintf(bpmBuf, sizeof(bpmBuf), "%u BPM", bpm_);
+    const int bpmTextW = static_cast<int>(std::strlen(bpmBuf)) * kCharW;
+    const int bpmX     = kScreenW - bpmTextW - 4;
+    d.drawText(bpmX, 4, bpmBuf, color::White, color::DarkGray, 2);
+
+    // ---- Chord names occupy the middle, right-aligned to just before BPM
+    drawChordNames(d, bpmX - 8);
 }
 
-void MidiMonitorApp::drawChordNames(Display& d) const {
+void MidiMonitorApp::drawChordNames(Display& d, int rightEdge) const {
     // Size 2 text: 6 px per glyph stride * 2 = 12 px per char on screen.
     constexpr int kCharW = 12;
     constexpr int kSep   = 12;    // one blank char between adjacent names
@@ -357,9 +402,9 @@ void MidiMonitorApp::drawChordNames(Display& d) const {
     }
     if (count == 0) return;
 
-    // Right-align all names with a 4 px gutter. Drop the leftmost entries
-    // if they would collide with the "CH:OMNI" / "CH:N" text on the left
-    // (which ends around x = 4 + 7 chars * 12 = 88).
+    // Right-align all names ending at `rightEdge`. Drop the leftmost
+    // entries if they would collide with the "CH:OMNI" / "CH:N" text on
+    // the left (which ends around x = 4 + 7 chars * 12 = 88).
     constexpr int kLeftReserved = 92;
     int totalW = 0;
     for (int i = 0; i < count; ++i) {
@@ -369,7 +414,7 @@ void MidiMonitorApp::drawChordNames(Display& d) const {
 
     int firstShown = 0;
     while (firstShown < count - 1 &&
-           kScreenW - totalW - 4 < kLeftReserved) {
+           rightEdge - totalW < kLeftReserved) {
         // Drop the oldest (lowest-channel) entry to make room.
         const int w = static_cast<int>(std::strlen(entries[firstShown].name))
                       * kCharW + kSep;
@@ -377,7 +422,7 @@ void MidiMonitorApp::drawChordNames(Display& d) const {
         ++firstShown;
     }
 
-    int x = kScreenW - totalW - 4;
+    int x = rightEdge - totalW;
     for (int i = firstShown; i < count; ++i) {
         d.drawText(x, 4, entries[i].name,
                    channelColor(entries[i].channel), color::DarkGray, 2);

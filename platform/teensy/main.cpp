@@ -19,6 +19,7 @@
 #include "platform/teensy/TeensyDisplay.h"
 #include "platform/teensy/TeensyEncoder.h"
 #include "platform/teensy/TeensyMidiInput.h"
+#include "platform/teensy/TeensyMidiOutput.h"
 
 // ============================================================
 //  ILI9341 SPI wiring  (2.8" 320x240 display)
@@ -49,9 +50,17 @@ constexpr uint8_t kPinEncoderSw     = 3;
 constexpr uint8_t kPinEncoderClk    = 4;
 constexpr uint8_t kPinEncoderDt     = 5;
 
+// Second KY-040 — BPM control for the MIDI Clock master.
+// CLK/DT on the opposite long edge of the Teensy so the two encoders sit
+// on physically separate strips of the breadboard.
+constexpr uint8_t kPinBpmEncoderClk = 14;
+constexpr uint8_t kPinBpmEncoderDt  = 15;
+constexpr uint8_t kPinBpmEncoderSw  = 16;   // wired, no behaviour yet
+
 static ILI9341_t3n     tft(kPinTftCs, kPinTftDc, kPinTftRst);
 static TeensyDisplay   display(tft);
-static TeensyMidiInput midi;
+static TeensyMidiInput midiIn;
+static TeensyMidiOutput midiOut;
 static TeensyButton    monitorButton(kPinMonitorButton);
 // Encoder SW shaft button — momentary push, active-LOW (shorts to GND).
 // Used as a one-shot "restart app" trigger so we can re-test the splash
@@ -62,11 +71,13 @@ static TeensyButton    encoderSwitch(kPinEncoderSw, /*activeHigh=*/false);
 // swap to a differently-laid-out encoder and find rotation reversed, swap
 // these two arguments — no wiring change needed.
 static TeensyEncoder   channelKnob(kPinEncoderDt, kPinEncoderClk);
+static TeensyEncoder   bpmKnob(kPinBpmEncoderDt, kPinBpmEncoderClk);
 static core::MidiMonitorApp app;
 
 void setup() {
     display.begin();
-    midi.begin();
+    midiIn.begin();
+    app.setMidiOutput(&midiOut);
     monitorButton.begin();
     encoderSwitch.begin();
     app.tick(millis());
@@ -87,13 +98,17 @@ void loop() {
     }
     swLast = swNow;
 
-    const int detents = channelKnob.poll();
-    if (detents != 0) {
-        app.onChannelKnob(detents);
+    const int channelDetents = channelKnob.poll();
+    if (channelDetents != 0) {
+        app.onChannelKnob(channelDetents);
+    }
+    const int bpmDetents = bpmKnob.poll();
+    if (bpmDetents != 0) {
+        app.onBpmKnob(bpmDetents);
     }
 
     core::MidiMessage msg;
-    while (midi.poll(msg)) {
+    while (midiIn.poll(msg)) {
         app.onMessage(msg);
     }
 

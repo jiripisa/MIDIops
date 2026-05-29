@@ -12,9 +12,9 @@ commit. See `ASSEMBLY.md` for the step-by-step build walkthrough.
 | 1 | Teensy 4.1 microcontroller | PJRC Teensy 4.1 | ARM Cortex-M7 600 MHz, headers pre-soldered | PJRC, distributors |
 | 2 | 2.8" TFT SPI display | ILI9341, "2.8 TFT SPI 240x320 V1.2" red PCB | 240x320, integrated XPT2046 touch (unused) and SD slot (unused) | AliExpress / Botland |
 | 3 | Latching panel switch with LED | DFRobot DFR0789 Gravity LED Switch | Set of 5 colors; we use one for the monitor on/off toggle | DFRobot, distributors |
-| 4 | Rotary encoder with push button | Keyes KY-040 | 30 detents/rev, 4 quadrature transitions per detent, integrated SW | Generic Arduino kit module |
+| 4 | Rotary encoder with push button (×2) | Keyes KY-040 | 30 detents/rev, 4 quadrature transitions per detent, integrated SW. We use two: one for channel selection, one for BPM | Generic Arduino kit module |
 | 5 | Full-size breadboard | MB-102 (830 tie points) | Two halves with center channel + 4 power rails | Any electronics shop |
-| 6 | Dupont jumper wires | M-M and M-F, ~15 cm | Need ~20: 9 for display, 3 for monitor button, 5 for encoder, 2 for power rails, a few spares | Any electronics shop |
+| 6 | Dupont jumper wires | M-M and M-F, ~15 cm | Need ~25: 9 for display, 3 for monitor button, 5 per encoder × 2, 2 for power rails, a few spares | Any electronics shop |
 | 7 | USB-Micro cable | Data-capable | Power + flashing + USB-MIDI from the Teensy to the Mac | Any |
 
 ## Teensy 4.1 pin assignment
@@ -27,20 +27,27 @@ This is the single source of truth. The pin numbers come from
 | 3.3V       | Power supply (multiple pins) | Breadboard + rail | OUT (regulator) | — |
 | GND        | Ground (multiple pins) | Breadboard − rail | — | — |
 | 2          | Monitor switch signal | DFR0789 `SW` | IN, INPUT_PULLUP, **active HIGH** (latched closed) | `kPinMonitorButton` |
-| 3          | Encoder shaft button | KY-040 `SW` | IN, INPUT_PULLUP, **active LOW** | `kPinEncoderSw` |
-| 4          | Encoder channel A (clock) | KY-040 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinEncoderClk` |
-| 5          | Encoder channel B (data) | KY-040 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinEncoderDt` |
+| 3          | Channel encoder shaft button | KY-040 #1 `SW` | IN, INPUT_PULLUP, **active LOW** | `kPinEncoderSw` |
+| 4          | Channel encoder A (clock) | KY-040 #1 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinEncoderClk` |
+| 5          | Channel encoder B (data) | KY-040 #1 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinEncoderDt` |
 | 8          | Display reset | ILI9341 `RESET` | OUT | `kPinTftRst` |
 | 9          | Display data/command | ILI9341 `DC` (a.k.a. `RS`) | OUT | `kPinTftDc` |
 | 10         | Display chip select | ILI9341 `CS` | OUT | `kPinTftCs` |
 | 11         | SPI MOSI (hardware) | ILI9341 `SDI`/`MOSI` | OUT | (Arduino fixed) |
 | 12         | SPI MISO (hardware) | ILI9341 `SDO`/`MISO` | IN  | (Arduino fixed; optional) |
 | 13         | SPI clock (hardware) | ILI9341 `SCK` | OUT | (Arduino fixed) |
+| 14         | BPM encoder A (clock) | KY-040 #2 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinBpmEncoderClk` |
+| 15         | BPM encoder B (data)  | KY-040 #2 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinBpmEncoderDt`  |
+| 16         | BPM encoder shaft button | KY-040 #2 `SW` | IN, INPUT_PULLUP, **active LOW** (wired but no behaviour yet) | `kPinBpmEncoderSw`  |
 
 Pins 11, 12, 13 are the dedicated hardware-SPI lines on Teensy 4.1 and
-cannot be relocated. Pins 2, 3, 4, 5, 8, 9, 10 are all free choices and can
-be moved by editing the `kPin*` constants at the top of
+cannot be relocated. Pins 2, 3, 4, 5, 8, 9, 10, 14, 15, 16 are all free
+choices and can be moved by editing the `kPin*` constants at the top of
 `platform/teensy/main.cpp`.
+
+The two encoders sit on physically opposite long edges of the Teensy
+(channel encoder on pins 3–5, BPM encoder on pins 14–16) so they don't
+crowd the same strip of breadboard.
 
 ## Module wiring
 
@@ -79,7 +86,7 @@ LOW when latched open.
 | **V** (3.3V) | + rail (powers the built-in LED) |
 | **S** (signal) | Teensy pin 2 |
 
-### KY-040 rotary encoder
+### KY-040 #1 — Channel encoder
 
 Five-pin header along the bottom edge of the module: `GND, +, SW, DT, CLK`
 (read left-to-right with the shaft facing you).
@@ -96,6 +103,27 @@ If clockwise rotation decreases the channel instead of increasing it, swap
 the constructor argument order in `platform/teensy/main.cpp`
 (`TeensyEncoder(kPinEncoderDt, kPinEncoderClk)` ↔ `(kPinEncoderClk, kPinEncoderDt)`).
 No rewiring required.
+
+### KY-040 #2 — BPM encoder
+
+Same module as #1 (identical pinout on the silkscreen). Sits on the
+opposite long edge of the Teensy from the channel encoder.
+
+| Encoder pin | Goes to | Notes |
+|-------------|---------|-------|
+| **GND** | − rail | |
+| **+** | 3.3V rail | |
+| **SW** | Teensy pin 16 | Active-LOW. Wired for future use (e.g. tap-tempo or reset to 120 BPM) — no behaviour assigned yet. |
+| **DT** | Teensy pin 15 | |
+| **CLK** | Teensy pin 14 | |
+
+Range: 30..300 BPM, clamped at both ends. One detent = ±1 BPM. The MIDI
+Clock master always runs — there is no transport start/stop yet — so
+downstream gear that follows clock will lock to whatever BPM is showing
+in the header.
+
+Direction reversed? Swap the constructor arguments in
+`platform/teensy/main.cpp` exactly as for the channel encoder.
 
 ## Power and signal levels
 
