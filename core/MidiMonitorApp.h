@@ -115,12 +115,18 @@ private:
 
     // ---- State -------------------------------------------------------
     struct Worm {
-        bool    live    = false;
-        bool    growing = false;
-        uint8_t note    = 0;
-        uint8_t channel = 0;
-        int16_t topY    = 0;   // smaller y == higher on screen
-        int16_t bottomY = 0;
+        bool     live    = false;
+        bool     growing = false;
+        uint8_t  note    = 0;
+        uint8_t  channel = 0;
+        int16_t  topY    = 0;   // smaller y == higher on screen
+        int16_t  bottomY = 0;
+        // Wall-clock timestamps in milliseconds. Used by the notation
+        // view to scroll note-heads horizontally and freeze the duration
+        // bar's right edge when the note is released. `endMs` is only
+        // meaningful when `growing` is false.
+        uint32_t startMs = 0;
+        uint32_t endMs   = 0;
     };
     static constexpr int kMaxWorms = 64;
 

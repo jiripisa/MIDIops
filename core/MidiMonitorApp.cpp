@@ -5,6 +5,7 @@
 
 #include "Display.h"
 #include "MidiOutput.h"
+#include "notation_glyphs.h"
 
 #ifndef JP4MIDI_VERSION
 #define JP4MIDI_VERSION "dev"
@@ -75,6 +76,36 @@ constexpr ChordPattern kChordPatterns[] = {
     {0x0A1, "sus4"},   // 0,5,7
     {0x095, "add9"},   // 0,2,4,7
 };
+
+// Blit a 1-bpp glyph. Width must be ≤ 8 (rows are packed in a single byte,
+// most-significant bit = leftmost pixel). Runs of consecutive set bits in
+// a row are coalesced into a single fillRect call to keep the per-pixel
+// rate down — important on Teensy where each fillRect dispatches through
+// the framebuffer.
+void drawGlyph(Display& d, int x, int y,
+               const uint8_t* rows, int width, int height,
+               uint16_t color) {
+    for (int row = 0; row < height; ++row) {
+        const uint8_t bits = rows[row];
+        int col = 0;
+        while (col < width) {
+            const uint8_t mask = static_cast<uint8_t>(1u << (width - 1 - col));
+            if (bits & mask) {
+                int runEnd = col + 1;
+                while (runEnd < width) {
+                    const uint8_t m2 =
+                        static_cast<uint8_t>(1u << (width - 1 - runEnd));
+                    if (!(bits & m2)) break;
+                    ++runEnd;
+                }
+                d.fillRect(x + col, y + row, runEnd - col, 1, color);
+                col = runEnd;
+            } else {
+                ++col;
+            }
+        }
+    }
+}
 
 int popCount12(uint16_t x) {
     int n = 0;
@@ -167,6 +198,7 @@ void MidiMonitorApp::setChannel(uint8_t channel) {
     for (int i = 0; i < kMaxWorms; ++i) {
         if (worms_[i].live && worms_[i].growing) {
             worms_[i].growing = false;
+            worms_[i].endMs   = lastTickMs_;
         }
     }
 }
@@ -222,6 +254,7 @@ void MidiMonitorApp::panic() {
     for (int i = 0; i < kMaxWorms; ++i) {
         if (worms_[i].live && worms_[i].growing) {
             worms_[i].growing = false;
+            worms_[i].endMs   = lastTickMs_;
         }
     }
 }
@@ -237,6 +270,7 @@ void MidiMonitorApp::releaseAllNotesOnChannel(uint8_t ch) {
         Worm& w = worms_[i];
         if (w.live && w.growing && w.channel == ch) {
             w.growing = false;
+            w.endMs   = lastTickMs_;
         }
     }
 }
@@ -299,6 +333,8 @@ void MidiMonitorApp::onNoteOn(const MidiMessage& msg) {
         w.channel = msg.channel;
         w.topY    = static_cast<int16_t>(kRollBottom - 1);
         w.bottomY = static_cast<int16_t>(kRollBottom - 1);
+        w.startMs = lastTickMs_;
+        w.endMs   = 0;
         return;
     }
 }
@@ -317,6 +353,7 @@ void MidiMonitorApp::onNoteOff(const MidiMessage& msg) {
         if (w.live && w.growing
             && w.note == msg.data1 && w.channel == msg.channel) {
             w.growing = false;
+            w.endMs   = lastTickMs_;
         }
     }
 }
@@ -652,46 +689,52 @@ void MidiMonitorApp::drawNotation(Display& d) const {
     // ---- Grand-staff layout -------------------------------------------
     // One natural-pitch "step" (line ↔ adjacent space) is kStepH pixels.
     // Lines therefore sit at every other step, kStepH * 2 = 8 px apart.
-    // The treble staff's top line (F5) anchors the coordinate system.
     constexpr int kStepH    = 4;
-    constexpr int kStaffX   = 50;
-    constexpr int kStaffW   = 260;
+    constexpr int kStaffX   = 26;
+    constexpr int kStaffW   = 290;
     constexpr int kF5Y      = 60;    // top treble line
     constexpr int kE4Y      = kF5Y + 4 * 2 * kStepH;  // 92,  bottom treble
     constexpr int kC4Y      = kE4Y + 2 * kStepH;      // 100, middle C
     constexpr int kA3Y      = kE4Y + 4 * kStepH;      // 108, top bass
     constexpr int kG2Y      = kA3Y + 4 * 2 * kStepH;  // 140, bottom bass
+    constexpr int kG4Y      = kE4Y - 2 * 2 * kStepH;  // 76,  G4 line (2nd treble)
+    constexpr int kF3Y      = kA3Y + 2 * 2 * kStepH;  // 124, F3 line (4th bass)
 
     // Natural-pitch step indices (every odd number = a space, every even
     // = a line). MIDI 0 = C-1; one octave = 7 steps.
     constexpr int kF5Step = 38;
-    constexpr int kE4Step = 30;
     constexpr int kC4Step = 28;
-    constexpr int kA3Step = 26;
     constexpr int kG2Step = 18;
 
     auto stepY = [&](int step) {
         return kF5Y + (kF5Step - step) * kStepH;
     };
 
-    // ---- Staff lines + clef placeholders -------------------------------
+    // ---- Staff lines ---------------------------------------------------
     for (int i = 0; i < 5; ++i) {
         d.fillRect(kStaffX, kF5Y + i * 2 * kStepH, kStaffW, 1, color::White);
         d.fillRect(kStaffX, kA3Y + i * 2 * kStepH, kStaffW, 1, color::White);
     }
-    // Single vertical brace on the left, spanning both staves — a
-    // stylised stand-in for the curly grand-staff brace. No right
-    // barline; the gap between staves then reads as empty.
     d.fillRect(kStaffX - 1, kF5Y, 1, kG2Y - kF5Y + 1, color::White);
 
-    // Clef placeholders — single uppercase letter for now. Will be
-    // replaced by proper bitmap glyphs in a follow-up.
-    d.drawText(8, kF5Y + 6, "G", color::White, color::Black, 3);
-    d.drawText(8, kA3Y + 6, "F", color::White, color::Black, 3);
+    // ---- Bitmap clefs --------------------------------------------------
+    drawGlyph(d, 8,
+              kG4Y - notation::kTrebleClefG4Row,
+              notation::kTrebleClef,
+              notation::kTrebleClefW, notation::kTrebleClefH,
+              color::White);
+    drawGlyph(d, 8,
+              kF3Y - notation::kBassClefF3Row,
+              notation::kBassClef,
+              notation::kBassClefW, notation::kBassClefH,
+              color::White);
 
-    // ---- Place held notes as filled note-heads at a fixed X column.
-    // For a static "chord chart" view, every held note sits in the same
-    // vertical line, stacked by pitch.
+    // ---- Rolling layout ------------------------------------------------
+    // Notes spawn at the right edge ("now") and scroll left as time
+    // passes. While the note is held, a duration bar extends from the
+    // head to the right edge. After NoteOff, the bar's right end is
+    // anchored at the position corresponding to the release time and
+    // scrolls left with the head.
     static const int8_t kPcToNatural[12] = {
         0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6
     };
@@ -699,48 +742,97 @@ void MidiMonitorApp::drawNotation(Display& d) const {
         false, true, false, true, false, false, true, false, true, false, true, false
     };
 
-    constexpr int kNoteX = kStaffX + kStaffW / 2;
-    constexpr int kNoteW = 8;
-    constexpr int kNoteH = 5;
-    constexpr int kLedgerW = kNoteW + 6;
+    constexpr int kNoteHeadW = notation::kNoteHeadW;
+    constexpr int kNoteHeadH = notation::kNoteHeadH;
+    constexpr int kLedgerW   = kNoteHeadW + 4;
 
-    for (int n = 0; n < 128; ++n) {
-        if (notePressedBy_[n] == 0) continue;
+    // Slower than the worm-view scroll so the user gets a longer history
+    // (~7 s of staff at this rate, vs. ~3 s on the worm roll).
+    constexpr int kScrollPxPerSec = 40;
+    constexpr int kRightX = kStaffX + kStaffW - kNoteHeadW - 4;
+    constexpr int kLeftX  = kStaffX + 4;
 
-        const int pc        = n % 12;
-        const int octave    = n / 12 - 1;
-        const int step      = octave * 7 + kPcToNatural[pc];
-        const int y         = stepY(step);
-        const bool sharp    = kPcIsSharp[pc];
+    // "Now" line at the right edge — a thin grey rule the heads emerge from.
+    d.fillRect(kRightX + kNoteHeadW / 2 + 2, kF5Y - 4,
+               1, kG2Y - kF5Y + 8, color::Gray);
 
-        // Ledger lines for notes outside the staff.
+    const uint32_t now = lastTickMs_;
+
+    for (int i = 0; i < kMaxWorms; ++i) {
+        const Worm& w = worms_[i];
+        if (!w.live) continue;
+        if (!noteVisible(w.note)) continue;
+
+        // X of the head: starts at kRightX when the note is brand-new and
+        // walks left at kScrollPxPerSec.
+        const uint32_t elapsed = now - w.startMs;
+        const int headX = kRightX -
+            static_cast<int>((elapsed * kScrollPxPerSec) / 1000u);
+        if (headX < kLeftX - kNoteHeadW) continue;  // scrolled off the left
+
+        // X of the right end of the duration bar. While growing, anchored
+        // at kRightX. Once released, scrolls left at the same rate as the
+        // head so the bar length stays proportional to held time.
+        int barEndX;
+        if (w.growing) {
+            barEndX = kRightX + kNoteHeadW / 2;
+        } else {
+            const uint32_t held = w.endMs - w.startMs;
+            barEndX = headX + kNoteHeadW / 2 +
+                static_cast<int>((held * kScrollPxPerSec) / 1000u);
+            if (barEndX > kRightX + kNoteHeadW / 2) {
+                barEndX = kRightX + kNoteHeadW / 2;
+            }
+        }
+
+        const int pc      = w.note % 12;
+        const int octave  = w.note / 12 - 1;
+        const int step    = octave * 7 + kPcToNatural[pc];
+        const int y       = stepY(step);
+        const bool sharp  = kPcIsSharp[pc];
+        const uint16_t col = channelColor(w.channel);
+
+        // Ledger lines for notes outside the staff. Drawn in white so they
+        // read as part of the staff rather than the note.
         if (step > kF5Step) {
             const int last = (step % 2 == 0) ? step : (step - 1);
             for (int s = kF5Step + 2; s <= last; s += 2) {
-                d.fillRect(kNoteX - kLedgerW / 2, stepY(s),
+                d.fillRect(headX - 2, stepY(s),
                            kLedgerW, 1, color::White);
             }
         } else if (step < kG2Step) {
             const int last = (step % 2 == 0) ? step : (step + 1);
             for (int s = kG2Step - 2; s >= last; s -= 2) {
-                d.fillRect(kNoteX - kLedgerW / 2, stepY(s),
+                d.fillRect(headX - 2, stepY(s),
                            kLedgerW, 1, color::White);
             }
         } else if (step == kC4Step) {
-            // Middle-C ledger line bridges the two staves.
-            d.fillRect(kNoteX - kLedgerW / 2, kC4Y,
-                       kLedgerW, 1, color::White);
+            d.fillRect(headX - 2, kC4Y, kLedgerW, 1, color::White);
         }
 
-        // Sharp accidental (draw left of the note head).
+        // Duration bar — drawn first so the head and accidental overlap it.
+        const int barStartX = headX + kNoteHeadW / 2;
+        if (barEndX > barStartX) {
+            d.fillRect(barStartX, y - 1, barEndX - barStartX, 3, col);
+        }
+
+        // Sharp accidental (drawn to the left of the head, channel-coloured).
         if (sharp) {
-            d.drawText(kNoteX - kNoteW / 2 - 8, y - 3,
-                       "#", color::White, color::Black, 1);
+            const int sharpX = headX - notation::kSharpW - 1;
+            const int sharpY = y - notation::kSharpH / 2;
+            if (sharpX + notation::kSharpW >= kLeftX - notation::kSharpW) {
+                drawGlyph(d, sharpX, sharpY,
+                          notation::kSharp,
+                          notation::kSharpW, notation::kSharpH,
+                          col);
+            }
         }
 
-        // Note head — small filled oval approximated as a rectangle.
-        d.fillRect(kNoteX - kNoteW / 2, y - kNoteH / 2,
-                   kNoteW, kNoteH, color::White);
+        // Oval note head.
+        drawGlyph(d, headX, y - kNoteHeadH / 2,
+                  notation::kNoteHead,
+                  notation::kNoteHeadW, notation::kNoteHeadH,
+                  col);
     }
 }
 
