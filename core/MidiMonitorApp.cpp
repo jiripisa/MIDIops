@@ -238,6 +238,7 @@ void MidiMonitorApp::restart() {
     monitoring_    = true;
     for (int i = 0; i < 128; ++i) notePressedBy_[i] = 0;
     for (int i = 0; i < kMaxWorms; ++i) worms_[i].live = false;
+    for (auto& sl : nameDisplays_) sl.live = false;
 }
 
 void MidiMonitorApp::toggleView() {
@@ -285,6 +286,7 @@ void MidiMonitorApp::setMonitoring(bool on) {
         // keyboard goes back to unpressed.
         for (int i = 0; i < 128; ++i) notePressedBy_[i] = 0;
         for (int i = 0; i < kMaxWorms; ++i) worms_[i].live = false;
+        for (auto& sl : nameDisplays_) sl.live = false;
     }
 }
 
@@ -890,38 +892,105 @@ void MidiMonitorApp::drawNotation(Display& d) const {
         }
     }
 
-    // ---- Held-note names (below the staff, channel-coloured) ---------
+    // ---- Held-note names (below the staff, with fall-away animation) -
+    //
+    // Each held note gets a name slot; when the note is released the
+    // slot starts drifting straight down while its colour fades to
+    // black, until either time or the screen bottom retires it.
     {
-        constexpr int kCharW    = 12;   // size-2 stride
-        constexpr int kSep      = 6;
-        constexpr int kNamesY   = kG2Y + 14;
-        constexpr int kMaxNames = 16;
+        constexpr int kCharW       = 12;        // size-2 font stride
+        constexpr int kSep         = 6;
+        constexpr int kNamesY      = kG2Y + 14; // baseline while held
+        constexpr int kFallPxPerS  = 30;        // drift speed for released names
+        constexpr uint32_t kFadeMs = 3000;      // fade-to-black duration
 
-        uint8_t notes[kMaxNames];
-        int     count = 0;
-        for (int n = 0; n < 128 && count < kMaxNames; ++n) {
-            if (notePressedBy_[n] != 0) {
-                notes[count++] = static_cast<uint8_t>(n);
-            }
+        // 1) Collect currently held notes and compute their centred X
+        //    positions (the same layout the previous version produced).
+        struct Held {
+            uint8_t note;
+            uint8_t channel;
+            int     x;
+            int     width;
+        };
+        Held held[kMaxNameDisplays];
+        int  heldCount = 0;
+        for (int n = 0; n < 128 && heldCount < kMaxNameDisplays; ++n) {
+            if (notePressedBy_[n] == 0) continue;
+            held[heldCount].note    = static_cast<uint8_t>(n);
+            held[heldCount].channel = pressedChannelFor(static_cast<uint8_t>(n));
+            const std::string s = MidiMessage::noteName(static_cast<uint8_t>(n));
+            held[heldCount].width   = static_cast<int>(s.size()) * kCharW;
+            ++heldCount;
         }
-        if (count > 0) {
-            // Total pixel width — each name is variable length ("C4", "C#4").
+        if (heldCount > 0) {
             int totalW = 0;
-            for (int i = 0; i < count; ++i) {
-                const std::string n = MidiMessage::noteName(notes[i]);
-                totalW += static_cast<int>(n.size()) * kCharW;
-            }
-            totalW += (count - 1) * kSep;
-
+            for (int i = 0; i < heldCount; ++i) totalW += held[i].width;
+            totalW += (heldCount - 1) * kSep;
             int x = (kScreenW - totalW) / 2;
             if (x < 4) x = 4;
-            for (int i = 0; i < count; ++i) {
-                const std::string n = MidiMessage::noteName(notes[i]);
-                const uint16_t col = channelColor(pressedChannelFor(notes[i]));
-                d.drawText(x, kNamesY, n.c_str(), col, color::Black, 2);
-                x += static_cast<int>(n.size()) * kCharW;
-                if (i < count - 1) x += kSep;
+            for (int i = 0; i < heldCount; ++i) {
+                held[i].x = x;
+                x += held[i].width + kSep;
             }
+        }
+
+        // 2) Mark slots whose note is no longer pressed as released.
+        //    They keep their last X and start their drift.
+        for (auto& sl : nameDisplays_) {
+            if (!sl.live) continue;
+            if (sl.releasedMs != 0) continue;
+            if (notePressedBy_[sl.note] == 0) {
+                sl.releasedMs = lastTickMs_;
+            }
+        }
+
+        // 3) For each currently held note, find an existing slot for
+        //    that note (possibly one that was already falling — snap
+        //    it back to the top) or allocate a new one.
+        for (int i = 0; i < heldCount; ++i) {
+            int found = -1;
+            for (int s = 0; s < kMaxNameDisplays; ++s) {
+                if (nameDisplays_[s].live &&
+                    nameDisplays_[s].note == held[i].note) {
+                    found = s;
+                    break;
+                }
+            }
+            if (found < 0) {
+                for (int s = 0; s < kMaxNameDisplays; ++s) {
+                    if (!nameDisplays_[s].live) {
+                        nameDisplays_[s].live = true;
+                        nameDisplays_[s].note = held[i].note;
+                        found = s;
+                        break;
+                    }
+                }
+            }
+            if (found >= 0) {
+                nameDisplays_[found].channel    = held[i].channel;
+                nameDisplays_[found].x          = static_cast<int16_t>(held[i].x);
+                nameDisplays_[found].releasedMs = 0;
+            }
+        }
+
+        // 4) Render every live slot. Held slots stay at the baseline,
+        //    released slots drift down with a linear fade.
+        for (auto& sl : nameDisplays_) {
+            if (!sl.live) continue;
+            uint16_t col = channelColor(sl.channel);
+            int y = kNamesY;
+            if (sl.releasedMs != 0) {
+                const uint32_t age = lastTickMs_ - sl.releasedMs;
+                y += static_cast<int>((age * kFallPxPerS) / 1000u);
+                if (age >= kFadeMs || y >= kScreenH) {
+                    sl.live = false;
+                    continue;
+                }
+                const uint32_t factor = ((kFadeMs - age) * 256u) / kFadeMs;
+                col = scaleRgb565(col, static_cast<uint16_t>(factor));
+            }
+            const std::string name = MidiMessage::noteName(sl.note);
+            d.drawText(sl.x, y, name.c_str(), col, color::Black, 2);
         }
     }
 }

@@ -148,6 +148,26 @@ private:
     uint32_t splashStartMs_          = 0;
     bool     splashActive_           = true;
 
+    // ---- Notation-view note-name overlays --------------------------
+    //
+    // Each currently-pressed note in the notation view has its name
+    // (e.g. "C#4") drawn just below the staff. When the note is
+    // released the slot stays alive, its X freezes at wherever it was
+    // last shown, and the name drifts straight down while its colour
+    // fades to black. Animation is computed each render() from the
+    // wall-clock time stored on the slot — no state is mutated in any
+    // const path, so the field is marked `mutable` to keep the existing
+    // drawNotation() signature.
+    struct NameDisplay {
+        bool     live       = false;
+        uint8_t  note       = 0;
+        uint8_t  channel    = 0;
+        int16_t  x          = 0;       // X anchored at release time
+        uint32_t releasedMs = 0;       // 0 = still held
+    };
+    static constexpr int kMaxNameDisplays = 32;
+    mutable NameDisplay nameDisplays_[kMaxNameDisplays]{};
+
 public:
     enum class View : uint8_t {
         Monitor  = 0,
