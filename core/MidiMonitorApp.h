@@ -34,10 +34,11 @@ public:
     // state on actual change.
     void onChannelKnob(int delta);
 
-    // Where to send outgoing real-time MIDI messages (clock pulses,
-    // transport). May be nullptr — in which case clock generation runs
-    // internally but emits nothing.
-    void setMidiOutput(MidiOutput* out) { midiOut_ = out; }
+    // Where to send outgoing real-time MIDI messages. The output owns its
+    // own clock timing source — `setMidiOutput` immediately reconfigures
+    // it for the current BPM so the MIDI Clock master starts running as
+    // soon as the output is attached. Pass nullptr to detach.
+    void setMidiOutput(MidiOutput* out);
 
     // Tempo in BPM for the MIDI Clock master. Clamped to [kBpmMin..kBpmMax].
     void     setBpm(uint16_t bpm);
@@ -128,7 +129,6 @@ private:
 
     MidiOutput* midiOut_             = nullptr;
     uint16_t    bpm_                 = kBpmDefault;
-    uint64_t    clockAccumUs_        = 0;
 
     // ---- Helpers -----------------------------------------------------
     void onNoteOn (const MidiMessage& msg);

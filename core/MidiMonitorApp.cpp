@@ -178,14 +178,17 @@ void MidiMonitorApp::onChannelKnob(int delta) {
     setChannel(static_cast<uint8_t>(next));
 }
 
+void MidiMonitorApp::setMidiOutput(MidiOutput* out) {
+    midiOut_ = out;
+    if (midiOut_) midiOut_->setClockBpm(bpm_);
+}
+
 void MidiMonitorApp::setBpm(uint16_t bpm) {
     if (bpm < kBpmMin) bpm = kBpmMin;
     if (bpm > kBpmMax) bpm = kBpmMax;
     if (bpm == bpm_) return;
     bpm_ = bpm;
-    // Restart the clock accumulator so the new tempo takes effect from
-    // "now" instead of carrying over fractional pulse phase from the old.
-    clockAccumUs_ = 0;
+    if (midiOut_) midiOut_->setClockBpm(bpm_);
 }
 
 void MidiMonitorApp::onBpmKnob(int delta) {
@@ -331,22 +334,9 @@ void MidiMonitorApp::tick(uint32_t nowMs) {
     }
     if (dy > 0) advanceWorms(dy);
 
-    // ---- MIDI Clock master ---------------------------------------------
-    // 24 pulses per quarter note. Track the accumulator in microseconds so
-    // BPM doesn't get quantised to whole-millisecond periods (at 120 BPM
-    // that would be ~5 % tempo jitter per pulse).
-    clockAccumUs_ += static_cast<uint64_t>(elapsed) * 1000ull;
-    const uint64_t periodUs = 60000000ull /
-        (static_cast<uint64_t>(bpm_) * 24ull);
-    if (clockAccumUs_ > periodUs * 4ull) {
-        // Big stall — drop the catch-up so we don't burst a flurry of
-        // clock pulses into downstream gear.
-        clockAccumUs_ = 0;
-    }
-    while (clockAccumUs_ >= periodUs) {
-        clockAccumUs_ -= periodUs;
-        if (midiOut_) midiOut_->sendClock();
-    }
+    // MIDI Clock pulses are emitted by the MidiOutput's own timing source
+    // (hardware timer on Teensy, dedicated thread on host) — see
+    // setBpm() / setMidiOutput().
 }
 
 // ---------- Drawing ------------------------------------------------------
