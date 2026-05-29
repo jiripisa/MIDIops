@@ -5,6 +5,13 @@
 
 #include "Display.h"
 
+#ifndef JP4MIDI_VERSION
+#define JP4MIDI_VERSION "dev"
+#endif
+#ifndef JP4MIDI_BUILD
+#define JP4MIDI_BUILD ""
+#endif
+
 namespace core {
 
 namespace {
@@ -170,6 +177,15 @@ void MidiMonitorApp::onChannelKnob(int delta) {
     setChannel(static_cast<uint8_t>(next));
 }
 
+void MidiMonitorApp::restart() {
+    splashActive_  = true;
+    splashStartMs_ = lastTickMs_;   // lastTickMs_ already holds "now"
+    channel_       = kDefaultChannel;
+    monitoring_    = true;
+    for (int i = 0; i < 128; ++i) notePressedBy_[i] = 0;
+    for (int i = 0; i < kMaxWorms; ++i) worms_[i].live = false;
+}
+
 void MidiMonitorApp::setMonitoring(bool on) {
     if (on == monitoring_) return;
     monitoring_ = on;
@@ -274,8 +290,12 @@ void MidiMonitorApp::advanceWorms(int dy) {
 
 void MidiMonitorApp::tick(uint32_t nowMs) {
     if (lastTickMs_ == 0) {
-        lastTickMs_ = nowMs;
+        lastTickMs_    = nowMs;
+        splashStartMs_ = nowMs;
         return;
+    }
+    if (splashActive_ && (nowMs - splashStartMs_) >= kSplashDurationMs) {
+        splashActive_ = false;
     }
     const uint32_t elapsed = nowMs - lastTickMs_;
     lastTickMs_ = nowMs;
@@ -482,10 +502,41 @@ void MidiMonitorApp::drawKeyboard(Display& d) const {
 
 void MidiMonitorApp::render(Display& d) {
     d.clear(color::Black);
-    drawWorms(d);     // worms first; header draws on top in the y=0..20 strip
-    drawHeader(d);
-    drawKeyboard(d);
+    if (splashActive_) {
+        drawSplash(d);
+    } else {
+        drawWorms(d);     // worms first; header draws on top in the y=0..20 strip
+        drawHeader(d);
+        drawKeyboard(d);
+    }
     d.present();
+}
+
+void MidiMonitorApp::drawSplash(Display& d) const {
+    // Font: 5 px glyph + 1 px spacing = 6 px stride, 7 px tall.
+    constexpr int kStride = 6;
+    constexpr int kGlyphH = 7;
+
+    // ---- Big "JP4Midi" title ---------------------------------------
+    constexpr const char* kTitle = "JP4Midi";
+    constexpr int kTitleSize = 4;
+    const int titleLen = static_cast<int>(std::strlen(kTitle));
+    const int titleW   = titleLen * kStride * kTitleSize;
+    const int titleX   = (kScreenW - titleW) / 2;
+    constexpr int kTitleY = 80;
+    d.drawText(titleX, kTitleY, kTitle, color::White, color::Black, kTitleSize);
+
+    // ---- Version + build timestamp on one line at size 2 -----------
+    char meta[40];
+    std::snprintf(meta, sizeof(meta), "%s %s",
+                  JP4MIDI_VERSION, JP4MIDI_BUILD);
+    constexpr int kMetaSize = 2;
+    const int metaLen = static_cast<int>(std::strlen(meta));
+    const int metaW   = metaLen * kStride * kMetaSize;
+    const int metaX   = (kScreenW - metaW) / 2;
+    constexpr int kMetaY = 150;
+    d.drawText(metaX, kMetaY, meta, color::Gray, color::Black, kMetaSize);
+    (void)kGlyphH;  // height not needed, layout is constant
 }
 
 // ---------- Chord detection ---------------------------------------------

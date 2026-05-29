@@ -6,30 +6,25 @@ namespace {
 constexpr uint32_t kDebounceMs = 20;
 }
 
-TeensyButton::TeensyButton(uint8_t pin) : pin_(pin) {}
+TeensyButton::TeensyButton(uint8_t pin, bool activeHigh)
+    : pin_(pin), activeHigh_(activeHigh) {}
 
 void TeensyButton::begin() {
-    // DFRobot Gravity LED switch (DFR0789) and similar latching panel
-    // buttons report their state on a single signal line whose polarity
-    // is the opposite of what a naïve momentary-button reading would
-    // assume:
-    //
-    //   * Latched closed (LED lit): the switch breaks the path to GND.
-    //     Teensy's INPUT_PULLUP pulls the line HIGH.
-    //   * Latched open (LED dark):  the switch shorts the line to GND,
-    //     so it reads LOW.
-    //
-    // Therefore "switch is on" == "signal is HIGH". Sample once at boot
-    // so the initial debounced state matches reality immediately.
+    // Always enable the internal pull-up. The activeHigh_ flag then picks
+    // which raw level we treat as "on" — see the header for the two
+    // wiring conventions we support. Sample once at boot so the initial
+    // debounced state matches reality without a 20 ms warm-up period.
     pinMode(pin_, INPUT_PULLUP);
-    const bool initial = (digitalRead(pin_) == HIGH);
+    const int activeLevel = activeHigh_ ? HIGH : LOW;
+    const bool initial = (digitalRead(pin_) == activeLevel);
     lastRaw_       = initial;
     lastStable_    = initial;
     lastChangeMs_  = 0;
 }
 
 bool TeensyButton::pollOn() {
-    const bool     raw = (digitalRead(pin_) == HIGH);
+    const int activeLevel = activeHigh_ ? HIGH : LOW;
+    const bool     raw = (digitalRead(pin_) == activeLevel);
     const uint32_t now = millis();
 
     if (raw != lastRaw_) {

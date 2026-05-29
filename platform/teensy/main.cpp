@@ -53,6 +53,10 @@ static ILI9341_t3n     tft(kPinTftCs, kPinTftDc, kPinTftRst);
 static TeensyDisplay   display(tft);
 static TeensyMidiInput midi;
 static TeensyButton    monitorButton(kPinMonitorButton);
+// Encoder SW shaft button — momentary push, active-LOW (shorts to GND).
+// Used as a one-shot "restart app" trigger so we can re-test the splash
+// screen without unplugging USB.
+static TeensyButton    encoderSwitch(kPinEncoderSw, /*activeHigh=*/false);
 // Pin order here picks the direction: passing DT first yields CW = positive
 // (channel goes up) on the KY-040 module silkscreen we have. If you ever
 // swap to a differently-laid-out encoder and find rotation reversed, swap
@@ -64,6 +68,7 @@ void setup() {
     display.begin();
     midi.begin();
     monitorButton.begin();
+    encoderSwitch.begin();
     app.tick(millis());
     app.render(display);
 }
@@ -73,6 +78,14 @@ void loop() {
     // mechanical position. Mirror that position into the app so the
     // monitoring state always matches what the user sees on the panel.
     app.setMonitoring(monitorButton.pollOn());
+
+    // Edge-triggered restart on the encoder's shaft button.
+    static bool swLast = false;
+    const bool swNow = encoderSwitch.pollOn();
+    if (swNow && !swLast) {
+        app.restart();
+    }
+    swLast = swNow;
 
     const int detents = channelKnob.poll();
     if (detents != 0) {

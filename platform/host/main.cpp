@@ -58,6 +58,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
                  "  1..9          set the test injection channel (default 1)\n"
                  "  LEFT / RIGHT  cycle monitored channel (OMNI..16)\n"
                  "  SPACE         toggle MIDI monitoring on/off\n"
+                 "  F5            restart app (re-show splash)\n"
                  "  ESC           quit\n");
 
     // Test injection state. Each held note remembers which channel it was
@@ -89,6 +90,12 @@ int main(int /*argc*/, char* /*argv*/[]) {
                         app.toggleMonitoring();
                         std::fprintf(stderr, "[sim] monitoring = %s\n",
                                      app.monitoring() ? "ON" : "OFF");
+                        break;
+                    }
+
+                    if (ev.key.keysym.sym == SDLK_F5) {
+                        app.restart();
+                        std::fprintf(stderr, "[sim] restart\n");
                         break;
                     }
 

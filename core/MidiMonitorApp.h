@@ -39,6 +39,12 @@ public:
     void toggleMonitoring() { setMonitoring(!monitoring_); }
     bool monitoring() const { return monitoring_; }
 
+    // Re-shows the boot splash and wipes the volatile MIDI state. Lets us
+    // test the splash + first-render path without power-cycling the
+    // device. Triggered by the encoder SW button on hardware and by F5
+    // in the simulator.
+    void restart();
+
     void onMessage(const MidiMessage& msg);
 
     // Advances the scrolling animation. Caller passes a monotonic millisecond
@@ -71,6 +77,10 @@ private:
     // Scroll speed for the worm roll.
     static constexpr uint32_t kScrollPxPerSec = 50;
 
+    // Boot splash: how long the "JP4Midi" title sits on the screen before
+    // the monitor view takes over.
+    static constexpr uint32_t kSplashDurationMs = 3000;
+
     // ---- State -------------------------------------------------------
     struct Worm {
         bool    live    = false;
@@ -97,6 +107,8 @@ private:
     Worm     worms_[kMaxWorms]       {};
     uint32_t lastTickMs_             = 0;
     uint32_t scrollAccumMs_          = 0;
+    uint32_t splashStartMs_          = 0;
+    bool     splashActive_           = true;
 
     // ---- Helpers -----------------------------------------------------
     void onNoteOn (const MidiMessage& msg);
@@ -106,6 +118,7 @@ private:
     void drawHeader(Display& d) const;
     void drawWorms(Display& d)  const;
     void drawKeyboard(Display& d) const;
+    void drawSplash(Display& d) const;
 
     static bool     isBlackPc(int pc);
     static int      whiteKeyIdx(uint8_t note);   // white-key index from kLowestNote
