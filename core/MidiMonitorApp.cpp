@@ -766,10 +766,6 @@ void MidiMonitorApp::drawNotation(Display& d) const {
     constexpr int kRightX = kStaffX + kStaffW - kNoteHeadW - 4;
     constexpr int kLeftX  = kStaffX + 4;
 
-    // "Now" line at the right edge — a thin grey rule the heads emerge from.
-    d.fillRect(kRightX + kNoteHeadW / 2 + 2, kF5Y - 4,
-               1, kG2Y - kF5Y + 8, color::Gray);
-
     const uint32_t now = lastTickMs_;
 
     for (int i = 0; i < kMaxWorms; ++i) {
@@ -837,6 +833,96 @@ void MidiMonitorApp::drawNotation(Display& d) const {
                   notation::kNoteHead,
                   notation::kNoteHeadW, notation::kNoteHeadH,
                   col);
+    }
+
+    // ---- Channel filter label (top-left) ------------------------------
+    char chBuf[16];
+    if (channel_ == 0) std::snprintf(chBuf, sizeof(chBuf), "CH:OMNI");
+    else               std::snprintf(chBuf, sizeof(chBuf), "CH:%u", channel_);
+    d.drawText(4, 4, chBuf, color::White, color::Black, 2);
+
+    // ---- Per-channel chord names (top, right-aligned) -----------------
+    // Same shape as drawChordNames() for the monitor view, but freshly
+    // laid out so the y-position and right-edge are independent of the
+    // header bar.
+    {
+        constexpr int kCharW = 12;       // size-2 font glyph stride
+        constexpr int kSep   = 12;
+        constexpr int kRightEdge   = kScreenW - 4;
+        constexpr int kLeftReserved = 100;  // keep clear of the "CH:" label
+
+        struct Entry { char name[12]; uint8_t channel; };
+        Entry entries[16];
+        int count = 0;
+        for (uint8_t ch = 1; ch <= 16 && count < 16; ++ch) {
+            char name[12];
+            detectChordOnChannel(ch, name, sizeof(name));
+            if (name[0] == '\0') continue;
+            std::strncpy(entries[count].name, name,
+                         sizeof(entries[count].name));
+            entries[count].name[sizeof(entries[count].name) - 1] = '\0';
+            entries[count].channel = ch;
+            ++count;
+        }
+        if (count > 0) {
+            int totalW = 0;
+            for (int i = 0; i < count; ++i)
+                totalW += static_cast<int>(std::strlen(entries[i].name)) * kCharW;
+            totalW += (count - 1) * kSep;
+
+            int firstShown = 0;
+            while (firstShown < count - 1 &&
+                   kRightEdge - totalW < kLeftReserved) {
+                const int w =
+                    static_cast<int>(std::strlen(entries[firstShown].name))
+                    * kCharW + kSep;
+                totalW -= w;
+                ++firstShown;
+            }
+            int x = kRightEdge - totalW;
+            for (int i = firstShown; i < count; ++i) {
+                d.drawText(x, 4, entries[i].name,
+                           channelColor(entries[i].channel),
+                           color::Black, 2);
+                x += static_cast<int>(std::strlen(entries[i].name)) * kCharW;
+                if (i < count - 1) x += kSep;
+            }
+        }
+    }
+
+    // ---- Held-note names (below the staff, channel-coloured) ---------
+    {
+        constexpr int kCharW    = 12;   // size-2 stride
+        constexpr int kSep      = 6;
+        constexpr int kNamesY   = kG2Y + 14;
+        constexpr int kMaxNames = 16;
+
+        uint8_t notes[kMaxNames];
+        int     count = 0;
+        for (int n = 0; n < 128 && count < kMaxNames; ++n) {
+            if (notePressedBy_[n] != 0) {
+                notes[count++] = static_cast<uint8_t>(n);
+            }
+        }
+        if (count > 0) {
+            // Total pixel width — each name is variable length ("C4", "C#4").
+            int totalW = 0;
+            for (int i = 0; i < count; ++i) {
+                const std::string n = MidiMessage::noteName(notes[i]);
+                totalW += static_cast<int>(n.size()) * kCharW;
+            }
+            totalW += (count - 1) * kSep;
+
+            int x = (kScreenW - totalW) / 2;
+            if (x < 4) x = 4;
+            for (int i = 0; i < count; ++i) {
+                const std::string n = MidiMessage::noteName(notes[i]);
+                const uint16_t col = channelColor(pressedChannelFor(notes[i]));
+                d.drawText(x, kNamesY, n.c_str(), col, color::Black, 2);
+                x += static_cast<int>(n.size()) * kCharW;
+                if (i < count - 1) x += kSep;
+            }
+        }
     }
 }
 
