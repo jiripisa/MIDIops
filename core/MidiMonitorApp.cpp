@@ -374,6 +374,14 @@ uint8_t MidiMonitorApp::pressedChannelFor(uint8_t note) const {
 // ---------- Animation ----------------------------------------------------
 
 void MidiMonitorApp::advanceWorms(int dy) {
+    // Keep released worms alive a while after they leave the worm-view
+    // roll area so the notation view can keep scrolling their note-heads
+    // toward the left edge of the staff. With the worm scroll at
+    // 50 px/s and the notation scroll at 40 px/s, ~200 px of extra
+    // post-roll travel ≈ 4 more seconds of life, putting the note's
+    // total visible time around ~7 s — enough to reach the left side
+    // of the staff in notation view before the slot is reused.
+    constexpr int kPostRollMargin = 200;
     for (int i = 0; i < kMaxWorms; ++i) {
         Worm& w = worms_[i];
         if (!w.live) continue;
@@ -384,7 +392,7 @@ void MidiMonitorApp::advanceWorms(int dy) {
             if (w.topY < kRollTop) w.topY = static_cast<int16_t>(kRollTop);
         } else {
             w.bottomY = static_cast<int16_t>(w.bottomY - dy);
-            if (w.bottomY < kRollTop) {
+            if (w.bottomY < kRollTop - kPostRollMargin) {
                 w.live = false;
             }
         }
