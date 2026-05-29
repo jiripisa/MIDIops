@@ -901,8 +901,11 @@ void MidiMonitorApp::drawNotation(Display& d) const {
         constexpr int kCharW       = 12;        // size-2 font stride
         constexpr int kSep         = 6;
         constexpr int kNamesY      = kG2Y + 14; // baseline while held
-        constexpr int kFallPxPerS  = 30;        // drift speed for released names
-        constexpr uint32_t kFadeMs = 3000;      // fade-to-black duration
+        // Tuned so the fall reaches the screen bottom (Y=240) at roughly
+        // the same moment the colour fades to black — names disappear
+        // quickly enough that rapid re-presses don't pile up.
+        constexpr int kFallPxPerS  = 60;
+        constexpr uint32_t kFadeMs = 1500;
 
         // 1) Collect currently held notes and compute their centred X
         //    positions (the same layout the previous version produced).
@@ -944,13 +947,16 @@ void MidiMonitorApp::drawNotation(Display& d) const {
             }
         }
 
-        // 3) For each currently held note, find an existing slot for
-        //    that note (possibly one that was already falling — snap
-        //    it back to the top) or allocate a new one.
+        // 3) For each currently held note, find an existing *still-held*
+        //    slot for it (so we keep updating its X / channel), or
+        //    allocate a fresh slot. Any falling slot with the same note
+        //    is intentionally NOT reused — it keeps falling on its own
+        //    while the freshly-pressed note appears at the baseline.
         for (int i = 0; i < heldCount; ++i) {
             int found = -1;
             for (int s = 0; s < kMaxNameDisplays; ++s) {
                 if (nameDisplays_[s].live &&
+                    nameDisplays_[s].releasedMs == 0 &&
                     nameDisplays_[s].note == held[i].note) {
                     found = s;
                     break;
