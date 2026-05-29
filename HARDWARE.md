@@ -38,7 +38,7 @@ This is the single source of truth. The pin numbers come from
 | 13         | SPI clock (hardware) | ILI9341 `SCK` | OUT | (Arduino fixed) |
 | 14         | BPM encoder A (clock) | KY-040 #2 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinBpmEncoderClk` |
 | 15         | BPM encoder B (data)  | KY-040 #2 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinBpmEncoderDt`  |
-| 16         | BPM encoder shaft button | KY-040 #2 `SW` | IN, INPUT_PULLUP, **active LOW** — toggles `MidiMonitorApp` between monitor view and the big-BPM focus view | `kPinBpmEncoderSw`  |
+| 16         | BPM encoder shaft button | KY-040 #2 `SW` | IN, INPUT_PULLUP, **active LOW** — cycles `MidiMonitorApp` through monitor view → big-BPM focus → notation (grand staff) → back | `kPinBpmEncoderSw`  |
 
 Pins 11, 12, 13 are the dedicated hardware-SPI lines on Teensy 4.1 and
 cannot be relocated. Pins 2, 3, 4, 5, 8, 9, 10, 14, 15, 16 are all free
@@ -113,7 +113,7 @@ opposite long edge of the Teensy from the channel encoder.
 |-------------|---------|-------|
 | **GND** | − rail | |
 | **+** | 3.3V rail | |
-| **SW** | Teensy pin 16 | Active-LOW. Short press toggles the display between the monitor view (header + worms + keyboard) and a focus screen showing the current BPM as one large number. The MIDI panic (release stuck notes) happens automatically on CC 120 / CC 123 — there is no dedicated hardware panic button. |
+| **SW** | Teensy pin 16 | Active-LOW. Short press cycles the display through three views: monitor (header + worms + keyboard) → big-BPM focus → notation (grand staff with all held notes as note-heads at their correct pitches) → back to monitor. The MIDI panic (release stuck notes) happens automatically on CC 120 / CC 123. |
 | **DT** | Teensy pin 15 | |
 | **CLK** | Teensy pin 14 | |
 

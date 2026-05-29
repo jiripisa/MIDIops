@@ -184,13 +184,16 @@ MIDI Clock pulses (24 per quarter note) continuously, so any DAW with
 its tempo source set to `JP4Midi` will follow the BPM you set with this
 knob.
 
-`SW` toggles between the **monitor view** (piano roll with scrolling
-worms + keyboard + chord names) and a **focus screen** that shows the
-current BPM as one big number with a `BPM` label below. The BPM knob
-still adjusts tempo in either view. The MIDI panic (release stuck
-notes) happens automatically when the DAW sends CC 120 (All Sound
-Off) or CC 123 (All Notes Off) — Ableton emits these on transport
-stop — so a dedicated hardware panic button isn't needed.
+`SW` cycles through three display modes:
+
+1. **Monitor view** — piano roll with scrolling worms + keyboard + chord names (default).
+2. **Big-BPM focus** — current tempo as one big number with a `BPM` caption.
+3. **Notation view** — a grand staff (treble + bass clef) with every held note drawn as a filled note-head at its correct pitch position, including sharps and ledger lines for notes outside the staff.
+
+The BPM knob still adjusts tempo in every view. The MIDI panic
+(release stuck notes) happens automatically when the DAW sends CC 120
+(All Sound Off) or CC 123 (All Notes Off) — Ableton emits these on
+transport stop — so a dedicated hardware panic button isn't needed.
 
 Same direction-reversal trick applies as the channel encoder.
 

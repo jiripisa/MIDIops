@@ -65,7 +65,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
                  "  SPACE         toggle MIDI monitoring on/off\n"
                  "  F5            restart app (re-show splash)\n"
                  "  BACKSPACE     panic — release stuck notes\n"
-                 "  TAB           toggle monitor / big-BPM view\n"
+                 "  TAB           cycle monitor / big-BPM / notation view\n"
                  "  ESC           quit\n");
 
     // Test injection state. Each held note remembers which channel it was

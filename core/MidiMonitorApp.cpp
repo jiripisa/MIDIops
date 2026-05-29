@@ -208,7 +208,9 @@ void MidiMonitorApp::restart() {
 }
 
 void MidiMonitorApp::toggleView() {
-    bigBpmView_ = !bigBpmView_;
+    const auto next = (static_cast<uint8_t>(view_) + 1) %
+                      static_cast<uint8_t>(View::kCount);
+    view_ = static_cast<View>(next);
 }
 
 void MidiMonitorApp::panic() {
@@ -581,8 +583,10 @@ void MidiMonitorApp::render(Display& d) {
     d.clear(color::Black);
     if (splashActive_) {
         drawSplash(d);
-    } else if (bigBpmView_) {
+    } else if (view_ == View::BigBpm) {
         drawBigBpm(d);
+    } else if (view_ == View::Notation) {
+        drawNotation(d);
     } else {
         drawWorms(d);     // worms first; header draws on top in the y=0..20 strip
         drawHeader(d);
@@ -642,6 +646,102 @@ void MidiMonitorApp::drawBigBpm(Display& d) const {
     const int labelX   = (kScreenW - labelW) / 2;
     const int labelY   = kNumY + numH + 20;
     d.drawText(labelX, labelY, kLabel, color::Gray, color::Black, kLabelSize);
+}
+
+void MidiMonitorApp::drawNotation(Display& d) const {
+    // ---- Grand-staff layout -------------------------------------------
+    // One natural-pitch "step" (line ↔ adjacent space) is kStepH pixels.
+    // Lines therefore sit at every other step, kStepH * 2 = 8 px apart.
+    // The treble staff's top line (F5) anchors the coordinate system.
+    constexpr int kStepH    = 4;
+    constexpr int kStaffX   = 50;
+    constexpr int kStaffW   = 260;
+    constexpr int kF5Y      = 60;    // top treble line
+    constexpr int kE4Y      = kF5Y + 4 * 2 * kStepH;  // 92,  bottom treble
+    constexpr int kC4Y      = kE4Y + 2 * kStepH;      // 100, middle C
+    constexpr int kA3Y      = kE4Y + 4 * kStepH;      // 108, top bass
+    constexpr int kG2Y      = kA3Y + 4 * 2 * kStepH;  // 140, bottom bass
+
+    // Natural-pitch step indices (every odd number = a space, every even
+    // = a line). MIDI 0 = C-1; one octave = 7 steps.
+    constexpr int kF5Step = 38;
+    constexpr int kE4Step = 30;
+    constexpr int kC4Step = 28;
+    constexpr int kA3Step = 26;
+    constexpr int kG2Step = 18;
+
+    auto stepY = [&](int step) {
+        return kF5Y + (kF5Step - step) * kStepH;
+    };
+
+    // ---- Staff lines + clef placeholders -------------------------------
+    for (int i = 0; i < 5; ++i) {
+        d.fillRect(kStaffX, kF5Y + i * 2 * kStepH, kStaffW, 1, color::White);
+        d.fillRect(kStaffX, kA3Y + i * 2 * kStepH, kStaffW, 1, color::White);
+    }
+    // Single vertical brace on the left, spanning both staves — a
+    // stylised stand-in for the curly grand-staff brace. No right
+    // barline; the gap between staves then reads as empty.
+    d.fillRect(kStaffX - 1, kF5Y, 1, kG2Y - kF5Y + 1, color::White);
+
+    // Clef placeholders — single uppercase letter for now. Will be
+    // replaced by proper bitmap glyphs in a follow-up.
+    d.drawText(8, kF5Y + 6, "G", color::White, color::Black, 3);
+    d.drawText(8, kA3Y + 6, "F", color::White, color::Black, 3);
+
+    // ---- Place held notes as filled note-heads at a fixed X column.
+    // For a static "chord chart" view, every held note sits in the same
+    // vertical line, stacked by pitch.
+    static const int8_t kPcToNatural[12] = {
+        0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6
+    };
+    static const bool kPcIsSharp[12] = {
+        false, true, false, true, false, false, true, false, true, false, true, false
+    };
+
+    constexpr int kNoteX = kStaffX + kStaffW / 2;
+    constexpr int kNoteW = 8;
+    constexpr int kNoteH = 5;
+    constexpr int kLedgerW = kNoteW + 6;
+
+    for (int n = 0; n < 128; ++n) {
+        if (notePressedBy_[n] == 0) continue;
+
+        const int pc        = n % 12;
+        const int octave    = n / 12 - 1;
+        const int step      = octave * 7 + kPcToNatural[pc];
+        const int y         = stepY(step);
+        const bool sharp    = kPcIsSharp[pc];
+
+        // Ledger lines for notes outside the staff.
+        if (step > kF5Step) {
+            const int last = (step % 2 == 0) ? step : (step - 1);
+            for (int s = kF5Step + 2; s <= last; s += 2) {
+                d.fillRect(kNoteX - kLedgerW / 2, stepY(s),
+                           kLedgerW, 1, color::White);
+            }
+        } else if (step < kG2Step) {
+            const int last = (step % 2 == 0) ? step : (step + 1);
+            for (int s = kG2Step - 2; s >= last; s -= 2) {
+                d.fillRect(kNoteX - kLedgerW / 2, stepY(s),
+                           kLedgerW, 1, color::White);
+            }
+        } else if (step == kC4Step) {
+            // Middle-C ledger line bridges the two staves.
+            d.fillRect(kNoteX - kLedgerW / 2, kC4Y,
+                       kLedgerW, 1, color::White);
+        }
+
+        // Sharp accidental (draw left of the note head).
+        if (sharp) {
+            d.drawText(kNoteX - kNoteW / 2 - 8, y - 3,
+                       "#", color::White, color::Black, 1);
+        }
+
+        // Note head — small filled oval approximated as a rectangle.
+        d.fillRect(kNoteX - kNoteW / 2, y - kNoteH / 2,
+                   kNoteW, kNoteH, color::White);
+    }
 }
 
 // ---------- Chord detection ---------------------------------------------

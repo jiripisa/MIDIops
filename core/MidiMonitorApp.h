@@ -65,10 +65,11 @@ public:
     // is Backspace.
     void panic();
 
-    // Switches between the monitor view (header + worms + keyboard)
-    // and the big-BPM focus view (just the tempo, large). The BPM
-    // encoder's SW button toggles this on hardware; Tab in the
-    // simulator. BPM rotation still adjusts tempo in either view.
+    // Cycles between three views: monitor (header + worms + keyboard)
+    // -> big-BPM focus -> notation (grand staff with held notes) ->
+    // back to monitor. The BPM encoder's SW button drives this on
+    // hardware; Tab in the simulator. BPM rotation still adjusts
+    // tempo in every view.
     void toggleView();
 
     void onMessage(const MidiMessage& msg);
@@ -140,7 +141,16 @@ private:
     uint32_t scrollAccumMs_          = 0;
     uint32_t splashStartMs_          = 0;
     bool     splashActive_           = true;
-    bool     bigBpmView_             = false;
+
+public:
+    enum class View : uint8_t {
+        Monitor  = 0,
+        BigBpm   = 1,
+        Notation = 2,
+        kCount   = 3,
+    };
+private:
+    View view_ = View::Monitor;
 
     MidiOutput* midiOut_             = nullptr;
     uint16_t    bpm_                 = kBpmDefault;
@@ -156,6 +166,7 @@ private:
     void drawKeyboard(Display& d) const;
     void drawSplash(Display& d) const;
     void drawBigBpm(Display& d) const;
+    void drawNotation(Display& d) const;
     void drawChordNames(Display& d, int rightEdge) const;
 
     static bool     isBlackPc(int pc);
