@@ -184,12 +184,13 @@ MIDI Clock pulses (24 per quarter note) continuously, so any DAW with
 its tempo source set to `JP4Midi` will follow the BPM you set with this
 knob.
 
-`SW` fires the **MIDI panic** — short press releases every note the
-device is showing as held, including any worms still in mid-growth.
-Useful when a DAW (e.g. Ableton editing a playing clip) sends a NoteOn
-but never the matching NoteOff. Also responds to the standard CC 120
-(All Sound Off) and CC 123 (All Notes Off) messages automatically, so
-in most cases you won't need to press this.
+`SW` toggles between the **monitor view** (piano roll with scrolling
+worms + keyboard + chord names) and a **focus screen** that shows the
+current BPM as one big number with a `BPM` label below. The BPM knob
+still adjusts tempo in either view. The MIDI panic (release stuck
+notes) happens automatically when the DAW sends CC 120 (All Sound
+Off) or CC 123 (All Notes Off) — Ableton emits these on transport
+stop — so a dedicated hardware panic button isn't needed.
 
 Same direction-reversal trick applies as the channel encoder.
 

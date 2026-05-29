@@ -65,6 +65,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
                  "  SPACE         toggle MIDI monitoring on/off\n"
                  "  F5            restart app (re-show splash)\n"
                  "  BACKSPACE     panic — release stuck notes\n"
+                 "  TAB           toggle monitor / big-BPM view\n"
                  "  ESC           quit\n");
 
     // Test injection state. Each held note remembers which channel it was
@@ -108,6 +109,12 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     if (ev.key.keysym.sym == SDLK_BACKSPACE) {
                         app.panic();
                         std::fprintf(stderr, "[sim] panic — released stuck notes\n");
+                        break;
+                    }
+
+                    if (ev.key.keysym.sym == SDLK_TAB) {
+                        app.toggleView();
+                        std::fprintf(stderr, "[sim] toggled view\n");
                         break;
                     }
 

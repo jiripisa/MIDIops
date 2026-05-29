@@ -103,11 +103,13 @@ void loop() {
     }
     channelSwLast = channelSwNow;
 
-    // Edge-triggered "release stuck notes" on the BPM encoder's shaft.
+    // Edge-triggered "toggle monitor / big-BPM view" on the BPM
+    // encoder's shaft. The MIDI panic (release stuck notes) still
+    // happens automatically on CC 120 / CC 123 from the DAW.
     static bool bpmSwLast = false;
     const bool bpmSwNow = bpmSwitch.pollOn();
     if (bpmSwNow && !bpmSwLast) {
-        app.panic();
+        app.toggleView();
     }
     bpmSwLast = bpmSwNow;
 

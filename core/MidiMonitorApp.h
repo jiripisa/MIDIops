@@ -60,9 +60,16 @@ public:
     // "Panic" — releases every note that is currently shown as held,
     // including the still-growing worms. Useful when a sender (e.g.
     // Ableton editing a playing clip) sends a NoteOn but never the
-    // matching NoteOff, leaving a note visually stuck. Triggered by the
-    // BPM encoder's SW button on hardware and Backspace in the simulator.
+    // matching NoteOff, leaving a note visually stuck. CC 120 / CC 123
+    // from a DAW trigger this automatically; in the simulator the key
+    // is Backspace.
     void panic();
+
+    // Switches between the monitor view (header + worms + keyboard)
+    // and the big-BPM focus view (just the tempo, large). The BPM
+    // encoder's SW button toggles this on hardware; Tab in the
+    // simulator. BPM rotation still adjusts tempo in either view.
+    void toggleView();
 
     void onMessage(const MidiMessage& msg);
 
@@ -133,6 +140,7 @@ private:
     uint32_t scrollAccumMs_          = 0;
     uint32_t splashStartMs_          = 0;
     bool     splashActive_           = true;
+    bool     bigBpmView_             = false;
 
     MidiOutput* midiOut_             = nullptr;
     uint16_t    bpm_                 = kBpmDefault;
@@ -147,6 +155,7 @@ private:
     void drawWorms(Display& d)  const;
     void drawKeyboard(Display& d) const;
     void drawSplash(Display& d) const;
+    void drawBigBpm(Display& d) const;
     void drawChordNames(Display& d, int rightEdge) const;
 
     static bool     isBlackPc(int pc);

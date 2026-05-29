@@ -207,6 +207,10 @@ void MidiMonitorApp::restart() {
     for (int i = 0; i < kMaxWorms; ++i) worms_[i].live = false;
 }
 
+void MidiMonitorApp::toggleView() {
+    bigBpmView_ = !bigBpmView_;
+}
+
 void MidiMonitorApp::panic() {
     // Release every held note (all channels at once) and stop every
     // still-growing worm so they drift away naturally. Doesn't touch
@@ -577,6 +581,8 @@ void MidiMonitorApp::render(Display& d) {
     d.clear(color::Black);
     if (splashActive_) {
         drawSplash(d);
+    } else if (bigBpmView_) {
+        drawBigBpm(d);
     } else {
         drawWorms(d);     // worms first; header draws on top in the y=0..20 strip
         drawHeader(d);
@@ -610,6 +616,32 @@ void MidiMonitorApp::drawSplash(Display& d) const {
     constexpr int kMetaY = 150;
     d.drawText(metaX, kMetaY, meta, color::Gray, color::Black, kMetaSize);
     (void)kGlyphH;  // height not needed, layout is constant
+}
+
+void MidiMonitorApp::drawBigBpm(Display& d) const {
+    // Font: 5 px glyph + 1 px spacing = 6 px stride, 7 px tall.
+    constexpr int kStride = 6;
+    constexpr int kGlyphH = 7;
+
+    // ---- BPM number, centered, very large ---------------------------
+    char num[8];
+    std::snprintf(num, sizeof(num), "%u", bpm_);
+    constexpr int kNumSize = 14;
+    const int numLen = static_cast<int>(std::strlen(num));
+    const int numW   = numLen * kStride * kNumSize;
+    const int numH   = kGlyphH * kNumSize;
+    const int numX   = (kScreenW - numW) / 2;
+    constexpr int kNumY = 50;
+    d.drawText(numX, kNumY, num, color::White, color::Black, kNumSize);
+
+    // ---- "BPM" label below, smaller, gray ---------------------------
+    constexpr const char* kLabel = "BPM";
+    constexpr int kLabelSize = 3;
+    const int labelLen = static_cast<int>(std::strlen(kLabel));
+    const int labelW   = labelLen * kStride * kLabelSize;
+    const int labelX   = (kScreenW - labelW) / 2;
+    const int labelY   = kNumY + numH + 20;
+    d.drawText(labelX, labelY, kLabel, color::Gray, color::Black, kLabelSize);
 }
 
 // ---------- Chord detection ---------------------------------------------
