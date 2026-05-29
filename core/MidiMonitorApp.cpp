@@ -780,7 +780,10 @@ void MidiMonitorApp::drawNotation(Display& d) const {
         const uint32_t elapsed = now - w.startMs;
         const int headX = kRightX -
             static_cast<int>((elapsed * kScrollPxPerSec) / 1000u);
-        if (headX < kLeftX - kNoteHeadW) continue;  // scrolled off the left
+        // Hide the head a little before it would visually crowd the clef
+        // glyph. kStaffX is the staff's left edge; cutting off there leaves
+        // a small gap of staff width before the clef.
+        if (headX < kStaffX) continue;  // scrolled off the left
 
         const int pc      = w.note % 12;
         const int octave  = w.note / 12 - 1;
