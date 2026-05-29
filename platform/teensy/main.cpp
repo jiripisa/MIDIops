@@ -62,10 +62,14 @@ static TeensyDisplay   display(tft);
 static TeensyMidiInput midiIn;
 static TeensyMidiOutput midiOut;
 static TeensyButton    monitorButton(kPinMonitorButton);
-// Encoder SW shaft button — momentary push, active-LOW (shorts to GND).
+// Channel encoder shaft button — momentary push, active-LOW (shorts to GND).
 // Used as a one-shot "restart app" trigger so we can re-test the splash
 // screen without unplugging USB.
 static TeensyButton    encoderSwitch(kPinEncoderSw, /*activeHigh=*/false);
+// BPM encoder shaft button — momentary push, active-LOW. Fires the
+// "release all stuck notes" panic so the user can recover from a sender
+// (e.g. Ableton edited mid-loop) that forgot to send a NoteOff.
+static TeensyButton    bpmSwitch(kPinBpmEncoderSw, /*activeHigh=*/false);
 // Pin order here picks the direction: passing DT first yields CW = positive
 // (channel goes up) on the KY-040 module silkscreen we have. If you ever
 // swap to a differently-laid-out encoder and find rotation reversed, swap
@@ -80,6 +84,7 @@ void setup() {
     app.setMidiOutput(&midiOut);
     monitorButton.begin();
     encoderSwitch.begin();
+    bpmSwitch.begin();
     app.tick(millis());
     app.render(display);
 }
@@ -96,13 +101,21 @@ void loop() {
     // monitoring state always matches what the user sees on the panel.
     app.setMonitoring(monitorButton.pollOn());
 
-    // Edge-triggered restart on the encoder's shaft button.
-    static bool swLast = false;
-    const bool swNow = encoderSwitch.pollOn();
-    if (swNow && !swLast) {
+    // Edge-triggered restart on the channel encoder's shaft button.
+    static bool channelSwLast = false;
+    const bool channelSwNow = encoderSwitch.pollOn();
+    if (channelSwNow && !channelSwLast) {
         app.restart();
     }
-    swLast = swNow;
+    channelSwLast = channelSwNow;
+
+    // Edge-triggered "release stuck notes" on the BPM encoder's shaft.
+    static bool bpmSwLast = false;
+    const bool bpmSwNow = bpmSwitch.pollOn();
+    if (bpmSwNow && !bpmSwLast) {
+        app.panic();
+    }
+    bpmSwLast = bpmSwNow;
 
     const int channelDetents = channelKnob.poll();
     if (channelDetents != 0) {

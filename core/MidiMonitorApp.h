@@ -57,6 +57,13 @@ public:
     // in the simulator.
     void restart();
 
+    // "Panic" — releases every note that is currently shown as held,
+    // including the still-growing worms. Useful when a sender (e.g.
+    // Ableton editing a playing clip) sends a NoteOn but never the
+    // matching NoteOff, leaving a note visually stuck. Triggered by the
+    // BPM encoder's SW button on hardware and Backspace in the simulator.
+    void panic();
+
     void onMessage(const MidiMessage& msg);
 
     // Advances the scrolling animation. Caller passes a monotonic millisecond
@@ -133,6 +140,7 @@ private:
     // ---- Helpers -----------------------------------------------------
     void onNoteOn (const MidiMessage& msg);
     void onNoteOff(const MidiMessage& msg);
+    void releaseAllNotesOnChannel(uint8_t ch);
     void advanceWorms(int dy);
 
     void drawHeader(Display& d) const;

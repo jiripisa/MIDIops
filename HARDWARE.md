@@ -38,7 +38,7 @@ This is the single source of truth. The pin numbers come from
 | 13         | SPI clock (hardware) | ILI9341 `SCK` | OUT | (Arduino fixed) |
 | 14         | BPM encoder A (clock) | KY-040 #2 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinBpmEncoderClk` |
 | 15         | BPM encoder B (data)  | KY-040 #2 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinBpmEncoderDt`  |
-| 16         | BPM encoder shaft button | KY-040 #2 `SW` | IN, INPUT_PULLUP, **active LOW** (wired but no behaviour yet) | `kPinBpmEncoderSw`  |
+| 16         | BPM encoder shaft button | KY-040 #2 `SW` | IN, INPUT_PULLUP, **active LOW** — fires `MidiMonitorApp::panic()` to release stuck notes | `kPinBpmEncoderSw`  |
 
 Pins 11, 12, 13 are the dedicated hardware-SPI lines on Teensy 4.1 and
 cannot be relocated. Pins 2, 3, 4, 5, 8, 9, 10, 14, 15, 16 are all free
@@ -113,7 +113,7 @@ opposite long edge of the Teensy from the channel encoder.
 |-------------|---------|-------|
 | **GND** | − rail | |
 | **+** | 3.3V rail | |
-| **SW** | Teensy pin 16 | Active-LOW. Wired for future use (e.g. tap-tempo or reset to 120 BPM) — no behaviour assigned yet. |
+| **SW** | Teensy pin 16 | Active-LOW. Short press releases every note currently shown as held (MIDI panic) — recovers from a sender that forgot a NoteOff. |
 | **DT** | Teensy pin 15 | |
 | **CLK** | Teensy pin 14 | |
 

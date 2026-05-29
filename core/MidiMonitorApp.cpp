@@ -207,6 +207,34 @@ void MidiMonitorApp::restart() {
     for (int i = 0; i < kMaxWorms; ++i) worms_[i].live = false;
 }
 
+void MidiMonitorApp::panic() {
+    // Release every held note (all channels at once) and stop every
+    // still-growing worm so they drift away naturally. Doesn't touch
+    // monitoring / channel filter / BPM — this is just a "drop stuck
+    // notes" recovery, not a full reset.
+    for (int i = 0; i < 128; ++i) notePressedBy_[i] = 0;
+    for (int i = 0; i < kMaxWorms; ++i) {
+        if (worms_[i].live && worms_[i].growing) {
+            worms_[i].growing = false;
+        }
+    }
+}
+
+void MidiMonitorApp::releaseAllNotesOnChannel(uint8_t ch) {
+    if (ch < 1 || ch > 16) return;
+    const uint16_t chBit = static_cast<uint16_t>(1u << (ch - 1));
+    const uint16_t clearMask = static_cast<uint16_t>(~chBit);
+    for (int n = 0; n < 128; ++n) {
+        notePressedBy_[n] &= clearMask;
+    }
+    for (int i = 0; i < kMaxWorms; ++i) {
+        Worm& w = worms_[i];
+        if (w.live && w.growing && w.channel == ch) {
+            w.growing = false;
+        }
+    }
+}
+
 void MidiMonitorApp::setMonitoring(bool on) {
     if (on == monitoring_) return;
     monitoring_ = on;
@@ -233,8 +261,18 @@ void MidiMonitorApp::onMessage(const MidiMessage& msg) {
     }
     if (msg.type == MidiType::NoteOn)  { onNoteOn(msg);  return; }
     if (msg.type == MidiType::NoteOff) { onNoteOff(msg); return; }
-    // Everything else (CC, PC, PB, aftertouch) is intentionally ignored —
-    // this view is note-only.
+    // Recognise the standard MIDI panic CCs. Ableton sends these on stop
+    // and on some clip edits — releasing notes here cleans up after any
+    // NoteOn whose NoteOff went missing.
+    //   CC 120  All Sound Off
+    //   CC 123  All Notes Off
+    if (msg.type == MidiType::ControlChange &&
+        (msg.data1 == 120 || msg.data1 == 123)) {
+        releaseAllNotesOnChannel(msg.channel);
+        return;
+    }
+    // Everything else (PC, PB, aftertouch, other CCs) is intentionally
+    // ignored — this view is note-only.
 }
 
 void MidiMonitorApp::onNoteOn(const MidiMessage& msg) {

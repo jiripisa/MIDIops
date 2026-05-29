@@ -184,8 +184,12 @@ MIDI Clock pulses (24 per quarter note) continuously, so any DAW with
 its tempo source set to `JP4Midi` will follow the BPM you set with this
 knob.
 
-`SW` is wired but currently has no software behaviour — reserved for a
-future use (likely tap-tempo).
+`SW` fires the **MIDI panic** — short press releases every note the
+device is showing as held, including any worms still in mid-growth.
+Useful when a DAW (e.g. Ableton editing a playing clip) sends a NoteOn
+but never the matching NoteOff. Also responds to the standard CC 120
+(All Sound Off) and CC 123 (All Notes Off) messages automatically, so
+in most cases you won't need to press this.
 
 Same direction-reversal trick applies as the channel encoder.
 
