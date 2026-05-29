@@ -730,11 +730,11 @@ void MidiMonitorApp::drawNotation(Display& d) const {
               color::White);
 
     // ---- Rolling layout ------------------------------------------------
-    // Notes spawn at the right edge ("now") and scroll left as time
-    // passes. While the note is held, a duration bar extends from the
-    // head to the right edge. After NoteOff, the bar's right end is
-    // anchored at the position corresponding to the release time and
-    // scrolls left with the head.
+    // Notes spawn at the right edge ("now") when NoteOn arrives and walk
+    // left at a constant scroll speed. Each note is a discrete musical
+    // glyph (head + stem); duration is *not* drawn as a bar — that's
+    // what the worm view is for. The result reads as "moving notes"
+    // sliding across the staff.
     static const int8_t kPcToNatural[12] = {
         0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6
     };
@@ -745,9 +745,14 @@ void MidiMonitorApp::drawNotation(Display& d) const {
     constexpr int kNoteHeadW = notation::kNoteHeadW;
     constexpr int kNoteHeadH = notation::kNoteHeadH;
     constexpr int kLedgerW   = kNoteHeadW + 4;
+    constexpr int kStemH     = 14;
 
-    // Slower than the worm-view scroll so the user gets a longer history
-    // (~7 s of staff at this rate, vs. ~3 s on the worm roll).
+    // Notes that are above the grand staff's vertical middle get a
+    // stem pointing DOWN; notes below it get a stem pointing UP — the
+    // standard convention so the stem always reaches toward the
+    // centre of the staff system.
+    constexpr int kStemBoundaryY = (kF5Y + kG2Y) / 2;
+
     constexpr int kScrollPxPerSec = 40;
     constexpr int kRightX = kStaffX + kStaffW - kNoteHeadW - 4;
     constexpr int kLeftX  = kStaffX + 4;
@@ -763,27 +768,10 @@ void MidiMonitorApp::drawNotation(Display& d) const {
         if (!w.live) continue;
         if (!noteVisible(w.note)) continue;
 
-        // X of the head: starts at kRightX when the note is brand-new and
-        // walks left at kScrollPxPerSec.
         const uint32_t elapsed = now - w.startMs;
         const int headX = kRightX -
             static_cast<int>((elapsed * kScrollPxPerSec) / 1000u);
         if (headX < kLeftX - kNoteHeadW) continue;  // scrolled off the left
-
-        // X of the right end of the duration bar. While growing, anchored
-        // at kRightX. Once released, scrolls left at the same rate as the
-        // head so the bar length stays proportional to held time.
-        int barEndX;
-        if (w.growing) {
-            barEndX = kRightX + kNoteHeadW / 2;
-        } else {
-            const uint32_t held = w.endMs - w.startMs;
-            barEndX = headX + kNoteHeadW / 2 +
-                static_cast<int>((held * kScrollPxPerSec) / 1000u);
-            if (barEndX > kRightX + kNoteHeadW / 2) {
-                barEndX = kRightX + kNoteHeadW / 2;
-            }
-        }
 
         const int pc      = w.note % 12;
         const int octave  = w.note / 12 - 1;
@@ -810,22 +798,26 @@ void MidiMonitorApp::drawNotation(Display& d) const {
             d.fillRect(headX - 2, kC4Y, kLedgerW, 1, color::White);
         }
 
-        // Duration bar — drawn first so the head and accidental overlap it.
-        const int barStartX = headX + kNoteHeadW / 2;
-        if (barEndX > barStartX) {
-            d.fillRect(barStartX, y - 1, barEndX - barStartX, 3, col);
+        // Stem.
+        const bool stemUp = (y > kStemBoundaryY);
+        if (stemUp) {
+            const int stemX = headX + kNoteHeadW - 1;
+            const int stemY = y - kNoteHeadH / 2 - kStemH;
+            d.fillRect(stemX, stemY, 1, kStemH, col);
+        } else {
+            const int stemX = headX;
+            const int stemY = y + kNoteHeadH / 2 + 1;
+            d.fillRect(stemX, stemY, 1, kStemH, col);
         }
 
         // Sharp accidental (drawn to the left of the head, channel-coloured).
         if (sharp) {
             const int sharpX = headX - notation::kSharpW - 1;
             const int sharpY = y - notation::kSharpH / 2;
-            if (sharpX + notation::kSharpW >= kLeftX - notation::kSharpW) {
-                drawGlyph(d, sharpX, sharpY,
-                          notation::kSharp,
-                          notation::kSharpW, notation::kSharpH,
-                          col);
-            }
+            drawGlyph(d, sharpX, sharpY,
+                      notation::kSharp,
+                      notation::kSharpW, notation::kSharpH,
+                      col);
         }
 
         // Oval note head.
