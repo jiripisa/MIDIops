@@ -70,6 +70,31 @@ implementations under `platform/teensy/` and `platform/host/`.
 * MIDI channels in `core::MidiMessage` are stored 1..16 (never 0..15), with
   `0` reserved as the sentinel for OMNI in `MidiMonitorApp::channel_`.
 
+## Hardware documentation — keep in sync
+
+There are two hardware-facing docs at the repo root that MUST stay
+current as the build evolves:
+
+* `HARDWARE.md` — bill of materials, the master Teensy pin-assignment
+  table, per-module wiring, and the ASCII schematic. This is the
+  canonical reference; any disagreement between docs is resolved in
+  favour of the code constants in `platform/teensy/main.cpp` (`kPin*`).
+* `ASSEMBLY.md` — beginner-friendly step-by-step build walkthrough.
+
+Whenever you change the hardware setup, update both files in the same
+commit as the code change. Common triggers:
+
+* A `kPin*` constant in `platform/teensy/main.cpp` moves to a different
+  Teensy GPIO.
+* A peripheral is added, removed, or replaced (display, button,
+  encoder, future encoders, future arpeggiator output, etc.).
+* A wiring convention changes (e.g. pulling a pin via a different rail,
+  swapping polarity).
+* The bill of materials changes (new vendor, swapped sensor variant).
+
+If the change is software-only and touches no wiring at all, leave both
+files alone.
+
 ## The "listened channel" knob
 
 There is exactly one source of truth for the listened channel:
