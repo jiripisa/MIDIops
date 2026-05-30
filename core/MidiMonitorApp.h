@@ -73,6 +73,31 @@ public:
     // tempo in every view.
     void toggleView();
 
+    // ---- Mapping mode ------------------------------------------------
+    //
+    // The latching front-panel switch (DFR0789) drives this. While the
+    // switch is ON we're in mapping mode: the display swaps to the
+    // mapping editor, channel + BPM encoders re-purpose to edit chord
+    // type and gate, channel-SW cycles direction, BPM-SW cycles through
+    // existing mappings, and any incoming NoteOn captures the trigger
+    // for the mapping being edited. All edits are auto-saved into the
+    // chord engine as they happen. Flipping the switch OFF returns to
+    // the previously selected view.
+    void setMappingMode(bool on);
+    bool mappingMode() const { return mappingMode_; }
+
+    // Encoder-rotation entry points. In normal mode these update the
+    // listened channel / BPM. In mapping mode they edit the current
+    // mapping's parameters (chord type, gate ticks).
+    // (The rotation methods are the same as before; the dispatch sits
+    // inside the existing onChannelKnob / onBpmKnob.)
+
+    // SW-button entry points. In normal mode they restart the app /
+    // cycle views. In mapping mode they cycle direction / browse
+    // mappings.
+    void onChannelSwPress();
+    void onBpmSwPress();
+
     void onMessage(const MidiMessage& msg);
 
     // Advances the scrolling animation. Caller passes a monotonic millisecond
@@ -187,6 +212,21 @@ private:
     // attached MidiOutput.
     ChordEngine chordEngine_;
 
+    // ---- Mapping mode state -----------------------------------------
+    //
+    // While `mappingMode_` is true the chord engine's normal trigger
+    // path is suspended (NoteOns capture the trigger instead of firing
+    // a chord). `editMapping_` is the live working copy of the mapping
+    // currently being edited; `editIndex_` is its index inside the
+    // chord engine (-1 means "no mapping captured yet — waiting for a
+    // trigger note"). All knob/SW changes mutate editMapping_ and call
+    // chordEngine_.updateMapping() immediately, so there is no
+    // explicit save action — flipping the panel switch OFF just exits
+    // the editor.
+    bool                 mappingMode_ = false;
+    ChordEngine::Mapping editMapping_{};
+    int                  editIndex_   = -1;
+
     // ---- Helpers -----------------------------------------------------
     void onNoteOn (const MidiMessage& msg);
     void onNoteOff(const MidiMessage& msg);
@@ -199,7 +239,16 @@ private:
     void drawSplash(Display& d) const;
     void drawBigBpm(Display& d) const;
     void drawNotation(Display& d) const;
+    void drawMappingMode(Display& d) const;
     void drawChordNames(Display& d, int rightEdge) const;
+
+    // Mapping-mode helpers.
+    void captureTriggerForEditing(const MidiMessage& msg);
+    void commitEditToEngine();
+    void cycleEditChordType(int delta);
+    void cycleEditDirection();
+    void adjustEditGate(int delta);
+    void browseNextMapping();
 
     static bool     isBlackPc(int pc);
     static int      whiteKeyIdx(uint8_t note);   // white-key index from kLowestNote

@@ -62,10 +62,10 @@ int main(int /*argc*/, char* /*argv*/[]) {
                  "  1..9          set the test injection channel (default 1)\n"
                  "  LEFT / RIGHT  cycle monitored channel (OMNI..16)\n"
                  "  UP / DOWN     adjust BPM (MIDI Clock master)\n"
-                 "  SPACE         toggle MIDI monitoring on/off\n"
-                 "  F5            restart app (re-show splash)\n"
+                 "  SPACE         toggle chord-mapping mode (= panel switch)\n"
+                 "  F5            channel-SW press (restart, or cycle dir in MAP)\n"
                  "  BACKSPACE     panic — release stuck notes\n"
-                 "  TAB           cycle monitor / big-BPM / notation view\n"
+                 "  TAB           BPM-SW press (cycle view, or next mapping in MAP)\n"
                  "  ESC           quit\n");
 
     // Test injection state. Each held note remembers which channel it was
@@ -94,15 +94,17 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     if (ev.key.repeat) break;
 
                     if (ev.key.keysym.sym == SDLK_SPACE) {
-                        app.toggleMonitoring();
-                        std::fprintf(stderr, "[sim] monitoring = %s\n",
-                                     app.monitoring() ? "ON" : "OFF");
+                        // Simulates flipping the latching panel switch:
+                        // toggles in/out of mapping mode.
+                        app.setMappingMode(!app.mappingMode());
+                        std::fprintf(stderr, "[sim] mapping mode = %s\n",
+                                     app.mappingMode() ? "ON" : "OFF");
                         break;
                     }
 
                     if (ev.key.keysym.sym == SDLK_F5) {
-                        app.restart();
-                        std::fprintf(stderr, "[sim] restart\n");
+                        app.onChannelSwPress();
+                        std::fprintf(stderr, "[sim] channel-SW press\n");
                         break;
                     }
 
@@ -113,8 +115,8 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     }
 
                     if (ev.key.keysym.sym == SDLK_TAB) {
-                        app.toggleView();
-                        std::fprintf(stderr, "[sim] toggled view\n");
+                        app.onBpmSwPress();
+                        std::fprintf(stderr, "[sim] bpm-SW press\n");
                         break;
                     }
 

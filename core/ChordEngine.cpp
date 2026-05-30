@@ -57,6 +57,36 @@ bool ChordEngine::addMapping(const Mapping& m) {
     return false;
 }
 
+void ChordEngine::updateMapping(int index, const Mapping& m) {
+    if (index < 0 || index >= kMaxMappings) return;
+    if (!mappings_[index].live) return;
+    const bool wasLive = mappings_[index].live;
+    mappings_[index]      = m;
+    mappings_[index].live = wasLive;
+}
+
+int ChordEngine::findMappingByTrigger(uint8_t note,
+                                      uint8_t triggerChannel) const {
+    for (int i = 0; i < kMaxMappings; ++i) {
+        const Mapping& m = mappings_[i];
+        if (!m.live) continue;
+        if (m.triggerNote != note) continue;
+        if (m.triggerChannel != 0 && triggerChannel != 0 &&
+            m.triggerChannel != triggerChannel) continue;
+        return i;
+    }
+    return -1;
+}
+
+int ChordEngine::nextLiveIndex(int fromIndex) const {
+    if (mappingCount_ == 0) return -1;
+    for (int step = 1; step <= kMaxMappings; ++step) {
+        const int idx = (fromIndex + step) % kMaxMappings;
+        if (mappings_[idx].live) return idx;
+    }
+    return -1;
+}
+
 void ChordEngine::onMessage(const MidiMessage& msg, uint32_t nowMs) {
     if (msg.type != MidiType::NoteOn) return;
     if (msg.data2 == 0)              return;   // velocity-0 = NoteOff

@@ -90,26 +90,27 @@ void setup() {
 }
 
 void loop() {
-    // The button is a latching switch — its LED reflects the switch's
-    // mechanical position. Mirror that position into the app so the
-    // monitoring state always matches what the user sees on the panel.
-    app.setMonitoring(monitorButton.pollOn());
+    // The latching panel switch now drives the chord-mapping editor.
+    // LED on = mapping mode active. Monitoring itself is always on.
+    app.setMappingMode(monitorButton.pollOn());
 
-    // Edge-triggered restart on the channel encoder's shaft button.
+    // Edge-triggered. In normal mode this restarts the app; inside
+    // mapping mode it cycles the edit's chord direction
+    // (BLOCK / UP / DOWN). The app's onChannelSwPress() routes both.
     static bool channelSwLast = false;
     const bool channelSwNow = encoderSwitch.pollOn();
     if (channelSwNow && !channelSwLast) {
-        app.restart();
+        app.onChannelSwPress();
     }
     channelSwLast = channelSwNow;
 
-    // Edge-triggered "toggle monitor / big-BPM view" on the BPM
-    // encoder's shaft. The MIDI panic (release stuck notes) still
-    // happens automatically on CC 120 / CC 123 from the DAW.
+    // Edge-triggered. Normal mode: cycle monitor / big-BPM / notation
+    // views. Mapping mode: browse to the next existing mapping in the
+    // engine.
     static bool bpmSwLast = false;
     const bool bpmSwNow = bpmSwitch.pollOn();
     if (bpmSwNow && !bpmSwLast) {
-        app.toggleView();
+        app.onBpmSwPress();
     }
     bpmSwLast = bpmSwNow;
 

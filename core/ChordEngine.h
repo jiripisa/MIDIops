@@ -60,8 +60,19 @@ public:
     // Mapping management.
     void clearMappings();
     bool addMapping(const Mapping& m);    // returns false if pool is full
+    void updateMapping(int index, const Mapping& m);
     int  mappingCount() const             { return mappingCount_; }
+    int  mappingCapacity() const          { return kMaxMappings; }
     const Mapping& mappingAt(int i) const { return mappings_[i]; }
+
+    // Returns the index of the first live mapping whose trigger note
+    // matches `note` (and whose trigger channel matches or is 0/any).
+    // Returns -1 if no match.
+    int findMappingByTrigger(uint8_t note, uint8_t triggerChannel) const;
+
+    // Returns the next live mapping index AFTER `fromIndex` (wraps to
+    // the start), or -1 if there are no live mappings at all.
+    int nextLiveIndex(int fromIndex) const;
 
     // Called by the host on every incoming MIDI message. Non-NoteOn
     // messages are ignored. NoteOff for a trigger doesn't currently

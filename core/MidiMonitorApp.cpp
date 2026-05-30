@@ -183,29 +183,8 @@ uint16_t MidiMonitorApp::channelColor(uint8_t channel) {
 
 MidiMonitorApp::MidiMonitorApp() {
     chordEngine_.setBpm(bpm_);
-
-    // Two hardcoded mappings for the MVP. C4 → Cmaj block, D4 → Dmin
-    // arpeggio up. Both fire when any channel sends the trigger note,
-    // and play out on output channel 5 so they don't collide with the
-    // default ch1 monitor stream.
-    ChordEngine::Mapping m{};
-    m.triggerChannel = 0;       // 0 = any
-    m.outputChannel  = 5;
-    m.velocity       = 100;
-
-    m.triggerNote = 60;                       // C4
-    m.rootNote    = 60;
-    m.type        = ChordEngine::ChordType::Major;
-    m.direction   = ChordEngine::Direction::Block;
-    m.gateTicks   = 24;                       // quarter note
-    chordEngine_.addMapping(m);
-
-    m.triggerNote = 62;                       // D4
-    m.rootNote    = 62;
-    m.type        = ChordEngine::ChordType::Minor;
-    m.direction   = ChordEngine::Direction::Up;
-    m.gateTicks   = 12;                       // 8th note per step
-    chordEngine_.addMapping(m);
+    // The mapping table starts empty — the user defines mappings at
+    // runtime via mapping mode (panel switch ON).
 }
 
 void MidiMonitorApp::setChannel(uint8_t channel) {
@@ -230,6 +209,7 @@ void MidiMonitorApp::setChannel(uint8_t channel) {
 }
 
 void MidiMonitorApp::onChannelKnob(int delta) {
+    if (mappingMode_) { cycleEditChordType(delta); return; }
     int next = static_cast<int>(channel_) + delta;
     if (next < 0)  next = 0;
     if (next > 16) next = 16;
@@ -252,6 +232,7 @@ void MidiMonitorApp::setBpm(uint16_t bpm) {
 }
 
 void MidiMonitorApp::onBpmKnob(int delta) {
+    if (mappingMode_) { adjustEditGate(delta); return; }
     int next = static_cast<int>(bpm_) + delta;
     if (next < kBpmMin) next = kBpmMin;
     if (next > kBpmMax) next = kBpmMax;
@@ -272,6 +253,114 @@ void MidiMonitorApp::toggleView() {
     const auto next = (static_cast<uint8_t>(view_) + 1) %
                       static_cast<uint8_t>(View::kCount);
     view_ = static_cast<View>(next);
+}
+
+// ---------- Mapping mode -------------------------------------------------
+
+void MidiMonitorApp::setMappingMode(bool on) {
+    if (on == mappingMode_) return;
+    mappingMode_ = on;
+    if (on) {
+        // Enter: clear any in-progress edit; the first NoteOn after
+        // entry will become the captured trigger. If there are no
+        // mappings at all the editor sits in the "waiting" state.
+        editIndex_   = -1;
+        editMapping_ = ChordEngine::Mapping{};
+        editMapping_.triggerChannel = 0;       // any channel by default
+        editMapping_.outputChannel  = 5;       // sensible default
+        editMapping_.gateTicks      = 24;      // quarter note
+        editMapping_.velocity       = 100;
+        editMapping_.type           = ChordEngine::ChordType::Major;
+        editMapping_.direction      = ChordEngine::Direction::Block;
+
+        // If at least one mapping already exists, preload the first one
+        // so the user can browse / edit it immediately without having
+        // to press a trigger again.
+        const int first = chordEngine_.nextLiveIndex(-1);
+        if (first >= 0) {
+            editIndex_   = first;
+            editMapping_ = chordEngine_.mappingAt(first);
+        }
+    } else {
+        // Leaving mapping mode: nothing to do — everything is already
+        // saved into the engine. Clear local edit state so a future
+        // re-entry starts fresh.
+        editIndex_ = -1;
+    }
+}
+
+void MidiMonitorApp::onChannelSwPress() {
+    if (mappingMode_) { cycleEditDirection(); return; }
+    restart();
+}
+
+void MidiMonitorApp::onBpmSwPress() {
+    if (mappingMode_) { browseNextMapping(); return; }
+    toggleView();
+}
+
+void MidiMonitorApp::cycleEditChordType(int delta) {
+    if (delta == 0) return;
+    int t = static_cast<int>(editMapping_.type) + delta;
+    const int n = static_cast<int>(ChordEngine::ChordType::kCount);
+    t = ((t % n) + n) % n;
+    editMapping_.type = static_cast<ChordEngine::ChordType>(t);
+    commitEditToEngine();
+}
+
+void MidiMonitorApp::cycleEditDirection() {
+    int d = static_cast<int>(editMapping_.direction) + 1;
+    if (d > static_cast<int>(ChordEngine::Direction::Down)) d = 0;
+    editMapping_.direction = static_cast<ChordEngine::Direction>(d);
+    commitEditToEngine();
+}
+
+void MidiMonitorApp::adjustEditGate(int delta) {
+    if (delta == 0) return;
+    int g = static_cast<int>(editMapping_.gateTicks) + delta;
+    if (g < 1)  g = 1;
+    if (g > 96) g = 96;
+    editMapping_.gateTicks = static_cast<uint8_t>(g);
+    commitEditToEngine();
+}
+
+void MidiMonitorApp::browseNextMapping() {
+    const int next = chordEngine_.nextLiveIndex(editIndex_);
+    if (next < 0) return;
+    editIndex_   = next;
+    editMapping_ = chordEngine_.mappingAt(next);
+}
+
+void MidiMonitorApp::captureTriggerForEditing(const MidiMessage& msg) {
+    if (msg.type != MidiType::NoteOn) return;
+    if (msg.data2 == 0)              return;  // velocity-0 NoteOff
+
+    const uint8_t note = msg.data1;
+    // Existing mapping for this trigger? Load it.
+    const int existing = chordEngine_.findMappingByTrigger(note, msg.channel);
+    if (existing >= 0) {
+        editIndex_   = existing;
+        editMapping_ = chordEngine_.mappingAt(existing);
+        return;
+    }
+    // New mapping. Reuse the current editor's params for everything
+    // except trigger / root (so user can stamp consecutive mappings
+    // with the same chord shape).
+    editMapping_.triggerNote = note;
+    editMapping_.rootNote    = note;
+    if (editIndex_ >= 0) {
+        // The previous edit is already saved in the engine; we're
+        // adding a fresh slot now.
+        editIndex_ = -1;
+    }
+    if (chordEngine_.addMapping(editMapping_)) {
+        editIndex_ = chordEngine_.findMappingByTrigger(note, msg.channel);
+    }
+}
+
+void MidiMonitorApp::commitEditToEngine() {
+    if (editIndex_ < 0) return;
+    chordEngine_.updateMapping(editIndex_, editMapping_);
 }
 
 void MidiMonitorApp::panic() {
@@ -323,6 +412,16 @@ void MidiMonitorApp::setMonitoring(bool on) {
 void MidiMonitorApp::onMessage(const MidiMessage& msg) {
     if (!monitoring_) return;
     if (msg.isChannelVoice() && channel_ != 0 && msg.channel != channel_) {
+        return;
+    }
+    // In mapping mode, every NoteOn is grabbed as the trigger note for
+    // the mapping currently being edited — the regular monitor path
+    // and the chord engine's own trigger lookup are both suspended so
+    // we don't fire chords while the user is configuring them.
+    if (mappingMode_) {
+        if (msg.type == MidiType::NoteOn && msg.data2 != 0) {
+            captureTriggerForEditing(msg);
+        }
         return;
     }
     // NoteOn with velocity 0 is the running-status convention for NoteOff.
@@ -670,6 +769,8 @@ void MidiMonitorApp::render(Display& d) {
     d.clear(color::Black);
     if (splashActive_) {
         drawSplash(d);
+    } else if (mappingMode_) {
+        drawMappingMode(d);
     } else if (view_ == View::BigBpm) {
         drawBigBpm(d);
     } else if (view_ == View::Notation) {
@@ -1038,6 +1139,120 @@ void MidiMonitorApp::drawNotation(Display& d) const {
             d.drawText(sl.x, y, name.c_str(), col, color::Black, 2);
         }
     }
+}
+
+// ---------- Mapping mode editor -----------------------------------------
+
+namespace {
+
+constexpr const char* kChordTypeNames[] = {
+    "maj", "min", "dim", "aug", "7", "m7", "maj7"
+};
+constexpr const char* kDirectionNames[] = {
+    "BLOCK", "UP", "DOWN"
+};
+
+const char* chordTypeName(core::ChordEngine::ChordType t) {
+    const int i = static_cast<int>(t);
+    constexpr int n = sizeof(kChordTypeNames) / sizeof(kChordTypeNames[0]);
+    return (i >= 0 && i < n) ? kChordTypeNames[i] : "?";
+}
+
+const char* directionName(core::ChordEngine::Direction d) {
+    const int i = static_cast<int>(d);
+    return (i >= 0 && i < 3) ? kDirectionNames[i] : "?";
+}
+
+} // namespace
+
+void MidiMonitorApp::drawMappingMode(Display& d) const {
+    // Header bar — orange tone makes the mode unmistakable at a glance.
+    constexpr uint16_t kHeaderBg = rgb565(180, 90, 0);
+    d.fillRect(0, 0, kScreenW, kHeaderH, kHeaderBg);
+    d.drawText(4, 4, "MAP MODE", color::White, kHeaderBg, 2);
+
+    // Mapping count "1/3" pill in the top-right.
+    char countBuf[16];
+    if (editIndex_ < 0) {
+        std::snprintf(countBuf, sizeof(countBuf),
+                      "%d/%d", 0, chordEngine_.mappingCount());
+    } else {
+        // Render as "i/N" where i is the 1-based position among live slots.
+        int pos = 0;
+        for (int i = 0; i <= editIndex_; ++i) {
+            if (chordEngine_.mappingAt(i).live) ++pos;
+        }
+        std::snprintf(countBuf, sizeof(countBuf),
+                      "%d/%d", pos, chordEngine_.mappingCount());
+    }
+    constexpr int kCharW2 = 12;
+    const int countW = static_cast<int>(std::strlen(countBuf)) * kCharW2;
+    d.drawText(kScreenW - countW - 4, 4, countBuf,
+               color::White, kHeaderBg, 2);
+
+    // Waiting state — no mapping selected yet, no trigger captured.
+    if (editIndex_ < 0) {
+        const char* line = "Press a note to map…";
+        const int   w = static_cast<int>(std::strlen(line)) * kCharW2;
+        d.drawText((kScreenW - w) / 2, 110, line,
+                   color::White, color::Black, 2);
+        return;
+    }
+
+    // Editor body. Use a 2-column "label : value" layout.
+    constexpr int kLabelX = 24;
+    constexpr int kValueX = 132;
+    constexpr int kRowH   = 24;
+    constexpr int kTopY   = 40;
+    constexpr int kRowSz  = 2;
+
+    auto drawRow = [&](int row, const char* label, const char* value,
+                       uint16_t valueColor) {
+        const int y = kTopY + row * kRowH;
+        d.drawText(kLabelX, y, label, color::Gray,  color::Black, kRowSz);
+        d.drawText(kValueX, y, value, valueColor,   color::Black, kRowSz);
+    };
+
+    // Row 0: trigger note + channel
+    char trigBuf[16];
+    if (editMapping_.triggerChannel == 0)
+        std::snprintf(trigBuf, sizeof(trigBuf), "%s any",
+                      MidiMessage::noteName(editMapping_.triggerNote).c_str());
+    else
+        std::snprintf(trigBuf, sizeof(trigBuf), "%s ch%u",
+                      MidiMessage::noteName(editMapping_.triggerNote).c_str(),
+                      editMapping_.triggerChannel);
+    drawRow(0, "Trigger", trigBuf, color::White);
+
+    // Row 1: chord (root + type)
+    char chordBuf[16];
+    std::snprintf(chordBuf, sizeof(chordBuf), "%s %s",
+                  MidiMessage::noteName(editMapping_.rootNote).c_str(),
+                  chordTypeName(editMapping_.type));
+    drawRow(1, "Chord", chordBuf, color::Yellow);
+
+    // Row 2: gate ticks
+    char gateBuf[16];
+    std::snprintf(gateBuf, sizeof(gateBuf), "%u ticks",
+                  editMapping_.gateTicks);
+    drawRow(2, "Gate", gateBuf, color::Yellow);
+
+    // Row 3: direction
+    drawRow(3, "Dir", directionName(editMapping_.direction), color::Yellow);
+
+    // Row 4: output channel
+    char outBuf[16];
+    std::snprintf(outBuf, sizeof(outBuf), "ch %u",
+                  editMapping_.outputChannel);
+    drawRow(4, "Out", outBuf, color::White);
+
+    // Hint strip at bottom — what each control does in this mode.
+    constexpr int kHintY = kScreenH - 24;
+    d.fillRect(0, kHintY, kScreenW, 24, color::DarkGray);
+    d.drawText(4,  kHintY + 4, "CH: type  BPM: gate",
+               color::White, color::DarkGray, 1);
+    d.drawText(4,  kHintY + 14, "CHsw: dir  BPMsw: next",
+               color::White, color::DarkGray, 1);
 }
 
 // ---------- Chord detection ---------------------------------------------
