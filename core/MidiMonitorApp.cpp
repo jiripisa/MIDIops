@@ -5,6 +5,7 @@
 
 #include "Display.h"
 #include "MidiOutput.h"
+#include "mapping_prompt_image.h"
 #include "notation_glyphs.h"
 #include "splash_image.h"
 
@@ -1330,38 +1331,43 @@ void MidiMonitorApp::drawNotation(Display& d) const {
 // them too.
 
 void MidiMonitorApp::drawMappingMode(Display& d) const {
-    // Header bar — orange tone makes the mode unmistakable at a glance.
+    // Waiting state — no mapping captured yet. Blit the custom synthwave
+    // "PRESS A NOTE / TO MAPPING" artwork full-screen. The image carries
+    // its own header / prompt so we deliberately skip the orange MAP MODE
+    // bar in this state.
+    if (editIndex_ < 0) {
+        for (int y = 0; y < kScreenH; ++y) {
+            int x = 0;
+            const uint16_t* row =
+                &mapping_prompt::kImage[y * mapping_prompt::kW];
+            while (x < kScreenW) {
+                const uint16_t col = row[x];
+                int runEnd = x + 1;
+                while (runEnd < kScreenW && row[runEnd] == col) ++runEnd;
+                d.fillRect(x, y, runEnd - x, 1, col);
+                x = runEnd;
+            }
+        }
+        return;
+    }
+
+    // Editing state — orange header bar with the MAP MODE label and a
+    // 1-based "i/N" position marker, then the parameter rows below.
     constexpr uint16_t kHeaderBg = rgb565(180, 90, 0);
     d.fillRect(0, 0, kScreenW, kHeaderH, kHeaderBg);
     d.drawText(4, 4, "MAP MODE", color::White, kHeaderBg, 2);
 
-    // Mapping count "1/3" pill in the top-right.
     char countBuf[16];
-    if (editIndex_ < 0) {
-        std::snprintf(countBuf, sizeof(countBuf),
-                      "%d/%d", 0, chordEngine_.mappingCount());
-    } else {
-        // Render as "i/N" where i is the 1-based position among live slots.
-        int pos = 0;
-        for (int i = 0; i <= editIndex_; ++i) {
-            if (chordEngine_.mappingAt(i).live) ++pos;
-        }
-        std::snprintf(countBuf, sizeof(countBuf),
-                      "%d/%d", pos, chordEngine_.mappingCount());
+    int pos = 0;
+    for (int i = 0; i <= editIndex_; ++i) {
+        if (chordEngine_.mappingAt(i).live) ++pos;
     }
+    std::snprintf(countBuf, sizeof(countBuf),
+                  "%d/%d", pos, chordEngine_.mappingCount());
     constexpr int kCharW2 = 12;
     const int countW = static_cast<int>(std::strlen(countBuf)) * kCharW2;
     d.drawText(kScreenW - countW - 4, 4, countBuf,
                color::White, kHeaderBg, 2);
-
-    // Waiting state — no mapping selected yet, no trigger captured.
-    if (editIndex_ < 0) {
-        const char* line = "Press a note to map...";
-        const int   w = static_cast<int>(std::strlen(line)) * kCharW2;
-        d.drawText((kScreenW - w) / 2, 110, line,
-                   color::White, color::Black, 2);
-        return;
-    }
 
     // Editor body. Use a 2-column "label : value" layout.
     constexpr int kLabelX = 24;
