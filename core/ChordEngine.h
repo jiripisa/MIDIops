@@ -52,6 +52,7 @@ public:
 
     static constexpr int kMaxMappings = 16;
     static constexpr int kMaxEvents   = 64;
+    static constexpr int kMaxQueue    = 16;
 
     // The engine doesn't own the MidiOutput — caller wires it.
     void setOutput(MidiOutput* out) { out_ = out; }
@@ -84,17 +85,33 @@ public:
     int nextLiveIndex(int fromIndex) const;
 
     // Called by the host on every incoming MIDI message. Non-NoteOn
-    // messages are ignored. NoteOff for a trigger doesn't currently
-    // affect anything — each trigger schedules its full chord and
-    // runs to completion.
+    // messages are ignored. If the engine is currently playing a
+    // chord OR has pending queued chords, the new trigger is appended
+    // to the FIFO queue and will fire after every earlier chord has
+    // finished. If the engine is idle the chord plays immediately.
     void onMessage(const MidiMessage& msg, uint32_t nowMs);
 
-    // Advance scheduled events; fires any whose time has come.
+    // Advance scheduled events; fires any whose time has come. After
+    // the currently-playing chord finishes (all events done), the
+    // next queued chord (if any) is scheduled at `nowMs`.
     void tick(uint32_t nowMs);
 
-    // Sends NoteOff for every event still in flight and clears the
-    // queue. Useful when the host panics or switches mode.
+    // Sends NoteOff for every event still in flight, drops the queue
+    // and clears the active-mapping marker.
     void panic();
+
+    // Index of the chord that is currently being played, or -1 if
+    // the engine is idle.
+    int currentMapping() const { return currentMappingIndex_; }
+
+    // How many chords are waiting in the FIFO queue (does not include
+    // the one currently playing).
+    int queueSize() const;
+
+    // Mapping index at queue position `pos` (0 = the chord that will
+    // play right after the current one finishes). Returns -1 if `pos`
+    // is out of range.
+    int queueAt(int pos) const;
 
 private:
     struct Event {
@@ -110,9 +127,25 @@ private:
     int  intervalsForType(ChordType t, const int8_t** out) const;
     uint32_t ticksToMs(uint8_t ticks) const;
 
+    // FIFO queue of pending triggers. Each entry records which mapping
+    // to play next; the engine pops the oldest one whenever it becomes
+    // idle.
+    struct QueueEntry {
+        bool     alive        = false;
+        int      mappingIndex = -1;
+        uint32_t enqueuedMs   = 0;
+    };
+
+    bool isBusy() const;
+    bool enqueue(int mappingIndex, uint32_t nowMs);
+    int  oldestQueueIndex() const;
+    void scheduleFromQueue(int mappingIndex, uint32_t nowMs);
+
     Mapping     mappings_[kMaxMappings]{};
     int         mappingCount_ = 0;
     Event       events_[kMaxEvents]{};
+    QueueEntry  queue_[kMaxQueue]{};
+    int         currentMappingIndex_ = -1;
     MidiOutput* out_ = nullptr;
     uint16_t    bpm_ = 120;
     EchoFn      echoFn_   = nullptr;

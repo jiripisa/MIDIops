@@ -247,6 +247,7 @@ private:
     void drawHeader(Display& d) const;
     void drawWorms(Display& d)  const;
     void drawKeyboard(Display& d) const;
+    void drawChordQueue(Display& d) const;
     void drawSplash(Display& d) const;
     void drawBigBpm(Display& d) const;
     void drawNotation(Display& d) const;

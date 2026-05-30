@@ -91,14 +91,99 @@ void ChordEngine::onMessage(const MidiMessage& msg, uint32_t nowMs) {
     if (msg.type != MidiType::NoteOn) return;
     if (msg.data2 == 0)              return;   // velocity-0 = NoteOff
     // Match against every live mapping (a single trigger could be wired
-    // to multiple mappings — useful for layering).
+    // to multiple mappings — useful for layering). Each match either
+    // plays immediately (engine idle and queue empty) or appends to
+    // the FIFO so chords are heard in trigger order.
     for (int i = 0; i < kMaxMappings; ++i) {
         const Mapping& m = mappings_[i];
         if (!m.live) continue;
         if (m.triggerNote != msg.data1) continue;
         if (m.triggerChannel != 0 && m.triggerChannel != msg.channel) continue;
-        schedule(m, nowMs);
+        if (isBusy() || queueSize() > 0) {
+            enqueue(i, nowMs);
+        } else {
+            scheduleFromQueue(i, nowMs);
+        }
     }
+}
+
+bool ChordEngine::isBusy() const {
+    for (const auto& ev : events_) {
+        if (ev.alive) return true;
+    }
+    return false;
+}
+
+bool ChordEngine::enqueue(int mappingIndex, uint32_t nowMs) {
+    for (auto& q : queue_) {
+        if (!q.alive) {
+            q.alive        = true;
+            q.mappingIndex = mappingIndex;
+            q.enqueuedMs   = nowMs;
+            return true;
+        }
+    }
+    return false;  // queue full — drop the trigger silently
+}
+
+int ChordEngine::oldestQueueIndex() const {
+    int      idx     = -1;
+    uint32_t oldest  = 0;
+    bool     hasOne  = false;
+    for (int i = 0; i < kMaxQueue; ++i) {
+        const auto& q = queue_[i];
+        if (!q.alive) continue;
+        if (!hasOne || static_cast<int32_t>(q.enqueuedMs - oldest) < 0) {
+            oldest = q.enqueuedMs;
+            idx    = i;
+            hasOne = true;
+        }
+    }
+    return idx;
+}
+
+int ChordEngine::queueSize() const {
+    int n = 0;
+    for (const auto& q : queue_) if (q.alive) ++n;
+    return n;
+}
+
+int ChordEngine::queueAt(int pos) const {
+    // Walk queue entries in FIFO order (by enqueuedMs ascending).
+    // Stable across calls because each entry has its own timestamp.
+    int      sentinel = -1;
+    uint32_t prevTs   = 0;
+    bool     prevSet  = false;
+    for (int rank = 0; ; ++rank) {
+        int      best     = -1;
+        uint32_t bestTs   = 0;
+        bool     bestSet  = false;
+        for (int i = 0; i < kMaxQueue; ++i) {
+            const auto& q = queue_[i];
+            if (!q.alive) continue;
+            // Must come after the previously-picked one (strict).
+            if (prevSet &&
+                static_cast<int32_t>(q.enqueuedMs - prevTs) <= 0) continue;
+            if (!bestSet ||
+                static_cast<int32_t>(q.enqueuedMs - bestTs) < 0) {
+                best    = i;
+                bestTs  = q.enqueuedMs;
+                bestSet = true;
+            }
+        }
+        if (!bestSet) return sentinel;
+        if (rank == pos) return queue_[best].mappingIndex;
+        prevTs  = bestTs;
+        prevSet = true;
+    }
+}
+
+void ChordEngine::scheduleFromQueue(int mappingIndex, uint32_t nowMs) {
+    if (mappingIndex < 0 || mappingIndex >= kMaxMappings) return;
+    const Mapping& m = mappings_[mappingIndex];
+    if (!m.live) return;
+    currentMappingIndex_ = mappingIndex;
+    schedule(m, nowMs);
 }
 
 void ChordEngine::schedule(const Mapping& m, uint32_t nowMs) {
@@ -151,11 +236,15 @@ void ChordEngine::schedule(const Mapping& m, uint32_t nowMs) {
 
 void ChordEngine::tick(uint32_t nowMs) {
     if (!out_) return;
+    bool stillBusy = false;
     for (auto& ev : events_) {
         if (!ev.alive) continue;
         // Use wrap-safe signed comparison so a clock that has just rolled
         // over doesn't strand events.
-        if (static_cast<int32_t>(nowMs - ev.scheduledMs) < 0) continue;
+        if (static_cast<int32_t>(nowMs - ev.scheduledMs) < 0) {
+            stillBusy = true;
+            continue;
+        }
         if (ev.isOn) {
             out_->sendNoteOn(ev.channel, ev.note, ev.velocity);
         } else {
@@ -171,6 +260,17 @@ void ChordEngine::tick(uint32_t nowMs) {
         }
         ev.alive = false;
     }
+    if (stillBusy) return;
+    // Engine just went idle. Mark so, then pop the next queued chord
+    // (if any) and schedule it from `nowMs`. We only pop one per tick:
+    // the freshly-scheduled events become alive, so the next tick will
+    // see the engine busy again and wait for them to finish.
+    currentMappingIndex_ = -1;
+    const int next = oldestQueueIndex();
+    if (next < 0) return;
+    const int mappingIndex = queue_[next].mappingIndex;
+    queue_[next].alive = false;
+    scheduleFromQueue(mappingIndex, nowMs);
 }
 
 void ChordEngine::panic() {
@@ -192,6 +292,8 @@ void ChordEngine::panic() {
         }
     }
     for (auto& ev : events_) ev.alive = false;
+    for (auto& q  : queue_)  q.alive  = false;
+    currentMappingIndex_ = -1;
 }
 
 } // namespace core

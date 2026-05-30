@@ -50,6 +50,26 @@ constexpr const char* kPitchNames[12] = {
     "F#", "G", "G#", "A", "A#", "B"
 };
 
+// Chord-type / direction labels used by the mapping editor and the
+// monitor-view chord queue strip.
+constexpr const char* kChordTypeNames[] = {
+    "maj", "min", "dim", "aug", "7", "m7", "maj7"
+};
+constexpr const char* kDirectionNames[] = {
+    "BLOCK", "UP", "DOWN"
+};
+
+inline const char* chordTypeName(core::ChordEngine::ChordType t) {
+    const int i = static_cast<int>(t);
+    constexpr int n = sizeof(kChordTypeNames) / sizeof(kChordTypeNames[0]);
+    return (i >= 0 && i < n) ? kChordTypeNames[i] : "?";
+}
+
+inline const char* directionName(core::ChordEngine::Direction d) {
+    const int i = static_cast<int>(d);
+    return (i >= 0 && i < 3) ? kDirectionNames[i] : "?";
+}
+
 // Chord patterns expressed as a 12-bit pitch-class set with the root at
 // bit 0. The detector rotates the live pitch-class mask so the candidate
 // root sits at bit 0, then looks for an exact match here.
@@ -717,6 +737,63 @@ void MidiMonitorApp::drawChordNames(Display& d, int rightEdge) const {
     }
 }
 
+void MidiMonitorApp::drawChordQueue(Display& d) const {
+    const int curIdx = chordEngine_.currentMapping();
+    const int qLen   = chordEngine_.queueSize();
+    if (curIdx < 0 && qLen == 0) return;
+
+    // Strip sits just below the header, overlapping the top of the
+    // worm-roll area. Filled background so scrolling worms hide
+    // cleanly underneath as they reach the top.
+    constexpr int kStripY = kHeaderH;
+    constexpr int kStripH = 16;
+    constexpr int kCharW  = 6;          // size-1 font stride
+    constexpr int kSep    = 6;          // pixels between adjacent chord names
+    d.fillRect(0, kStripY, kScreenW, kStripH, color::DarkGray);
+
+    auto formatChord = [&](int mappingIdx, char* out, std::size_t outSize) {
+        if (mappingIdx < 0 ||
+            mappingIdx >= chordEngine_.mappingCapacity()) {
+            std::snprintf(out, outSize, "?"); return;
+        }
+        const auto& m = chordEngine_.mappingAt(mappingIdx);
+        std::snprintf(out, outSize, "%s%s",
+                      kPitchNames[m.rootNote % 12],
+                      chordTypeName(m.type));
+    };
+
+    constexpr int kTextY = kStripY + 4;
+    int x = 4;
+
+    // Currently playing chord — bright text with a leading ">" marker.
+    if (curIdx >= 0) {
+        char buf[16];
+        formatChord(curIdx, buf, sizeof(buf));
+        char withMarker[24];
+        std::snprintf(withMarker, sizeof(withMarker), ">%s", buf);
+        d.drawText(x, kTextY, withMarker,
+                   color::White, color::DarkGray, 1);
+        x += static_cast<int>(std::strlen(withMarker)) * kCharW + kSep;
+    }
+
+    // Queued chords — dimmer text, in FIFO order.
+    for (int i = 0; i < qLen; ++i) {
+        const int idx = chordEngine_.queueAt(i);
+        if (idx < 0) continue;
+        char buf[16];
+        formatChord(idx, buf, sizeof(buf));
+        if (x + static_cast<int>(std::strlen(buf)) * kCharW > kScreenW - 4) {
+            // Out of room — leave a small ellipsis so the user knows
+            // there is more in the queue than what fits.
+            d.drawText(x, kTextY, "...",
+                       color::Gray, color::DarkGray, 1);
+            break;
+        }
+        d.drawText(x, kTextY, buf, color::Gray, color::DarkGray, 1);
+        x += static_cast<int>(std::strlen(buf)) * kCharW + kSep;
+    }
+}
+
 void MidiMonitorApp::drawWorms(Display& d) const {
     // Two passes:
     //   1. Input worms — per-channel-coloured fill with the existing
@@ -877,6 +954,7 @@ void MidiMonitorApp::render(Display& d) {
     } else {
         drawWorms(d);     // worms first; header draws on top in the y=0..20 strip
         drawHeader(d);
+        drawChordQueue(d);
         drawKeyboard(d);
     }
     d.present();
@@ -1241,28 +1319,10 @@ void MidiMonitorApp::drawNotation(Display& d) const {
 }
 
 // ---------- Mapping mode editor -----------------------------------------
-
-namespace {
-
-constexpr const char* kChordTypeNames[] = {
-    "maj", "min", "dim", "aug", "7", "m7", "maj7"
-};
-constexpr const char* kDirectionNames[] = {
-    "BLOCK", "UP", "DOWN"
-};
-
-const char* chordTypeName(core::ChordEngine::ChordType t) {
-    const int i = static_cast<int>(t);
-    constexpr int n = sizeof(kChordTypeNames) / sizeof(kChordTypeNames[0]);
-    return (i >= 0 && i < n) ? kChordTypeNames[i] : "?";
-}
-
-const char* directionName(core::ChordEngine::Direction d) {
-    const int i = static_cast<int>(d);
-    return (i >= 0 && i < 3) ? kDirectionNames[i] : "?";
-}
-
-} // namespace
+//
+// chordTypeName() / directionName() helpers live up in the top-of-file
+// anonymous namespace so the chord-queue strip (drawChordQueue) can use
+// them too.
 
 void MidiMonitorApp::drawMappingMode(Display& d) const {
     // Header bar — orange tone makes the mode unmistakable at a glance.
