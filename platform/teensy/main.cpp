@@ -57,6 +57,14 @@ constexpr uint8_t kPinBpmEncoderClk = 14;
 constexpr uint8_t kPinBpmEncoderDt  = 15;
 constexpr uint8_t kPinBpmEncoderSw  = 16;   // wired, no behaviour yet
 
+// Third KY-040 — view selector. Rotation cycles through Monitor /
+// big-BPM / notation views; the shaft button is wired but currently
+// no-op (reserved). Lives next to the BPM encoder so the two "mode"
+// knobs sit together on the right side of the breadboard.
+constexpr uint8_t kPinViewEncoderClk = 17;
+constexpr uint8_t kPinViewEncoderDt  = 18;
+constexpr uint8_t kPinViewEncoderSw  = 19;
+
 static ILI9341_t3n     tft(kPinTftCs, kPinTftDc, kPinTftRst);
 static TeensyDisplay   display(tft);
 static TeensyMidiInput midiIn;
@@ -76,6 +84,9 @@ static TeensyButton    bpmSwitch(kPinBpmEncoderSw, /*activeHigh=*/false);
 // these two arguments — no wiring change needed.
 static TeensyEncoder   channelKnob(kPinEncoderDt, kPinEncoderClk);
 static TeensyEncoder   bpmKnob(kPinBpmEncoderDt, kPinBpmEncoderClk);
+// Third encoder — view selector.
+static TeensyButton    viewSwitch(kPinViewEncoderSw, /*activeHigh=*/false);
+static TeensyEncoder   viewKnob(kPinViewEncoderDt, kPinViewEncoderClk);
 static core::MidiMonitorApp app;
 
 void setup() {
@@ -85,6 +96,7 @@ void setup() {
     monitorButton.begin();
     encoderSwitch.begin();
     bpmSwitch.begin();
+    viewSwitch.begin();
     app.tick(millis());
     app.render(display);
 }
@@ -122,6 +134,17 @@ void loop() {
     if (bpmDetents != 0) {
         app.onBpmKnob(bpmDetents);
     }
+    const int viewDetents = viewKnob.poll();
+    if (viewDetents != 0) {
+        app.onViewKnob(viewDetents);
+    }
+    // Edge-triggered SW on the view encoder; currently reserved.
+    static bool viewSwLast = false;
+    const bool viewSwNow = viewSwitch.pollOn();
+    if (viewSwNow && !viewSwLast) {
+        app.onViewSwPress();
+    }
+    viewSwLast = viewSwNow;
 
     core::MidiMessage msg;
     while (midiIn.poll(msg)) {

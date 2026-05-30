@@ -92,11 +92,24 @@ public:
     // (The rotation methods are the same as before; the dispatch sits
     // inside the existing onChannelKnob / onBpmKnob.)
 
-    // SW-button entry points. In normal mode they restart the app /
-    // cycle views. In mapping mode they cycle direction / browse
-    // mappings.
+    // SW-button entry points.
+    //   Channel SW — normal mode: restart the app.
+    //                mapping mode: cycle the edit's chord direction.
+    //   BPM SW     — normal mode: reserved (currently a no-op since
+    //                the dedicated view encoder took over view
+    //                cycling).
+    //                mapping mode: browse to the next saved mapping.
+    //   View SW    — currently a no-op in both modes; reserved for a
+    //                future "home" / reset action.
     void onChannelSwPress();
     void onBpmSwPress();
+    void onViewSwPress();
+
+    // View-encoder rotation. Cycles views forward (+) or backward (-)
+    // through Monitor → BigBpm → Notation. No-op in mapping mode (the
+    // editor doesn't have a notion of "next view").
+    void onViewKnob(int delta);
+    uint8_t view() const { return static_cast<uint8_t>(view_); }
 
     void onMessage(const MidiMessage& msg);
 

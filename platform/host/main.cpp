@@ -65,7 +65,9 @@ int main(int /*argc*/, char* /*argv*/[]) {
                  "  SPACE         toggle chord-mapping mode (= panel switch)\n"
                  "  F5            channel-SW press (restart, or cycle dir in MAP)\n"
                  "  BACKSPACE     panic — release stuck notes\n"
-                 "  TAB           BPM-SW press (cycle view, or next mapping in MAP)\n"
+                 "  TAB           BPM-SW press (no-op in normal, next mapping in MAP)\n"
+                 "  PgUp / PgDn   view encoder (cycle Monitor / BigBPM / Notation)\n"
+                 "  END           view-encoder SW (reserved)\n"
                  "  ESC           quit\n");
 
     // Test injection state. Each held note remembers which channel it was
@@ -117,6 +119,24 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     if (ev.key.keysym.sym == SDLK_TAB) {
                         app.onBpmSwPress();
                         std::fprintf(stderr, "[sim] bpm-SW press\n");
+                        break;
+                    }
+
+                    // Page Up / Down emulate the view-selector encoder
+                    // (third KY-040). Page Up cycles to the next view,
+                    // Page Down to the previous one.
+                    if (ev.key.keysym.sym == SDLK_PAGEUP ||
+                        ev.key.keysym.sym == SDLK_PAGEDOWN) {
+                        app.onViewKnob(
+                            ev.key.keysym.sym == SDLK_PAGEUP ? +1 : -1);
+                        std::fprintf(stderr, "[sim] view-knob = %d\n",
+                                     static_cast<int>(app.view()));
+                        break;
+                    }
+                    if (ev.key.keysym.sym == SDLK_END) {
+                        // Backslash / End = view-encoder SW (reserved).
+                        app.onViewSwPress();
+                        std::fprintf(stderr, "[sim] view-SW press\n");
                         break;
                     }
 

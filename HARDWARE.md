@@ -38,16 +38,20 @@ This is the single source of truth. The pin numbers come from
 | 13         | SPI clock (hardware) | ILI9341 `SCK` | OUT | (Arduino fixed) |
 | 14         | BPM encoder A (clock) | KY-040 #2 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinBpmEncoderClk` |
 | 15         | BPM encoder B (data)  | KY-040 #2 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinBpmEncoderDt`  |
-| 16         | BPM encoder shaft button | KY-040 #2 `SW` | IN, INPUT_PULLUP, **active LOW** — cycles `MidiMonitorApp` through monitor view → big-BPM focus → notation (grand staff) → back | `kPinBpmEncoderSw`  |
+| 16         | BPM encoder shaft button | KY-040 #2 `SW` | IN, INPUT_PULLUP, **active LOW** — in normal mode reserved (no-op); in mapping mode cycles through saved chord mappings | `kPinBpmEncoderSw`  |
+| 17         | View encoder A (clock) | KY-040 #3 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinViewEncoderClk` |
+| 18         | View encoder B (data)  | KY-040 #3 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinViewEncoderDt`  |
+| 19         | View encoder shaft button | KY-040 #3 `SW` | IN, INPUT_PULLUP, **active LOW** — currently reserved (no-op), planned "home / reset to Monitor view" | `kPinViewEncoderSw`  |
 
 Pins 11, 12, 13 are the dedicated hardware-SPI lines on Teensy 4.1 and
-cannot be relocated. Pins 2, 3, 4, 5, 8, 9, 10, 14, 15, 16 are all free
-choices and can be moved by editing the `kPin*` constants at the top of
-`platform/teensy/main.cpp`.
+cannot be relocated. Pins 2, 3, 4, 5, 8, 9, 10, 14, 15, 16, 17, 18, 19
+are all free choices and can be moved by editing the `kPin*` constants
+at the top of `platform/teensy/main.cpp`.
 
-The two encoders sit on physically opposite long edges of the Teensy
-(channel encoder on pins 3–5, BPM encoder on pins 14–16) so they don't
-crowd the same strip of breadboard.
+The channel encoder sits on the top-left strip (pins 3–5); the BPM and
+View encoders sit on the bottom-right strip (pins 14–16 and 17–19
+respectively) so the two "mode" knobs end up next to each other on the
+panel without crowding the channel knob.
 
 ## Module wiring
 
@@ -113,7 +117,7 @@ opposite long edge of the Teensy from the channel encoder.
 |-------------|---------|-------|
 | **GND** | − rail | |
 | **+** | 3.3V rail | |
-| **SW** | Teensy pin 16 | Active-LOW. Short press cycles the display through three views: monitor (header + worms + keyboard) → big-BPM focus → notation (grand staff with all held notes as note-heads at their correct pitches) → back to monitor. The MIDI panic (release stuck notes) happens automatically on CC 120 / CC 123. |
+| **SW** | Teensy pin 16 | Active-LOW. In normal mode currently reserved (no-op — view cycling was moved to the dedicated view encoder). In mapping mode browses through saved chord mappings. The MIDI panic (release stuck notes) happens automatically on CC 120 / CC 123. |
 | **DT** | Teensy pin 15 | |
 | **CLK** | Teensy pin 14 | |
 
@@ -121,6 +125,29 @@ Range: 30..300 BPM, clamped at both ends. One detent = ±1 BPM. The MIDI
 Clock master always runs — there is no transport start/stop yet — so
 downstream gear that follows clock will lock to whatever BPM is showing
 in the header.
+
+Direction reversed? Swap the constructor arguments in
+`platform/teensy/main.cpp` exactly as for the channel encoder.
+
+### KY-040 #3 — View encoder
+
+Third KY-040, identical module to the other two. Sits on the bottom
+edge of the breadboard next to the BPM encoder so the two "mode"
+knobs are within thumb reach.
+
+| Encoder pin | Goes to | Notes |
+|-------------|---------|-------|
+| **GND** | − rail | |
+| **+** | 3.3V rail | |
+| **SW** | Teensy pin 19 | Active-LOW. Currently reserved (no-op); planned "home / jump to Monitor view" action. |
+| **DT** | Teensy pin 18 | Quadrature data line. |
+| **CLK** | Teensy pin 17 | Quadrature clock line. |
+
+Rotation cycles the display through **Monitor → BigBpm → Notation →
+Monitor**. CW advances forward, CCW goes backward. One detent =
+±1 view. No-op while the panel switch is ON (the mapping editor
+re-purposes both other encoders, but the view encoder is simply
+ignored in that mode).
 
 Direction reversed? Swap the constructor arguments in
 `platform/teensy/main.cpp` exactly as for the channel encoder.

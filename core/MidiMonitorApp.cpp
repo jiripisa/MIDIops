@@ -378,7 +378,21 @@ void MidiMonitorApp::onChannelSwPress() {
 
 void MidiMonitorApp::onBpmSwPress() {
     if (mappingMode_) { browseNextMapping(); return; }
-    toggleView();
+    // Normal mode: view cycling was moved to the dedicated view
+    // encoder. Reserved for a future use.
+}
+
+void MidiMonitorApp::onViewSwPress() {
+    // Reserved for a future use (e.g. "home" — jump back to Monitor).
+}
+
+void MidiMonitorApp::onViewKnob(int delta) {
+    if (delta == 0)  return;
+    if (mappingMode_) return;
+    const int n = static_cast<int>(View::kCount);
+    int v = (static_cast<int>(view_) + delta) % n;
+    if (v < 0) v += n;
+    view_ = static_cast<View>(v);
 }
 
 void MidiMonitorApp::cycleEditChordType(int delta) {
