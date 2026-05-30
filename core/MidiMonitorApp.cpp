@@ -6,6 +6,7 @@
 #include "Display.h"
 #include "MidiOutput.h"
 #include "notation_glyphs.h"
+#include "splash_image.h"
 
 #ifndef MIDIOPS_VERSION
 #define MIDIOPS_VERSION "dev"
@@ -961,30 +962,34 @@ void MidiMonitorApp::render(Display& d) {
 }
 
 void MidiMonitorApp::drawSplash(Display& d) const {
-    // Font: 5 px glyph + 1 px spacing = 6 px stride, 7 px tall.
+    // Blit the 320×240 RGB565 splash image straight to the panel. We
+    // emit one fillRect per run of same-coloured pixels in each row;
+    // for a dense image this is roughly equivalent to per-pixel but
+    // for large flat areas (the background grid) it collapses
+    // hundreds of writes into one.
+    for (int y = 0; y < kScreenH; ++y) {
+        int x = 0;
+        const uint16_t* row = &splash::kImage[y * splash::kW];
+        while (x < kScreenW) {
+            const uint16_t col = row[x];
+            int runEnd = x + 1;
+            while (runEnd < kScreenW && row[runEnd] == col) ++runEnd;
+            d.fillRect(x, y, runEnd - x, 1, col);
+            x = runEnd;
+        }
+    }
+
+    // Version + build timestamp overlay along the very bottom edge so
+    // you can read what firmware you flashed without losing the artwork.
     constexpr int kStride = 6;
-    constexpr int kGlyphH = 7;
-
-    // ---- Big "MIDIops" title ---------------------------------------
-    constexpr const char* kTitle = "MIDIops";
-    constexpr int kTitleSize = 4;
-    const int titleLen = static_cast<int>(std::strlen(kTitle));
-    const int titleW   = titleLen * kStride * kTitleSize;
-    const int titleX   = (kScreenW - titleW) / 2;
-    constexpr int kTitleY = 80;
-    d.drawText(titleX, kTitleY, kTitle, color::White, color::Black, kTitleSize);
-
-    // ---- Version + build timestamp on one line at size 2 -----------
     char meta[40];
     std::snprintf(meta, sizeof(meta), "%s %s",
                   MIDIOPS_VERSION, MIDIOPS_BUILD);
-    constexpr int kMetaSize = 2;
     const int metaLen = static_cast<int>(std::strlen(meta));
-    const int metaW   = metaLen * kStride * kMetaSize;
+    const int metaW   = metaLen * kStride;        // size-1 font
     const int metaX   = (kScreenW - metaW) / 2;
-    constexpr int kMetaY = 150;
-    d.drawText(metaX, kMetaY, meta, color::Gray, color::Black, kMetaSize);
-    (void)kGlyphH;  // height not needed, layout is constant
+    constexpr int kMetaY = kScreenH - 10;
+    d.drawText(metaX, kMetaY, meta, color::White, color::Black, 1);
 }
 
 void MidiMonitorApp::drawBigBpm(Display& d) const {
