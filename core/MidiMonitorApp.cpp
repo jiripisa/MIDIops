@@ -1356,7 +1356,7 @@ void MidiMonitorApp::drawMappingMode(Display& d) const {
 
     // Waiting state — no mapping selected yet, no trigger captured.
     if (editIndex_ < 0) {
-        const char* line = "Press a note to map…";
+        const char* line = "Press a note to map...";
         const int   w = static_cast<int>(std::strlen(line)) * kCharW2;
         d.drawText((kScreenW - w) / 2, 110, line,
                    color::White, color::Black, 2);
