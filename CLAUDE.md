@@ -1,4 +1,4 @@
-# jp4midi — project notes for Claude
+# MIDIops — project notes for Claude
 
 A hardware MIDI arpeggiator / sequencer for the Teensy 4.1 + 2.8" ILI9341
 display. Milestone 1 (current scope): a MIDI monitor that filters by a
@@ -28,7 +28,7 @@ When adding a feature:
 ## Build & run
 
 ```bash
-make sim         # simulator (SDL window + virtual MIDI port "TeensyArp")
+make sim         # simulator (SDL window + virtual MIDI port "MIDIops")
 make firmware    # build the Teensy .hex
 make flash       # build + upload to a connected Teensy
 make clean       # blow away .pio/

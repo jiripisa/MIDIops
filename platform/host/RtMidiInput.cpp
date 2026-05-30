@@ -17,7 +17,7 @@ RtMidiInput::~RtMidiInput() {
 void RtMidiInput::begin() {
     try {
         midi_ = std::make_unique<RtMidiIn>(RtMidi::MACOSX_CORE,
-                                           "jp4midi simulator");
+                                           "MIDIops simulator");
         midi_->openVirtualPort(portName_);
         midi_->setCallback(&RtMidiInput::rtMidiCallback, this);
         // Pass through everything; we don't generate sysex/timing yet but a

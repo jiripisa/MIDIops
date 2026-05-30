@@ -7,11 +7,11 @@
 #include "MidiOutput.h"
 #include "notation_glyphs.h"
 
-#ifndef JP4MIDI_VERSION
-#define JP4MIDI_VERSION "dev"
+#ifndef MIDIOPS_VERSION
+#define MIDIOPS_VERSION "dev"
 #endif
-#ifndef JP4MIDI_BUILD
-#define JP4MIDI_BUILD ""
+#ifndef MIDIOPS_BUILD
+#define MIDIOPS_BUILD ""
 #endif
 
 namespace core {
@@ -887,8 +887,8 @@ void MidiMonitorApp::drawSplash(Display& d) const {
     constexpr int kStride = 6;
     constexpr int kGlyphH = 7;
 
-    // ---- Big "JP4Midi" title ---------------------------------------
-    constexpr const char* kTitle = "JP4Midi";
+    // ---- Big "MIDIops" title ---------------------------------------
+    constexpr const char* kTitle = "MIDIops";
     constexpr int kTitleSize = 4;
     const int titleLen = static_cast<int>(std::strlen(kTitle));
     const int titleW   = titleLen * kStride * kTitleSize;
@@ -899,7 +899,7 @@ void MidiMonitorApp::drawSplash(Display& d) const {
     // ---- Version + build timestamp on one line at size 2 -----------
     char meta[40];
     std::snprintf(meta, sizeof(meta), "%s %s",
-                  JP4MIDI_VERSION, JP4MIDI_BUILD);
+                  MIDIOPS_VERSION, MIDIOPS_BUILD);
     constexpr int kMetaSize = 2;
     const int metaLen = static_cast<int>(std::strlen(meta));
     const int metaW   = metaLen * kStride * kMetaSize;

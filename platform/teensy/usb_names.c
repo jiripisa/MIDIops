@@ -1,5 +1,5 @@
 // Overrides the weak USB string descriptors in the Teensy 4 core so the
-// device identifies itself to the host OS and to MIDI hosts as "JP4Midi"
+// device identifies itself to the host OS and to MIDI hosts as "MIDIops"
 // instead of the defaults ("Teensyduino" / "Teensy MIDI/Serial" /
 // "Teensy MIDI"). This is the documented PJRC name.c convention:
 //   https://www.pjrc.com/teensy/td_midi.html
@@ -14,25 +14,25 @@
 
 #include "usb_names.h"
 
-#define JP4_NAME       {'J','P','4','M','i','d','i'}
-#define JP4_NAME_LEN   7
+#define PRODUCT_NAME       {'M','I','D','I','o','p','s'}
+#define PRODUCT_NAME_LEN   7
 
 struct usb_string_descriptor_struct usb_string_manufacturer_name = {
-    2 + JP4_NAME_LEN * 2,
+    2 + PRODUCT_NAME_LEN * 2,
     3,
-    JP4_NAME
+    PRODUCT_NAME
 };
 
 struct usb_string_descriptor_struct usb_string_product_name = {
-    2 + JP4_NAME_LEN * 2,
+    2 + PRODUCT_NAME_LEN * 2,
     3,
-    JP4_NAME
+    PRODUCT_NAME
 };
 
 #ifdef MIDI_INTERFACE
 struct usb_string_descriptor_struct usb_string_midi_name = {
-    2 + JP4_NAME_LEN * 2,
+    2 + PRODUCT_NAME_LEN * 2,
     3,
-    JP4_NAME
+    PRODUCT_NAME
 };
 #endif

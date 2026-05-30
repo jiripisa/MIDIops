@@ -1,10 +1,10 @@
-# jp4midi
+# MIDIops
 
 A hardware MIDI monitor + MIDI Clock master built on a **Teensy 4.1** with
 a 2.8" ILI9341 SPI display, paired with a **macOS SDL/RtMidi simulator** so
 the same app code can be iterated on without flashing every change.
 
-Identifies itself over USB as **`JP4Midi`** (class-compliant MIDI), shows
+Identifies itself over USB as **`MIDIops`** (class-compliant MIDI), shows
 incoming notes on three switchable views, and runs a sub-µs-precise
 MIDI Clock master so external gear can sync to it.
 
@@ -84,8 +84,8 @@ make sim
 ```
 
 A 960×720 window opens. The process creates a virtual CoreMIDI input
-port named **`TeensyArp`** that any DAW or MIDI utility can route into,
-and a virtual MIDI **output** port named **`JP4Midi Clock`** that
+port named **`MIDIops`** that any DAW or MIDI utility can route into,
+and a virtual MIDI **output** port named **`MIDIops Clock`** that
 broadcasts 24 PPQN clock.
 
 Keyboard cheatsheet (printed to stderr at startup):
@@ -111,7 +111,7 @@ make flash       # build + upload via teensy_loader_cli / Teensy Loader
 
 Plug the Teensy in over USB **before** running `make flash`. The build
 sets `USB_MIDI_SERIAL` so the device shows up as a class-compliant MIDI
-device named `JP4Midi`. If macOS still shows an old USB descriptor name
+device named `MIDIops`. If macOS still shows an old USB descriptor name
 after a rename, reset CoreMIDI's cache with:
 
 ```bash
@@ -141,15 +141,15 @@ rule in [`CLAUDE.md`](CLAUDE.md).
 2. Double-click **IAC Driver**, tick **Device is online**, ensure at least
    one bus is listed.
 3. Start the simulator (`make sim`); it announces `[RtMidi] virtual input
-   port opened: "TeensyArp"` on stderr.
+   port opened: "MIDIops"` on stderr.
 4. In Ableton → **Preferences → Link/Tempo/MIDI → MIDI**, enable the
-   **Track** output for `TeensyArp` (it appears once the simulator runs).
-5. On a Live MIDI track, set the MIDI output to `TeensyArp` / channel 1
+   **Track** output for `MIDIops` (it appears once the simulator runs).
+5. On a Live MIDI track, set the MIDI output to `MIDIops` / channel 1
    (or whichever channel matches `kDefaultChannel`). Notes you play
    appear in the simulator window.
 
 If you want Ableton to **sync to** the simulator's clock instead, enable
-the **Sync** input for `JP4Midi Clock` and set Live to **External**.
+the **Sync** input for `MIDIops Clock` and set Live to **External**.
 
 ## Configuring the listened channel
 
@@ -180,12 +180,12 @@ platform/
     TeensyMidiOutput.{h,cpp}   IntervalTimer-driven 24 PPQN clock
     TeensyButton.{h,cpp}       Debounced INPUT_PULLUP button
     TeensyEncoder.{h,cpp}      Wraps PJRC Encoder library
-    usb_names.c                Overrides USB descriptors to "JP4Midi"
+    usb_names.c                Overrides USB descriptors to "MIDIops"
     main.cpp                   setup / loop
   host/                     macOS simulator backend
     SdlDisplay.{h,cpp}         RGB565 framebuffer, scaled 3×
-    RtMidiInput.{h,cpp}        Virtual CoreMIDI input "TeensyArp"
-    RtMidiOutput.{h,cpp}       Virtual CoreMIDI output "JP4Midi Clock"
+    RtMidiInput.{h,cpp}        Virtual CoreMIDI input "MIDIops"
+    RtMidiOutput.{h,cpp}       Virtual CoreMIDI output "MIDIops Clock"
     font5x7.h                  Embedded ASCII bitmap font
     main.cpp                   SDL event loop
 

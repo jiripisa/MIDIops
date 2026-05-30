@@ -20,7 +20,7 @@ RtMidiOutput::~RtMidiOutput() {
 void RtMidiOutput::begin() {
     try {
         midi_ = std::make_unique<RtMidiOut>(RtMidi::MACOSX_CORE,
-                                            "jp4midi simulator");
+                                            "MIDIops simulator");
         midi_->openVirtualPort(portName_);
         std::fprintf(stderr,
                      "[RtMidi] virtual output port opened: \"%s\"\n",

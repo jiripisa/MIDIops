@@ -1,6 +1,6 @@
 # Assembly walkthrough
 
-Beginner-friendly step-by-step build of the jp4midi hardware monitor.
+Beginner-friendly step-by-step build of the MIDIops hardware monitor.
 Follow these steps in order. If any wiring detail looks wrong on the
 breadboard, fall back to `HARDWARE.md` which is the canonical reference
 for pins and connections.
@@ -19,7 +19,7 @@ TFT display through SPI, with:
   the startup screen without unplugging USB)
 - A second rotary encoder (KY-040) setting the BPM that the device
   broadcasts as a MIDI Clock master to any DAW listening on the
-  `JP4Midi` USB MIDI device
+  `MIDIops` USB MIDI device
 
 ## 1. Tools and parts
 
@@ -181,7 +181,7 @@ get tangled.
 
 Range 30..300 BPM, default 120, one detent = ±1 BPM. The device sends
 MIDI Clock pulses (24 per quarter note) continuously, so any DAW with
-its tempo source set to `JP4Midi` will follow the BPM you set with this
+its tempo source set to `MIDIops` will follow the BPM you set with this
 knob.
 
 `SW` cycles through three display modes:
@@ -223,7 +223,7 @@ Before you connect USB:
 3. If the Teensy doesn't enter programming mode automatically, press the
    small black button next to its USB port.
 4. After a few seconds you should see:
-   - A 3-second `JP4Midi` splash with the commit hash and build
+   - A 3-second `MIDIops` splash with the commit hash and build
      timestamp.
    - Then the live monitor: a dark roll area with the keyboard at the
      bottom and the header strip on top showing `CH:OMNI` (or whichever
@@ -240,11 +240,11 @@ Before you connect USB:
   keyboard and roll empty.
 - Turn the **BPM** encoder: the number in the top-right corner of the
   header should change by 1 BPM per detent (range 30..300). In Ableton,
-  set the tempo source to `JP4Midi` and confirm the project tempo
+  set the tempo source to `MIDIops` and confirm the project tempo
   follows what's showing on the display.
 - Toggle the panel switch: header bar flips between the normal
   `CH:OMNI` (gray) and a red `MONITOR OFF` strip.
-- Send MIDI from your Mac (Ableton via the IAC Driver routed to `JP4Midi`,
+- Send MIDI from your Mac (Ableton via the IAC Driver routed to `MIDIops`,
   or the simulator's keyboard injection): coloured worms scroll up from
   the keyboard, keys light up under held notes, and chord names appear
   in the header.

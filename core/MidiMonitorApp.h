@@ -135,7 +135,7 @@ private:
     static constexpr uint16_t kBpmMax     = 300;
     static constexpr uint16_t kBpmDefault = 120;
 
-    // Boot splash: how long the "JP4Midi" title sits on the screen before
+    // Boot splash: how long the "MIDIops" title sits on the screen before
     // the monitor view takes over.
     static constexpr uint32_t kSplashDurationMs = 3000;
 

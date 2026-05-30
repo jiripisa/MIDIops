@@ -1,8 +1,8 @@
-// Mac (SDL) entrypoint for the jp4midi simulator.
+// Mac (SDL) entrypoint for the MIDIops simulator.
 //
 //  * Opens a 960x720 SDL window (320x240 logical, scaled 3x).
-//  * Creates a CoreMIDI virtual input port named "TeensyArp" so external
-//    apps (Ableton -> IAC Driver -> TeensyArp) can drive the monitor.
+//  * Creates a CoreMIDI virtual input port named "MIDIops" so external
+//    apps (Ableton -> IAC Driver -> MIDIops) can drive the monitor.
 //  * Maps keyboard keys A..G to inject local Note On/Off messages so the
 //    UI can be verified without any external MIDI source.
 //  * Number keys 1..9 pick the MIDI channel that subsequent A..G presses
@@ -47,9 +47,9 @@ int main(int /*argc*/, char* /*argv*/[]) {
         return 1;
     }
 
-    SdlDisplay   display(kLogicalW, kLogicalH, kScale, "jp4midi simulator");
-    RtMidiInput  midiIn("TeensyArp");
-    RtMidiOutput midiOut("JP4Midi Clock");
+    SdlDisplay   display(kLogicalW, kLogicalH, kScale, "MIDIops simulator");
+    RtMidiInput  midiIn("MIDIops");
+    RtMidiOutput midiOut("MIDIops Clock");
     core::MidiMonitorApp app;
 
     midiIn.begin();
@@ -57,7 +57,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
     app.setMidiOutput(&midiOut);
 
     std::fprintf(stderr,
-                 "jp4midi simulator running.\n"
+                 "MIDIops simulator running.\n"
                  "  A..G          inject Note On/Off\n"
                  "  1..9          set the test injection channel (default 1)\n"
                  "  LEFT / RIGHT  cycle monitored channel (OMNI..16)\n"

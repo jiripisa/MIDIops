@@ -1,8 +1,8 @@
 """PlatformIO pre-build hook: embed the current git short SHA and the build
 timestamp into the firmware.
 
-Defines ``JP4MIDI_VERSION`` (commit hash, falls back to ``"dev"``) and
-``JP4MIDI_BUILD`` (ISO ``YYYY-MM-DD HH:MM``) as C string literals.
+Defines ``MIDIOPS_VERSION`` (commit hash, falls back to ``"dev"``) and
+``MIDIOPS_BUILD`` (ISO ``YYYY-MM-DD HH:MM``) as C string literals.
 """
 import datetime
 import subprocess
@@ -20,7 +20,7 @@ except Exception:
 build_ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
 env.Append(CPPDEFINES=[
-    ("JP4MIDI_VERSION", env.StringifyMacro(sha)),
-    ("JP4MIDI_BUILD",   env.StringifyMacro(build_ts)),
+    ("MIDIOPS_VERSION", env.StringifyMacro(sha)),
+    ("MIDIOPS_BUILD",   env.StringifyMacro(build_ts)),
 ])
-print(f">>> jp4midi build {sha} @ {build_ts}")
+print(f">>> MIDIops build {sha} @ {build_ts}")
