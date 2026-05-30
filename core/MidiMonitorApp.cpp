@@ -527,15 +527,16 @@ void MidiMonitorApp::onNoteOn(const MidiMessage& msg) {
     // note simply doesn't get a worm (the keyboard still highlights).
     for (int i = 0; i < kMaxWorms; ++i) {
         if (worms_[i].live) continue;
-        Worm& w   = worms_[i];
-        w.live    = true;
-        w.growing = true;
-        w.note    = msg.data1;
-        w.channel = msg.channel;
-        w.topY    = static_cast<int16_t>(kRollBottom - 1);
-        w.bottomY = static_cast<int16_t>(kRollBottom - 1);
-        w.startMs = lastTickMs_;
-        w.endMs   = 0;
+        Worm& w    = worms_[i];
+        w.live     = true;
+        w.growing  = true;
+        w.isOutput = false;     // critical: slot may have held an output worm
+        w.note     = msg.data1;
+        w.channel  = msg.channel;
+        w.topY     = static_cast<int16_t>(kRollBottom - 1);
+        w.bottomY  = static_cast<int16_t>(kRollBottom - 1);
+        w.startMs  = lastTickMs_;
+        w.endMs    = 0;
         return;
     }
 }
