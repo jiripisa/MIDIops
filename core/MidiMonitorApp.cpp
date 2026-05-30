@@ -1004,7 +1004,7 @@ void MidiMonitorApp::drawNotation(Display& d) const {
 
     constexpr int kScrollPxPerSec = 40;
     constexpr int kRightX = kStaffX + kStaffW - kNoteHeadW - 4;
-    constexpr int kLeftX  = kStaffX + 4;
+    // Left-edge cutoff lives inline in the rendering loop now (= kStaffX).
 
     const uint32_t now = lastTickMs_;
 
