@@ -718,41 +718,15 @@ void MidiMonitorApp::drawChordNames(Display& d, int rightEdge) const {
 
 void MidiMonitorApp::drawWorms(Display& d) const {
     // Two passes:
-    //   1. Output worms first — full-width, gray, behind everything.
-    //      These visualise notes the chord engine is playing.
-    //   2. Input worms second — per-channel-coloured with the same
-    //      split-on-overlap logic as before. They overdraw the gray so
-    //      a key that is BOTH received and played reads as its input
-    //      channel colour.
+    //   1. Input worms — per-channel-coloured fill with the existing
+    //      split-on-overlap logic.
+    //   2. Output (ghost) worms — gray rectangular OUTLINE only, drawn
+    //      on top of the input fill so the engine's notes always read
+    //      even when they share a column with an incoming note.
     constexpr uint16_t kBottomFactor = 256;
     constexpr uint16_t kTopFactor    = 160;
 
-    // ---- Pass 1: output worms ------------------------------------------
-    for (int i = 0; i < kMaxWorms; ++i) {
-        const Worm& w = worms_[i];
-        if (!w.live || !w.isOutput) continue;
-        const KeyRect kr = keyRectFor(w.note);
-        if (kr.x < 0) continue;
-
-        int y0 = w.topY;
-        int y1 = w.bottomY;
-        if (y0 < kRollTop)     y0 = kRollTop;
-        if (y1 >= kRollBottom) y1 = kRollBottom - 1;
-        if (y1 < y0) continue;
-
-        const uint16_t base  = color::Gray;
-        const int      fullH = w.bottomY - w.topY + 1;
-        const int      denom = (fullH > 1) ? (fullH - 1) : 1;
-        for (int y = y0; y <= y1; ++y) {
-            const int rowsFromBottom = w.bottomY - y;
-            const uint16_t factor = static_cast<uint16_t>(
-                kBottomFactor -
-                ((kBottomFactor - kTopFactor) * rowsFromBottom) / denom);
-            d.fillRect(kr.x, y, kr.w, 1, scaleRgb565(base, factor));
-        }
-    }
-
-    // ---- Pass 2: input worms (per-channel split) -----------------------
+    // ---- Pass 1: input worms (per-channel split) -----------------------
     for (int i = 0; i < kMaxWorms; ++i) {
         const Worm& w = worms_[i];
         if (!w.live || w.isOutput) continue;
@@ -772,7 +746,7 @@ void MidiMonitorApp::drawWorms(Display& d) const {
 
         for (int y = y0; y <= y1; ++y) {
             // Only count *input* worms in the slot split — output worms
-            // are a background layer and shouldn't carve up the column.
+            // are a separate ghost layer and shouldn't carve up the column.
             uint16_t chMask = 0;
             for (int j = 0; j < kMaxWorms; ++j) {
                 const Worm& o = worms_[j];
@@ -798,6 +772,37 @@ void MidiMonitorApp::drawWorms(Display& d) const {
                 kBottomFactor -
                 ((kBottomFactor - kTopFactor) * rowsFromBottom) / denom);
             d.fillRect(subX, y, subW, 1, scaleRgb565(base, factor));
+        }
+    }
+
+    // ---- Pass 2: output (ghost) worms — outline only -------------------
+    for (int i = 0; i < kMaxWorms; ++i) {
+        const Worm& w = worms_[i];
+        if (!w.live || !w.isOutput) continue;
+        const KeyRect kr = keyRectFor(w.note);
+        if (kr.x < 0) continue;
+
+        int y0 = w.topY;
+        int y1 = w.bottomY;
+        if (y0 < kRollTop)     y0 = kRollTop;
+        if (y1 >= kRollBottom) y1 = kRollBottom - 1;
+        if (y1 < y0) continue;
+
+        const uint16_t col   = color::Gray;
+        const int      visH  = y1 - y0 + 1;
+
+        // Two vertical sides — always visible while any of the worm is.
+        d.fillRect(kr.x,               y0, 1, visH, col);
+        d.fillRect(kr.x + kr.w - 1,    y0, 1, visH, col);
+
+        // Top / bottom caps drawn only when the actual edge of the worm
+        // sits inside the roll area; otherwise the ghost reads as an
+        // open-ended box that has been clipped, which is correct.
+        if (w.topY >= kRollTop && w.topY < kRollBottom) {
+            d.fillRect(kr.x, w.topY, kr.w, 1, col);
+        }
+        if (w.bottomY >= kRollTop && w.bottomY < kRollBottom) {
+            d.fillRect(kr.x, w.bottomY, kr.w, 1, col);
         }
     }
 }
