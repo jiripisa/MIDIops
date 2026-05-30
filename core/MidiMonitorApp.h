@@ -141,18 +141,23 @@ private:
 
     // ---- State -------------------------------------------------------
     struct Worm {
-        bool     live    = false;
-        bool     growing = false;
-        uint8_t  note    = 0;
-        uint8_t  channel = 0;
-        int16_t  topY    = 0;   // smaller y == higher on screen
-        int16_t  bottomY = 0;
+        bool     live     = false;
+        bool     growing  = false;
+        // True when the worm represents a note the chord engine is
+        // playing (rather than a note arriving on the MIDI input).
+        // Rendered in gray so it visually sits "behind" the input
+        // worms.
+        bool     isOutput = false;
+        uint8_t  note     = 0;
+        uint8_t  channel  = 0;
+        int16_t  topY     = 0;   // smaller y == higher on screen
+        int16_t  bottomY  = 0;
         // Wall-clock timestamps in milliseconds. Used by the notation
         // view to scroll note-heads horizontally and freeze the duration
         // bar's right edge when the note is released. `endMs` is only
         // meaningful when `growing` is false.
-        uint32_t startMs = 0;
-        uint32_t endMs   = 0;
+        uint32_t startMs  = 0;
+        uint32_t endMs    = 0;
     };
     static constexpr int kMaxWorms = 64;
 
@@ -167,6 +172,12 @@ private:
     // detection and for correct keyboard highlighting when more than one
     // channel plays the same note simultaneously.
     uint16_t notePressedBy_[128]     = {};
+
+    // Same shape as notePressedBy_, but tracks notes the chord engine
+    // itself is currently playing back through the MIDI output. Lets
+    // the monitor view show "the device is playing X" alongside the
+    // incoming notes, rendered in gray.
+    uint16_t outNotePressedBy_[128]  = {};
 
     Worm     worms_[kMaxWorms]       {};
     uint32_t lastTickMs_             = 0;
@@ -263,6 +274,15 @@ private:
     // Used by the keyboard-highlight code to pick a fill colour when more
     // than one channel is sustaining the same note.
     uint8_t pressedChannelFor(uint8_t note) const;
+
+    // Same for engine-output notes.
+    uint8_t outPressedChannelFor(uint8_t note) const;
+
+    // Plumbing for the chord engine's echo. Static dispatcher is set on
+    // the engine at construction time; the per-instance handler updates
+    // outNotePressedBy_ and spawns / stops output worms.
+    static void engineEchoStatic(void* user, const MidiMessage& msg);
+    void onEngineEcho(const MidiMessage& msg);
 
     // Writes a chord name like "Cmaj7", "Am", "G/B" to `out` when channel
     // `ch` is sustaining 3+ notes that match a known triad/seventh.

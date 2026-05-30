@@ -185,6 +185,62 @@ MidiMonitorApp::MidiMonitorApp() {
     chordEngine_.setBpm(bpm_);
     // The mapping table starts empty — the user defines mappings at
     // runtime via mapping mode (panel switch ON).
+
+    // Receive every note the chord engine plays so we can visualise
+    // it on the monitor (gray worm + gray keyboard highlight).
+    chordEngine_.setEcho(&MidiMonitorApp::engineEchoStatic, this);
+}
+
+void MidiMonitorApp::engineEchoStatic(void* user, const MidiMessage& msg) {
+    static_cast<MidiMonitorApp*>(user)->onEngineEcho(msg);
+}
+
+void MidiMonitorApp::onEngineEcho(const MidiMessage& msg) {
+    if (!noteVisible(msg.data1)) return;
+    if (msg.channel < 1 || msg.channel > 16) return;
+    const uint16_t chBit = static_cast<uint16_t>(1u << (msg.channel - 1));
+
+    if (msg.type == MidiType::NoteOn && msg.data2 != 0) {
+        outNotePressedBy_[msg.data1] |= chBit;
+        // Spawn an output worm — same shape as the input path but with
+        // isOutput = true so the renderer paints it gray.
+        for (int i = 0; i < kMaxWorms; ++i) {
+            if (worms_[i].live) continue;
+            Worm& w   = worms_[i];
+            w.live    = true;
+            w.growing = true;
+            w.isOutput = true;
+            w.note    = msg.data1;
+            w.channel = msg.channel;
+            w.topY    = static_cast<int16_t>(kRollBottom - 1);
+            w.bottomY = static_cast<int16_t>(kRollBottom - 1);
+            w.startMs = lastTickMs_;
+            w.endMs   = 0;
+            return;
+        }
+        return;
+    }
+    if (msg.type == MidiType::NoteOff) {
+        outNotePressedBy_[msg.data1] &= static_cast<uint16_t>(~chBit);
+        // Stop the still-growing output worm for this note + channel.
+        for (int i = 0; i < kMaxWorms; ++i) {
+            Worm& w = worms_[i];
+            if (w.live && w.growing && w.isOutput
+                && w.note == msg.data1 && w.channel == msg.channel) {
+                w.growing = false;
+                w.endMs   = lastTickMs_;
+            }
+        }
+    }
+}
+
+uint8_t MidiMonitorApp::outPressedChannelFor(uint8_t note) const {
+    if (note >= 128) return 0;
+    uint16_t bits = outNotePressedBy_[note];
+    if (bits == 0) return 0;
+    uint8_t ch = 1;
+    while ((bits & 1u) == 0) { bits >>= 1; ++ch; }
+    return ch;
 }
 
 void MidiMonitorApp::setChannel(uint8_t channel) {
@@ -244,9 +300,13 @@ void MidiMonitorApp::restart() {
     splashStartMs_ = lastTickMs_;   // lastTickMs_ already holds "now"
     channel_       = kDefaultChannel;
     monitoring_    = true;
-    for (int i = 0; i < 128; ++i) notePressedBy_[i] = 0;
+    for (int i = 0; i < 128; ++i) notePressedBy_[i]    = 0;
+    for (int i = 0; i < 128; ++i) outNotePressedBy_[i] = 0;
     for (int i = 0; i < kMaxWorms; ++i) worms_[i].live = false;
     for (auto& sl : nameDisplays_) sl.live = false;
+    // Drop any pending chord events so the synth downstream doesn't
+    // keep singing notes that should have been turned off.
+    chordEngine_.panic();
 }
 
 void MidiMonitorApp::toggleView() {
@@ -370,13 +430,16 @@ void MidiMonitorApp::panic() {
     // notes" recovery, not a full reset.
     for (int i = 0; i < 128; ++i) notePressedBy_[i] = 0;
     for (int i = 0; i < kMaxWorms; ++i) {
-        if (worms_[i].live && worms_[i].growing) {
-            worms_[i].growing = false;
-            worms_[i].endMs   = lastTickMs_;
+        Worm& w = worms_[i];
+        if (w.live && w.growing && !w.isOutput) {
+            w.growing = false;
+            w.endMs   = lastTickMs_;
         }
     }
-    // Drop every event the chord engine had queued, sending NoteOffs for
-    // anything currently sounding so the downstream synth doesn't hang.
+    // Drop every event the chord engine had queued. The engine's panic
+    // will echo pending NoteOffs back through onEngineEcho, which
+    // cleans up outNotePressedBy_ and stops every output worm in a
+    // single consistent pass.
     chordEngine_.panic();
 }
 
@@ -403,9 +466,11 @@ void MidiMonitorApp::setMonitoring(bool on) {
         // Clear all visible MIDI state so the panel reflects "muted" rather
         // than a frozen snapshot. Existing worms vanish, every key on the
         // keyboard goes back to unpressed.
-        for (int i = 0; i < 128; ++i) notePressedBy_[i] = 0;
+        for (int i = 0; i < 128; ++i) notePressedBy_[i]    = 0;
+        for (int i = 0; i < 128; ++i) outNotePressedBy_[i] = 0;
         for (int i = 0; i < kMaxWorms; ++i) worms_[i].live = false;
         for (auto& sl : nameDisplays_) sl.live = false;
+        chordEngine_.panic();
     }
 }
 
@@ -652,17 +717,45 @@ void MidiMonitorApp::drawChordNames(Display& d, int rightEdge) const {
 }
 
 void MidiMonitorApp::drawWorms(Display& d) const {
-    // Per-row rendering. At each y we look up which channels currently have
-    // a live worm covering (w.note, y) and split the key column into equal
-    // sub-rects ordered left-to-right by channel number. With only one
-    // channel active the row fills the full key width — identical to the
-    // pre-split behaviour.
+    // Two passes:
+    //   1. Output worms first — full-width, gray, behind everything.
+    //      These visualise notes the chord engine is playing.
+    //   2. Input worms second — per-channel-coloured with the same
+    //      split-on-overlap logic as before. They overdraw the gray so
+    //      a key that is BOTH received and played reads as its input
+    //      channel colour.
     constexpr uint16_t kBottomFactor = 256;
     constexpr uint16_t kTopFactor    = 160;
 
+    // ---- Pass 1: output worms ------------------------------------------
     for (int i = 0; i < kMaxWorms; ++i) {
         const Worm& w = worms_[i];
-        if (!w.live) continue;
+        if (!w.live || !w.isOutput) continue;
+        const KeyRect kr = keyRectFor(w.note);
+        if (kr.x < 0) continue;
+
+        int y0 = w.topY;
+        int y1 = w.bottomY;
+        if (y0 < kRollTop)     y0 = kRollTop;
+        if (y1 >= kRollBottom) y1 = kRollBottom - 1;
+        if (y1 < y0) continue;
+
+        const uint16_t base  = color::Gray;
+        const int      fullH = w.bottomY - w.topY + 1;
+        const int      denom = (fullH > 1) ? (fullH - 1) : 1;
+        for (int y = y0; y <= y1; ++y) {
+            const int rowsFromBottom = w.bottomY - y;
+            const uint16_t factor = static_cast<uint16_t>(
+                kBottomFactor -
+                ((kBottomFactor - kTopFactor) * rowsFromBottom) / denom);
+            d.fillRect(kr.x, y, kr.w, 1, scaleRgb565(base, factor));
+        }
+    }
+
+    // ---- Pass 2: input worms (per-channel split) -----------------------
+    for (int i = 0; i < kMaxWorms; ++i) {
+        const Worm& w = worms_[i];
+        if (!w.live || w.isOutput) continue;
         const KeyRect kr = keyRectFor(w.note);
         if (kr.x < 0) continue;
 
@@ -678,27 +771,22 @@ void MidiMonitorApp::drawWorms(Display& d) const {
         const uint16_t myBit = static_cast<uint16_t>(1u << (w.channel - 1));
 
         for (int y = y0; y <= y1; ++y) {
-            // Bitmask of distinct channels with a live worm covering this
-            // row on the same note. Same-channel duplicates collapse to one
-            // bit so re-triggers don't split the column further.
+            // Only count *input* worms in the slot split — output worms
+            // are a background layer and shouldn't carve up the column.
             uint16_t chMask = 0;
             for (int j = 0; j < kMaxWorms; ++j) {
                 const Worm& o = worms_[j];
-                if (!o.live || o.note != w.note) continue;
+                if (!o.live || o.isOutput) continue;
+                if (o.note != w.note) continue;
                 if (y < o.topY || y > o.bottomY) continue;
                 chMask |= static_cast<uint16_t>(1u << (o.channel - 1));
             }
 
-            // Total channels and this worm's slot (count of lower-numbered
-            // channels also active in this row).
             int slot = 0, total = 0;
             for (uint16_t m = chMask; m; m &= (m - 1)) ++total;
             for (uint16_t m = chMask & (myBit - 1); m; m &= (m - 1)) ++slot;
             if (total == 0) continue;
 
-            // Proportional slot split: each slot gets ceil(kr.w / total)-ish
-            // pixels, with rounding distributed so the last slot fills the
-            // remainder. Avoids 1 px gaps and keeps widths balanced.
             const int slotStart = (kr.w * slot) / total;
             const int slotEnd   = (kr.w * (slot + 1)) / total;
             const int subX      = kr.x + slotStart;
@@ -721,18 +809,19 @@ void MidiMonitorApp::drawKeyboard(Display& d) const {
     // 1) White-key surface.
     d.fillRect(kKeyboardX0, kKeyboardTop, kbW, kbH, color::White);
 
-    // 2) Pressed white-key highlights (inside the separator lines). When
-    //    multiple channels hold the same note, the lowest-numbered channel
-    //    wins the colour — see pressedChannelFor().
+    // 2) Pressed white-key highlights (inside the separator lines).
+    //    Output (engine-played) keys colour gray first; input keys then
+    //    overdraw with their channel colour. When the same key is both
+    //    received and played, the input colour wins.
     for (int wi = 0; wi < kWhiteKeysVisible; ++wi) {
-        const uint8_t note = whiteKeyAt(wi);
-        const uint8_t ch   = pressedChannelFor(note);
-        if (ch) {
-            const int x = kKeyboardX0 + wi * kWhiteKeyW;
-            d.fillRect(x + 1, kKeyboardTop + 1,
-                       kWhiteKeyW - 2, kbH - 2,
-                       channelColor(ch));
-        }
+        const uint8_t note    = whiteKeyAt(wi);
+        const uint8_t inCh    = pressedChannelFor(note);
+        const uint8_t outCh   = outPressedChannelFor(note);
+        if (inCh == 0 && outCh == 0) continue;
+        const int x = kKeyboardX0 + wi * kWhiteKeyW;
+        const uint16_t fill = (inCh != 0) ? channelColor(inCh) : color::Gray;
+        d.fillRect(x + 1, kKeyboardTop + 1,
+                   kWhiteKeyW - 2, kbH - 2, fill);
     }
 
     // 3) White-key separators and the keyboard's top edge.
@@ -749,9 +838,13 @@ void MidiMonitorApp::drawKeyboard(Display& d) const {
         const KeyRect kr = keyRectFor(note);
         if (kr.x < 0) continue;
 
-        const uint8_t ch    = pressedChannelFor(note);
-        const bool    pressed = ch != 0;
-        const uint16_t fill = pressed ? channelColor(ch) : color::Black;
+        const uint8_t  inCh    = pressedChannelFor(note);
+        const uint8_t  outCh   = outPressedChannelFor(note);
+        const bool     pressed = (inCh != 0) || (outCh != 0);
+        const uint16_t fill =
+            (inCh != 0) ? channelColor(inCh) :
+            (outCh != 0) ? color::Gray :
+                           color::Black;
         d.fillRect(kr.x, kKeyboardTop, kr.w, kBlackKeyH, fill);
 
         if (pressed) {

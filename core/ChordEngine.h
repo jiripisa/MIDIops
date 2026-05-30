@@ -57,6 +57,15 @@ public:
     void setOutput(MidiOutput* out) { out_ = out; }
     void setBpm(uint16_t bpm)       { bpm_ = (bpm > 0) ? bpm : 120; }
 
+    // Optional "echo" callback fired immediately after the engine
+    // sends each note event. Used by the monitor to visualise notes
+    // the device itself is playing. The callback receives the same
+    // MidiMessage that was sent to MidiOutput. Plain C-style function
+    // pointer (lambda without captures works) so we stay free of
+    // std::function in the embedded build.
+    using EchoFn = void(*)(void* user, const MidiMessage& msg);
+    void setEcho(EchoFn fn, void* user) { echoFn_ = fn; echoUser_ = user; }
+
     // Mapping management.
     void clearMappings();
     bool addMapping(const Mapping& m);    // returns false if pool is full
@@ -106,6 +115,8 @@ private:
     Event       events_[kMaxEvents]{};
     MidiOutput* out_ = nullptr;
     uint16_t    bpm_ = 120;
+    EchoFn      echoFn_   = nullptr;
+    void*       echoUser_ = nullptr;
 };
 
 } // namespace core

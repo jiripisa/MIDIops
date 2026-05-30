@@ -161,6 +161,14 @@ void ChordEngine::tick(uint32_t nowMs) {
         } else {
             out_->sendNoteOff(ev.channel, ev.note);
         }
+        if (echoFn_) {
+            MidiMessage m{};
+            m.type    = ev.isOn ? MidiType::NoteOn : MidiType::NoteOff;
+            m.channel = ev.channel;
+            m.data1   = ev.note;
+            m.data2   = ev.isOn ? ev.velocity : static_cast<uint8_t>(0);
+            echoFn_(echoUser_, m);
+        }
         ev.alive = false;
     }
 }
@@ -172,6 +180,14 @@ void ChordEngine::panic() {
                 // Best-effort: fire pending NoteOffs so we don't leave
                 // notes hanging on the downstream synth.
                 out_->sendNoteOff(ev.channel, ev.note);
+                if (echoFn_) {
+                    MidiMessage m{};
+                    m.type    = MidiType::NoteOff;
+                    m.channel = ev.channel;
+                    m.data1   = ev.note;
+                    m.data2   = 0;
+                    echoFn_(echoUser_, m);
+                }
             }
         }
     }
