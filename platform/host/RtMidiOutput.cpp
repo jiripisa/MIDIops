@@ -39,6 +39,14 @@ void RtMidiOutput::sendByte(unsigned char status) {
     midi_->sendMessage(&status, 1);
 }
 
+void RtMidiOutput::sendThree(unsigned char status,
+                             unsigned char d1, unsigned char d2) {
+    std::lock_guard<std::mutex> lock(sendMutex_);
+    if (!midi_) return;
+    unsigned char msg[3] = { status, d1, d2 };
+    midi_->sendMessage(msg, 3);
+}
+
 void RtMidiOutput::setClockBpm(uint16_t bpm) {
     if (bpm == 0) {
         if (clockRunning_.load()) {
@@ -73,3 +81,17 @@ void RtMidiOutput::clockThreadFunc() {
 void RtMidiOutput::sendStart()    { sendByte(0xFA); }
 void RtMidiOutput::sendContinue() { sendByte(0xFB); }
 void RtMidiOutput::sendStop()     { sendByte(0xFC); }
+
+void RtMidiOutput::sendNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
+    if (channel < 1 || channel > 16) return;
+    sendThree(static_cast<unsigned char>(0x90 | (channel - 1)),
+              static_cast<unsigned char>(note & 0x7F),
+              static_cast<unsigned char>(velocity & 0x7F));
+}
+
+void RtMidiOutput::sendNoteOff(uint8_t channel, uint8_t note) {
+    if (channel < 1 || channel > 16) return;
+    sendThree(static_cast<unsigned char>(0x80 | (channel - 1)),
+              static_cast<unsigned char>(note & 0x7F),
+              0);
+}

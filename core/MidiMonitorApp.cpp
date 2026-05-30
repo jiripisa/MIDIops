@@ -181,7 +181,32 @@ uint16_t MidiMonitorApp::channelColor(uint8_t channel) {
 
 // ---------- Lifecycle / input --------------------------------------------
 
-MidiMonitorApp::MidiMonitorApp() = default;
+MidiMonitorApp::MidiMonitorApp() {
+    chordEngine_.setBpm(bpm_);
+
+    // Two hardcoded mappings for the MVP. C4 → Cmaj block, D4 → Dmin
+    // arpeggio up. Both fire when any channel sends the trigger note,
+    // and play out on output channel 5 so they don't collide with the
+    // default ch1 monitor stream.
+    ChordEngine::Mapping m{};
+    m.triggerChannel = 0;       // 0 = any
+    m.outputChannel  = 5;
+    m.velocity       = 100;
+
+    m.triggerNote = 60;                       // C4
+    m.rootNote    = 60;
+    m.type        = ChordEngine::ChordType::Major;
+    m.direction   = ChordEngine::Direction::Block;
+    m.gateTicks   = 24;                       // quarter note
+    chordEngine_.addMapping(m);
+
+    m.triggerNote = 62;                       // D4
+    m.rootNote    = 62;
+    m.type        = ChordEngine::ChordType::Minor;
+    m.direction   = ChordEngine::Direction::Up;
+    m.gateTicks   = 12;                       // 8th note per step
+    chordEngine_.addMapping(m);
+}
 
 void MidiMonitorApp::setChannel(uint8_t channel) {
     if (channel > 16) channel = 0;
@@ -214,6 +239,7 @@ void MidiMonitorApp::onChannelKnob(int delta) {
 void MidiMonitorApp::setMidiOutput(MidiOutput* out) {
     midiOut_ = out;
     if (midiOut_) midiOut_->setClockBpm(bpm_);
+    chordEngine_.setOutput(out);
 }
 
 void MidiMonitorApp::setBpm(uint16_t bpm) {
@@ -222,6 +248,7 @@ void MidiMonitorApp::setBpm(uint16_t bpm) {
     if (bpm == bpm_) return;
     bpm_ = bpm;
     if (midiOut_) midiOut_->setClockBpm(bpm_);
+    chordEngine_.setBpm(bpm_);
 }
 
 void MidiMonitorApp::onBpmKnob(int delta) {
@@ -259,6 +286,9 @@ void MidiMonitorApp::panic() {
             worms_[i].endMs   = lastTickMs_;
         }
     }
+    // Drop every event the chord engine had queued, sending NoteOffs for
+    // anything currently sounding so the downstream synth doesn't hang.
+    chordEngine_.panic();
 }
 
 void MidiMonitorApp::releaseAllNotesOnChannel(uint8_t ch) {
@@ -302,7 +332,11 @@ void MidiMonitorApp::onMessage(const MidiMessage& msg) {
         onNoteOff(off);
         return;
     }
-    if (msg.type == MidiType::NoteOn)  { onNoteOn(msg);  return; }
+    if (msg.type == MidiType::NoteOn) {
+        chordEngine_.onMessage(msg, lastTickMs_);
+        onNoteOn(msg);
+        return;
+    }
     if (msg.type == MidiType::NoteOff) { onNoteOff(msg); return; }
     // Recognise the standard MIDI panic CCs. Ableton sends these on stop
     // and on some clip edits — releasing notes here cleans up after any
@@ -425,6 +459,11 @@ void MidiMonitorApp::tick(uint32_t nowMs) {
         }
     }
     if (dy > 0) advanceWorms(dy);
+
+    // Advance the chord engine. It walks its event queue and fires
+    // anything whose scheduled time has now arrived. Independent of
+    // the scroll accumulator above.
+    chordEngine_.tick(nowMs);
 
     // MIDI Clock pulses are emitted by the MidiOutput's own timing source
     // (hardware timer on Teensy, dedicated thread on host) — see

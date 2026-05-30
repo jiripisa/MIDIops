@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "ChordEngine.h"
 #include "MidiMessage.h"
 
 namespace core {
@@ -180,6 +181,11 @@ private:
 
     MidiOutput* midiOut_             = nullptr;
     uint16_t    bpm_                 = kBpmDefault;
+
+    // Chord engine: trigger-driven chord / arpeggio player. Listens to
+    // every incoming NoteOn and emits scheduled note events through the
+    // attached MidiOutput.
+    ChordEngine chordEngine_;
 
     // ---- Helpers -----------------------------------------------------
     void onNoteOn (const MidiMessage& msg);

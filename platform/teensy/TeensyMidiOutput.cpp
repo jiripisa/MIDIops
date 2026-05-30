@@ -46,3 +46,13 @@ void TeensyMidiOutput::setClockBpm(uint16_t bpm) {
 void TeensyMidiOutput::sendStart()    { usbMIDI.sendRealTime(usbMIDI.Start);    }
 void TeensyMidiOutput::sendContinue() { usbMIDI.sendRealTime(usbMIDI.Continue); }
 void TeensyMidiOutput::sendStop()     { usbMIDI.sendRealTime(usbMIDI.Stop);     }
+
+void TeensyMidiOutput::sendNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
+    if (channel < 1 || channel > 16) return;
+    usbMIDI.sendNoteOn(note, velocity, channel);
+}
+
+void TeensyMidiOutput::sendNoteOff(uint8_t channel, uint8_t note) {
+    if (channel < 1 || channel > 16) return;
+    usbMIDI.sendNoteOff(note, 0, channel);
+}

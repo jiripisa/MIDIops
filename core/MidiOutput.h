@@ -28,6 +28,12 @@ public:
     virtual void sendStart()    = 0;   // 0xFA
     virtual void sendContinue() = 0;   // 0xFB
     virtual void sendStop()     = 0;   // 0xFC
+
+    // Channel-voice note events used by the chord engine. Channel is
+    // 1..16. Velocity is 0..127. sendNoteOn with velocity == 0 is the
+    // running-status equivalent of a NoteOff and is permitted.
+    virtual void sendNoteOn (uint8_t channel, uint8_t note, uint8_t velocity) = 0;
+    virtual void sendNoteOff(uint8_t channel, uint8_t note) = 0;
 };
 
 } // namespace core

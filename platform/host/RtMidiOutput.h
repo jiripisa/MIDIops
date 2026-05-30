@@ -32,9 +32,12 @@ public:
     void sendStart()    override;
     void sendContinue() override;
     void sendStop()     override;
+    void sendNoteOn (uint8_t channel, uint8_t note, uint8_t velocity) override;
+    void sendNoteOff(uint8_t channel, uint8_t note) override;
 
 private:
     void sendByte(unsigned char status);
+    void sendThree(unsigned char status, unsigned char d1, unsigned char d2);
     void clockThreadFunc();
 
     std::string                portName_;
