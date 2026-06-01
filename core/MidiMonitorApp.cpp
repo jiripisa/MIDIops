@@ -287,6 +287,11 @@ void MidiMonitorApp::setChannel(uint8_t channel) {
 }
 
 void MidiMonitorApp::onChannelKnob(int delta) {
+    if (delta != 0) {
+        dbgChannelKnob_.total       += delta;
+        dbgChannelKnob_.lastDelta    = static_cast<int8_t>(delta > 0 ? 1 : -1);
+        dbgChannelKnob_.lastChangeMs = lastTickMs_;
+    }
     if (mappingMode_) { cycleEditChordType(delta); return; }
     int next = static_cast<int>(channel_) + delta;
     if (next < 0)  next = 0;
@@ -310,6 +315,11 @@ void MidiMonitorApp::setBpm(uint16_t bpm) {
 }
 
 void MidiMonitorApp::onBpmKnob(int delta) {
+    if (delta != 0) {
+        dbgBpmKnob_.total       += delta;
+        dbgBpmKnob_.lastDelta    = static_cast<int8_t>(delta > 0 ? 1 : -1);
+        dbgBpmKnob_.lastChangeMs = lastTickMs_;
+    }
     if (mappingMode_) { adjustEditGate(delta); return; }
     int next = static_cast<int>(bpm_) + delta;
     if (next < kBpmMin) next = kBpmMin;
@@ -342,6 +352,9 @@ void MidiMonitorApp::toggleView() {
 void MidiMonitorApp::setMappingMode(bool on) {
     if (on == mappingMode_) return;
     mappingMode_ = on;
+    // Debug view records every panel-switch transition.
+    dbgPanelSwitch_.pressCount  += 1;
+    dbgPanelSwitch_.lastChangeMs = lastTickMs_;
     if (on) {
         // Enter: clear any in-progress edit; the first NoteOn after
         // entry will become the captured trigger. If there are no
@@ -372,22 +385,31 @@ void MidiMonitorApp::setMappingMode(bool on) {
 }
 
 void MidiMonitorApp::onChannelSwPress() {
+    ++dbgChannelSw_.pressCount;
+    dbgChannelSw_.lastChangeMs = lastTickMs_;
     if (mappingMode_) { cycleEditDirection(); return; }
     restart();
 }
 
 void MidiMonitorApp::onBpmSwPress() {
+    ++dbgBpmSw_.pressCount;
+    dbgBpmSw_.lastChangeMs = lastTickMs_;
     if (mappingMode_) { browseNextMapping(); return; }
     // Normal mode: view cycling was moved to the dedicated view
     // encoder. Reserved for a future use.
 }
 
 void MidiMonitorApp::onViewSwPress() {
+    ++dbgViewSw_.pressCount;
+    dbgViewSw_.lastChangeMs = lastTickMs_;
     // Reserved for a future use (e.g. "home" — jump back to Monitor).
 }
 
 void MidiMonitorApp::onViewKnob(int delta) {
     if (delta == 0)  return;
+    dbgViewKnob_.total       += delta;
+    dbgViewKnob_.lastDelta    = static_cast<int8_t>(delta > 0 ? 1 : -1);
+    dbgViewKnob_.lastChangeMs = lastTickMs_;
     if (mappingMode_) return;
     const int n = static_cast<int>(View::kCount);
     int v = (static_cast<int>(view_) + delta) % n;
@@ -810,6 +832,86 @@ void MidiMonitorApp::drawChordQueue(Display& d) const {
     }
 }
 
+void MidiMonitorApp::drawDebug(Display& d) const {
+    // Top bar
+    d.fillRect(0, 0, kScreenW, kHeaderH, color::DarkGray);
+    d.drawText(4, 4, "DEBUG VIEW", color::White, color::DarkGray, 2);
+
+    constexpr int kColLabel = 4;
+    constexpr int kColData  = 110;
+    constexpr int kRowH     = 12;
+    constexpr uint32_t kRecentMs = 500;
+
+    auto fmtAge = [](char* buf, std::size_t n, uint32_t age, bool everSet) {
+        if (!everSet) { std::snprintf(buf, n, "never"); return; }
+        if (age < 1000)              std::snprintf(buf, n, "%lums",   (unsigned long)age);
+        else if (age < 60u * 1000u)  std::snprintf(buf, n, "%lus",    (unsigned long)(age / 1000));
+        else                         std::snprintf(buf, n, "%lum",    (unsigned long)(age / 60000));
+    };
+
+    int y = 30;
+    d.drawText(kColLabel, y, "Encoders", color::Cyan, color::Black, 1);
+    y += kRowH;
+
+    auto drawKnob = [&](const char* name, const DebugKnob& k) {
+        const bool everSet = (k.lastChangeMs != 0);
+        const uint32_t age = everSet ? (lastTickMs_ - k.lastChangeMs) : 0;
+        const uint16_t col = (everSet && age < kRecentMs) ? color::Yellow : color::White;
+        char age_buf[12];
+        fmtAge(age_buf, sizeof(age_buf), age, everSet);
+        char value_buf[40];
+        std::snprintf(value_buf, sizeof(value_buf),
+                      "%+5ld   last %+d   %s",
+                      static_cast<long>(k.total),
+                      everSet ? k.lastDelta : 0,
+                      age_buf);
+        d.drawText(kColLabel + 8, y, name,      col, color::Black, 1);
+        d.drawText(kColData,      y, value_buf, col, color::Black, 1);
+        y += kRowH;
+    };
+    drawKnob("CH",   dbgChannelKnob_);
+    drawKnob("BPM",  dbgBpmKnob_);
+    drawKnob("VIEW", dbgViewKnob_);
+
+    y += 4;
+    d.drawText(kColLabel, y, "Buttons", color::Cyan, color::Black, 1);
+    y += kRowH;
+
+    auto drawButton = [&](const char* name, bool latching, bool stateOn,
+                          const DebugButton& b) {
+        const bool everSet = (b.lastChangeMs != 0);
+        const uint32_t age = everSet ? (lastTickMs_ - b.lastChangeMs) : 0;
+        const uint16_t col = (everSet && age < kRecentMs) ? color::Yellow : color::White;
+        char age_buf[12];
+        fmtAge(age_buf, sizeof(age_buf), age, everSet);
+        char value_buf[40];
+        if (latching) {
+            std::snprintf(value_buf, sizeof(value_buf),
+                          "%-3s   toggles %u   %s",
+                          stateOn ? "ON" : "OFF",
+                          static_cast<unsigned>(b.pressCount),
+                          age_buf);
+        } else {
+            std::snprintf(value_buf, sizeof(value_buf),
+                          "press #%u   %s",
+                          static_cast<unsigned>(b.pressCount),
+                          age_buf);
+        }
+        d.drawText(kColLabel + 8, y, name,      col, color::Black, 1);
+        d.drawText(kColData,      y, value_buf, col, color::Black, 1);
+        y += kRowH;
+    };
+    drawButton("PANEL", /*latching=*/true,  mappingMode_, dbgPanelSwitch_);
+    drawButton("CHsw",  /*latching=*/false, false,        dbgChannelSw_);
+    drawButton("BPMsw", /*latching=*/false, false,        dbgBpmSw_);
+    drawButton("VIEWsw",/*latching=*/false, false,        dbgViewSw_);
+
+    // Hint at the bottom — how to leave the debug view.
+    constexpr int kHintY = kScreenH - 12;
+    d.drawText(kColLabel, kHintY,
+               "VIEW knob to cycle out", color::Gray, color::Black, 1);
+}
+
 void MidiMonitorApp::drawWorms(Display& d) const {
     // Two passes:
     //   1. Input worms — per-channel-coloured fill with the existing
@@ -967,6 +1069,8 @@ void MidiMonitorApp::render(Display& d) {
         drawBigBpm(d);
     } else if (view_ == View::Notation) {
         drawNotation(d);
+    } else if (view_ == View::Debug) {
+        drawDebug(d);
     } else {
         drawWorms(d);     // worms first; header draws on top in the y=0..20 strip
         drawHeader(d);

@@ -43,10 +43,29 @@ This is the single source of truth. The pin numbers come from
 | 18         | View encoder B (data)  | KY-040 #3 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinViewEncoderDt`  |
 | 19         | View encoder shaft button | KY-040 #3 `SW` | IN, INPUT_PULLUP, **active LOW** — currently reserved (no-op), planned "home / reset to Monitor view" | `kPinViewEncoderSw`  |
 
+**Reserved long-edge pins** (unwired today, earmarked for an upcoming
+expansion — one more encoder, plus two more latching buttons):
+
+| Teensy pin | Reserved for | Wires from |
+|-----------:|--------------|------------|
+| 0          | Encoder #4 `SW` | Pin 0 is also Serial1 RX. We don't use hardware serial. |
+| 1          | Latching button #2 `S` | Pin 1 is also Serial1 TX. |
+| 6          | Encoder #4 `CLK` | |
+| 7          | Encoder #4 `DT`  | |
+| 20         | Encoder #5 `CLK` | |
+| 21         | Encoder #5 `DT`  | |
+| 22         | Encoder #5 `SW`  | |
+| 23         | Latching button #3 `S` | |
+
+That's the full set of long-edge GPIOs the device will use. Adding
+a 9th input would require soldering a header to one of the bottom
+pads (pin 24 / 25 etc.) — out of scope for the current breadboard
+layout.
+
 Pins 11, 12, 13 are the dedicated hardware-SPI lines on Teensy 4.1 and
-cannot be relocated. Pins 2, 3, 4, 5, 8, 9, 10, 14, 15, 16, 17, 18, 19
-are all free choices and can be moved by editing the `kPin*` constants
-at the top of `platform/teensy/main.cpp`.
+cannot be relocated. Every other long-edge pin (2–10, 14–23, plus 0,
+1, 6, 7) is a free choice and can be moved by editing the `kPin*`
+constants at the top of `platform/teensy/main.cpp`.
 
 The channel encoder sits on the top-left strip (pins 3–5); the BPM and
 View encoders sit on the bottom-right strip (pins 14–16 and 17–19

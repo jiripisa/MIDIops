@@ -68,6 +68,20 @@ The clef bitmaps are downsampled from hand-drawn pixel-art references
 
 ![Notation view](docs/screenshots/notation.png)
 
+### Debug view
+
+A diagnostic screen for verifying that every knob and button on the
+panel is actually wired and producing events. Each encoder shows its
+running detent total, the sign of the most recent click and how long
+ago that happened; each button shows either an `ON`/`OFF` state (for
+the latching panel switch) or a press counter (for the momentary
+encoder shaft buttons), again with a "last changed" timestamp. Lines
+that changed in the last 500 ms render in yellow so it's obvious
+which control just moved.
+
+Useful when adding a new physical control: enter the view, push or
+turn the thing, and confirm the counter moves.
+
 ### Mapping mode
 
 Flip the latching panel switch ON to enter the chord-mapping editor.
@@ -165,7 +179,7 @@ Keyboard cheatsheet (printed to stderr at startup):
 | `1`–`9` | Pick the channel that the next `A`–`G` press lands on |
 | `←` / `→` | Channel encoder simulation (cycles OMNI..16) |
 | `↑` / `↓` | BPM encoder simulation (±1 BPM) |
-| `Page Up` / `Page Down` | View encoder (cycle Monitor / BigBpm / Notation) |
+| `Page Up` / `Page Down` | View encoder (cycle Monitor / BigBpm / Notation / Debug) |
 | `Space` | Toggle chord-mapping mode (= panel switch) |
 | `F5` | Channel-SW press (restart, or cycle direction in MAP) |
 | `Tab` | BPM-SW press (no-op in normal, next mapping in MAP) |
@@ -197,7 +211,7 @@ sudo killall MIDIServer
 | DFR0789 latching panel switch | 2 | Latches ON = mapping mode. LED mirrors state. |
 | KY-040 #1 — channel encoder | 3 (SW), 4 (CLK), 5 (DT) | Channel filter (0=OMNI..16). SW restarts the app / cycles direction in MAP. |
 | KY-040 #2 — BPM encoder | 14 (CLK), 15 (DT), 16 (SW) | MIDI Clock tempo. SW browses mappings in MAP, no-op in normal mode. |
-| KY-040 #3 — view encoder | 17 (CLK), 18 (DT), 19 (SW) | Cycles Monitor / BigBpm / Notation. SW reserved. |
+| KY-040 #3 — view encoder | 17 (CLK), 18 (DT), 19 (SW) | Cycles Monitor / BigBpm / Notation / Debug. SW reserved. |
 
 Pin assignment, wiring tables and an ASCII schematic live in
 [`HARDWARE.md`](HARDWARE.md). A beginner-friendly step-by-step build

@@ -223,7 +223,8 @@ public:
         Monitor  = 0,
         BigBpm   = 1,
         Notation = 2,
-        kCount   = 3,
+        Debug    = 3,
+        kCount   = 4,
     };
 private:
     View view_ = View::Monitor;
@@ -235,6 +236,29 @@ private:
     // every incoming NoteOn and emits scheduled note events through the
     // attached MidiOutput.
     ChordEngine chordEngine_;
+
+    // ---- Debug view state -------------------------------------------
+    //
+    // Per-control activity counters surfaced by the debug view. Updated
+    // at the top of each on*Knob() / on*SwPress() / setMappingMode()
+    // entry point so the view shows real input even when the dispatched
+    // action is a no-op in the current mode.
+    struct DebugKnob {
+        int32_t  total        = 0;   // running sum of detents since boot
+        int8_t   lastDelta    = 0;   // sign of the most recent rotation
+        uint32_t lastChangeMs = 0;   // 0 = "never moved"
+    };
+    struct DebugButton {
+        uint16_t pressCount   = 0;   // monotonic per-boot
+        uint32_t lastChangeMs = 0;   // 0 = "never pressed"
+    };
+    DebugKnob   dbgChannelKnob_{};
+    DebugKnob   dbgBpmKnob_{};
+    DebugKnob   dbgViewKnob_{};
+    DebugButton dbgPanelSwitch_{};
+    DebugButton dbgChannelSw_{};
+    DebugButton dbgBpmSw_{};
+    DebugButton dbgViewSw_{};
 
     // ---- Mapping mode state -----------------------------------------
     //
@@ -261,6 +285,7 @@ private:
     void drawWorms(Display& d)  const;
     void drawKeyboard(Display& d) const;
     void drawChordQueue(Display& d) const;
+    void drawDebug(Display& d) const;
     void drawSplash(Display& d) const;
     void drawBigBpm(Display& d) const;
     void drawNotation(Display& d) const;
