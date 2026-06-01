@@ -65,13 +65,16 @@ constexpr uint8_t kPinViewEncoderClk = 17;
 constexpr uint8_t kPinViewEncoderDt  = 18;
 constexpr uint8_t kPinViewEncoderSw  = 19;
 
-// Fourth KY-040 — wired for testing, no app behaviour mapped yet.
-// Visible in the Debug view (rotation count + press count + last
+// Fourth + fifth KY-040 — wired for testing, no app behaviour mapped
+// yet. Visible in the Debug view (rotation count + press count + last
 // change time) so you can verify the hardware works before assigning
 // a real function. Pin 0 is Serial1 RX — we don't use the UART.
 constexpr uint8_t kPinEnc4Clk = 6;
 constexpr uint8_t kPinEnc4Dt  = 7;
 constexpr uint8_t kPinEnc4Sw  = 0;
+constexpr uint8_t kPinEnc5Clk = 20;
+constexpr uint8_t kPinEnc5Dt  = 21;
+constexpr uint8_t kPinEnc5Sw  = 22;
 
 static ILI9341_t3n     tft(kPinTftCs, kPinTftDc, kPinTftRst);
 static TeensyDisplay   display(tft);
@@ -95,9 +98,12 @@ static TeensyEncoder   bpmKnob(kPinBpmEncoderDt, kPinBpmEncoderClk);
 // Third encoder — view selector.
 static TeensyButton    viewSwitch(kPinViewEncoderSw, /*activeHigh=*/false);
 static TeensyEncoder   viewKnob(kPinViewEncoderDt, kPinViewEncoderClk);
-// Fourth encoder — wired but unmapped, surfaced only in the Debug view.
+// Fourth + fifth encoders — wired but unmapped, surfaced only in the
+// Debug view.
 static TeensyButton    enc4Switch(kPinEnc4Sw, /*activeHigh=*/false);
 static TeensyEncoder   enc4Knob(kPinEnc4Dt, kPinEnc4Clk);
+static TeensyButton    enc5Switch(kPinEnc5Sw, /*activeHigh=*/false);
+static TeensyEncoder   enc5Knob(kPinEnc5Dt, kPinEnc5Clk);
 static core::MidiMonitorApp app;
 
 void setup() {
@@ -109,6 +115,7 @@ void setup() {
     bpmSwitch.begin();
     viewSwitch.begin();
     enc4Switch.begin();
+    enc5Switch.begin();
     app.tick(millis());
     app.render(display);
 }
@@ -158,8 +165,8 @@ void loop() {
     }
     viewSwLast = viewSwNow;
 
-    // Fourth encoder — wired for testing only; surfaces in the Debug
-    // view but has no app-level action attached yet.
+    // Fourth + fifth encoders — wired for testing only; surface in
+    // the Debug view but have no app-level action attached yet.
     const int enc4Detents = enc4Knob.poll();
     if (enc4Detents != 0) {
         app.onEnc4Knob(enc4Detents);
@@ -170,6 +177,17 @@ void loop() {
         app.onEnc4SwPress();
     }
     enc4SwLast = enc4SwNow;
+
+    const int enc5Detents = enc5Knob.poll();
+    if (enc5Detents != 0) {
+        app.onEnc5Knob(enc5Detents);
+    }
+    static bool enc5SwLast = false;
+    const bool enc5SwNow = enc5Switch.pollOn();
+    if (enc5SwNow && !enc5SwLast) {
+        app.onEnc5SwPress();
+    }
+    enc5SwLast = enc5SwNow;
 
     core::MidiMessage msg;
     while (midiIn.poll(msg)) {
