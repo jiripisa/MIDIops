@@ -13,13 +13,19 @@ constants change.
 
 A Teensy 4.1 sitting on a full-size breadboard, driving an ILI9341 2.8"
 TFT display through SPI, with:
-- A latching panel switch (DFRobot DFR0789) controlling monitoring on/off
-- A rotary encoder (KY-040) controlling the monitored MIDI channel; the
-  same encoder's shaft button replays the boot splash (so you can test
-  the startup screen without unplugging USB)
-- A second rotary encoder (KY-040) setting the BPM that the device
-  broadcasts as a MIDI Clock master to any DAW listening on the
-  `MIDIops` USB MIDI device
+- A latching panel switch (DFRobot DFR0789) — switch ON enters the
+  chord-mapping editor, LED mirrors the state
+- A rotary encoder (KY-040 #1) controlling the monitored MIDI channel;
+  shaft button restarts the app (or cycles chord direction in mapping
+  mode)
+- A second rotary encoder (KY-040 #2) setting the BPM that the device
+  broadcasts as a MIDI Clock master, plus the chord engine's
+  NoteOn/NoteOff stream, to any DAW listening on the `MIDIops` USB
+  MIDI device; shaft button browses through saved mappings while in
+  mapping mode
+- A third rotary encoder (KY-040 #3) cycling between the device's three
+  display views (Monitor, Big-BPM, Notation); shaft button reserved
+  for a future "home" action
 
 ## 1. Tools and parts
 
@@ -28,9 +34,9 @@ Check `HARDWARE.md` for the complete bill of materials. The short list:
 - Teensy 4.1 with male headers already soldered along both long edges
 - ILI9341 2.8" SPI display (red PCB, 14-pin header)
 - One DFR0789 panel switch
-- Two KY-040 rotary encoders (channel + BPM)
+- Three KY-040 rotary encoders (channel + BPM + view)
 - Full-size breadboard (MB-102 or equivalent)
-- About 25 dupont jumper wires (mix of M-M for breadboard rails and
+- About 30 dupont jumper wires (mix of M-M for breadboard rails and
   signal hops, M-F for connecting modules with their own headers)
 - USB-Micro data cable
 
@@ -124,7 +130,7 @@ Key dos and don'ts:
 - **T_CLK, T_CS, T_DIN, T_DO, T_IRQ are the touch controller — leave
   them disconnected** for milestone 1.
 
-## 6. Wire the monitor switch (DFR0789)
+## 6. Wire the mapping switch (DFR0789)
 
 The DFR0789 has a 3-wire Gravity connector (`G`, `V`, `S`). It's a
 latching switch — push it once to lock down, push again to release. The
@@ -138,9 +144,10 @@ Three jumpers:
 | `V`        | + rail (3.3 V, powers the LED) |
 | `S`        | Teensy pin **2** |
 
-The firmware mirrors the switch's mechanical position into the app's
-monitoring state, so the LED on the panel and the monitor on/off state
-always match.
+The firmware mirrors the switch's mechanical position into the
+mapping-mode flag, so the LED on the panel and the chord-mapping
+editor state always match: latched closed = editor active, released =
+back to normal monitoring. See section 7d for the editor workflow.
 
 ## 7. Wire the channel encoder (KY-040 #1)
 
@@ -184,18 +191,68 @@ MIDI Clock pulses (24 per quarter note) continuously, so any DAW with
 its tempo source set to `MIDIops` will follow the BPM you set with this
 knob.
 
-`SW` cycles through three display modes:
+`SW` in normal mode is currently a no-op (view cycling moved to the
+dedicated view encoder — see 7c). In mapping mode it browses through
+saved chord mappings.
 
-1. **Monitor view** — piano roll with scrolling worms + keyboard + chord names (default).
-2. **Big-BPM focus** — current tempo as one big number with a `BPM` caption.
-3. **Notation view** — a grand staff (treble + bass clef) with every held note drawn as a filled note-head at its correct pitch position, including sharps and ledger lines for notes outside the staff.
-
-The BPM knob still adjusts tempo in every view. The MIDI panic
-(release stuck notes) happens automatically when the DAW sends CC 120
-(All Sound Off) or CC 123 (All Notes Off) — Ableton emits these on
-transport stop — so a dedicated hardware panic button isn't needed.
+The MIDI panic (release stuck notes) happens automatically when the
+DAW sends CC 120 (All Sound Off) or CC 123 (All Notes Off) — Ableton
+emits these on transport stop — so a dedicated hardware panic button
+isn't needed.
 
 Same direction-reversal trick applies as the channel encoder.
+
+## 7c. Wire the view encoder (KY-040 #3)
+
+Third identical KY-040. Place it next to the BPM encoder on the
+bottom edge of the breadboard so the two "mode" knobs sit together,
+within thumb reach, away from the channel knob.
+
+| Encoder pin | Goes to |
+|-------------|---------|
+| `GND`       | − rail |
+| `+`         | + rail |
+| `SW`        | Teensy pin **19** |
+| `DT`        | Teensy pin **18** |
+| `CLK`       | Teensy pin **17** |
+
+Rotation cycles through three display modes:
+
+1. **Monitor view** — per-channel coloured worms scrolling up from a piano keyboard, with held-note chord names in the header and a chord-queue strip below it.
+2. **Big-BPM focus** — current tempo as one big number with a `BPM` caption.
+3. **Notation view** — a grand staff (treble + bass clef) with every held note drawn as a filled note-head at its correct pitch position, including sharps and ledger lines for notes outside the staff. Held-note names appear below the staff and drift down + fade away when released.
+
+CW rotation advances forward (Monitor → BigBpm → Notation → Monitor),
+CCW goes backward. The `SW` is currently a no-op (reserved for a
+future "home / jump to Monitor view" action).
+
+Same direction-reversal trick applies as the other encoders.
+
+## 7d. Use the panel switch for chord-mapping mode
+
+The DFR0789 latching switch (wired in section 6) toggles between
+normal operation (switch DOWN, LED off) and the **chord mapping
+editor** (switch UP, LED on).
+
+While in mapping mode:
+
+* Send a note on the `MIDIops` MIDI input to capture it as the trigger
+  for the next mapping (or load an existing mapping with that
+  trigger).
+* Rotate the **channel** encoder to cycle through chord types: maj /
+  min / dim / aug / 7 / m7 / maj7.
+* Press the **channel** shaft button to cycle the playback direction:
+  BLOCK / UP / DOWN.
+* Rotate the **BPM** encoder to set the gate length in MIDI ticks
+  (1..96, where 24 = quarter note at 24-PPQN base).
+* Press the **BPM** shaft button to browse to the next saved mapping.
+* Flip the switch back DOWN to exit. All edits auto-save into the
+  engine as you go — there's no separate save action.
+
+Once back in normal mode, any incoming NoteOn matching a mapping's
+trigger plays the chord on the configured output channel. Triggers
+that arrive while a chord is already sounding are queued FIFO and
+play in trigger order.
 
 ## 8. Pre-power checklist
 
@@ -223,13 +280,13 @@ Before you connect USB:
 3. If the Teensy doesn't enter programming mode automatically, press the
    small black button next to its USB port.
 4. After a few seconds you should see:
-   - A 3-second `MIDIops` splash with the commit hash and build
-     timestamp.
+   - A 3-second `MIDIops` synthwave splash with the commit hash and
+     build timestamp overlaid at the bottom edge.
    - Then the live monitor: a dark roll area with the keyboard at the
      bottom and the header strip on top showing `CH:OMNI` (or whichever
      channel is selected).
-   - The DFR0789's LED reflects the monitor state — lit when monitoring
-     is on, dark when off.
+   - The DFR0789's LED reflects the mapping-mode state — lit when the
+     mapping editor is active, dark when in normal monitoring.
 
 ## 10. Smoke test
 
@@ -242,12 +299,18 @@ Before you connect USB:
   header should change by 1 BPM per detent (range 30..300). In Ableton,
   set the tempo source to `MIDIops` and confirm the project tempo
   follows what's showing on the display.
-- Toggle the panel switch: header bar flips between the normal
-  `CH:OMNI` (gray) and a red `MONITOR OFF` strip.
-- Send MIDI from your Mac (Ableton via the IAC Driver routed to `MIDIops`,
-  or the simulator's keyboard injection): coloured worms scroll up from
-  the keyboard, keys light up under held notes, and chord names appear
-  in the header.
+- Turn the **view** encoder: the screen should cycle through Monitor,
+  Big-BPM (giant tempo number), and Notation (grand staff).
+- Toggle the panel switch UP: the screen should show the synthwave
+  `PRESS A NOTE / TO MAPPING` prompt. Send any NoteOn from your DAW
+  (or from the simulator) and the editor view appears with that note
+  pre-filled as the trigger. Toggle the switch DOWN to exit.
+- Send MIDI from your Mac (Ableton via the IAC Driver routed to
+  `MIDIops`, or the simulator's keyboard injection): coloured worms
+  scroll up from the keyboard, keys light up under held notes, chord
+  names appear in the header, and — if you've defined a mapping — the
+  configured chord plays out on the configured output channel,
+  visible in the monitor view as gray outline (ghost) worms.
 
 ## 11. When something doesn't work
 
@@ -262,7 +325,7 @@ Before you connect USB:
   `tft.begin()`).
 - **Knob direction reversed.** Swap the constructor arguments in
   `platform/teensy/main.cpp` (one-line fix, no rewiring).
-- **Monitor switch toggles the wrong way.** Check the polarity. The
+- **Mapping switch toggles the wrong way.** Check the polarity. The
   `TeensyButton` constructor in `platform/teensy/main.cpp` defaults to
   `activeHigh = true` for the DFR0789; if your latching switch has the
   inverse wiring, pass `false`.

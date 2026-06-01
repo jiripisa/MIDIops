@@ -11,10 +11,10 @@ commit. See `ASSEMBLY.md` for the step-by-step build walkthrough.
 |--:|-----------|------------|-------|-----------------|
 | 1 | Teensy 4.1 microcontroller | PJRC Teensy 4.1 | ARM Cortex-M7 600 MHz, headers pre-soldered | PJRC, distributors |
 | 2 | 2.8" TFT SPI display | ILI9341, "2.8 TFT SPI 240x320 V1.2" red PCB | 240x320, integrated XPT2046 touch (unused) and SD slot (unused) | AliExpress / Botland |
-| 3 | Latching panel switch with LED | DFRobot DFR0789 Gravity LED Switch | Set of 5 colors; we use one for the monitor on/off toggle | DFRobot, distributors |
+| 3 | Latching panel switch with LED | DFRobot DFR0789 Gravity LED Switch | Set of 5 colors; we use one to enter / leave the chord-mapping editor (LED mirrors the state) | DFRobot, distributors |
 | 4 | Rotary encoder with push button (×2) | Keyes KY-040 | 30 detents/rev, 4 quadrature transitions per detent, integrated SW. We use two: one for channel selection, one for BPM | Generic Arduino kit module |
 | 5 | Full-size breadboard | MB-102 (830 tie points) | Two halves with center channel + 4 power rails | Any electronics shop |
-| 6 | Dupont jumper wires | M-M and M-F, ~15 cm | Need ~25: 9 for display, 3 for monitor button, 5 per encoder × 2, 2 for power rails, a few spares | Any electronics shop |
+| 6 | Dupont jumper wires | M-M and M-F, ~15 cm | Need ~30: 9 for display, 3 for the panel switch, 5 per encoder × 3, 2 for power rails, a few spares | Any electronics shop |
 | 7 | USB-Micro cable | Data-capable | Power + flashing + USB-MIDI from the Teensy to the Mac | Any |
 
 ## Teensy 4.1 pin assignment
@@ -26,7 +26,7 @@ This is the single source of truth. The pin numbers come from
 |-----------:|------|--------------|-----------|---------------|
 | 3.3V       | Power supply (multiple pins) | Breadboard + rail | OUT (regulator) | — |
 | GND        | Ground (multiple pins) | Breadboard − rail | — | — |
-| 2          | Monitor switch signal | DFR0789 `SW` | IN, INPUT_PULLUP, **active HIGH** (latched closed) | `kPinMonitorButton` |
+| 2          | Mapping-mode switch signal | DFR0789 `SW` | IN, INPUT_PULLUP, **active HIGH** (latched closed = mapping editor active) | `kPinMonitorButton` |
 | 3          | Channel encoder shaft button | KY-040 #1 `SW` | IN, INPUT_PULLUP, **active LOW** | `kPinEncoderSw` |
 | 4          | Channel encoder A (clock) | KY-040 #1 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinEncoderClk` |
 | 5          | Channel encoder B (data) | KY-040 #1 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinEncoderDt` |
@@ -77,12 +77,15 @@ VCC  GND  CS  RESET  DC  SDI(MOSI)  SCK  LED  SDO(MISO)  T_CLK  T_CS  T_DIN  T_D
 | **SDO** / **MISO** | Teensy pin 12 | Optional for the basic monitor (no read-back). Keep wired if you may add the on-board SD slot or XPT2046 touch later |
 | **T_CLK**, **T_CS**, **T_DIN**, **T_DO**, **T_IRQ** | leave disconnected | XPT2046 touch controller — unused in milestone 1 |
 
-### DFRobot DFR0789 Gravity LED switch (monitor on/off)
+### DFRobot DFR0789 Gravity LED switch (chord-mapping mode)
 
 Three-pin Gravity connector on the back. The switch latches mechanically:
 push it once to lock down (LED on), push it again to release (LED off).
 With Teensy's INPUT_PULLUP the signal is **HIGH when latched closed** and
-LOW when latched open.
+LOW when latched open. The firmware mirrors the switch's mechanical
+state into `MidiMonitorApp::mappingMode_`, so the panel LED and the
+chord-mapping editor are always in sync: LED on = editor visible,
+LED off = normal monitoring.
 
 | Switch pin | Goes to |
 |------------|---------|
@@ -99,7 +102,7 @@ Five-pin header along the bottom edge of the module: `GND, +, SW, DT, CLK`
 |-------------|---------|-------|
 | **GND** | − rail | |
 | **+** | 3.3V rail | Powers the on-board 10 kΩ pull-ups on CLK and DT |
-| **SW** | Teensy pin 3 | Active-LOW momentary push button (press in on the shaft) — fires `MidiMonitorApp::restart()` so you can replay the boot splash without unplugging |
+| **SW** | Teensy pin 3 | Active-LOW momentary push button (press in on the shaft) — in normal mode fires `MidiMonitorApp::restart()` so you can replay the boot splash without unplugging; in mapping mode cycles the edit's chord direction (BLOCK / UP / DOWN) |
 | **DT** | Teensy pin 5 | Quadrature data line |
 | **CLK** | Teensy pin 4 | Quadrature clock line |
 
@@ -211,3 +214,9 @@ Direction reversed? Swap the constructor arguments in
 ```
 
 Arrow direction = signal flow direction.
+
+The diagram shows the channel encoder wiring as a representative
+example. The BPM and view encoders follow the same `GND / + / SW / DT
+/ CLK` pattern; they just land on Teensy pins **14, 15, 16** (BPM)
+and **17, 18, 19** (view) respectively — see the pin-assignment table
+above for the canonical mapping.

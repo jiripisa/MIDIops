@@ -1,8 +1,11 @@
 # MIDIops — project notes for Claude
 
-A hardware MIDI arpeggiator / sequencer for the Teensy 4.1 + 2.8" ILI9341
-display. Milestone 1 (current scope): a MIDI monitor that filters by a
-configurable channel and shows the last ~11 messages on screen.
+A hardware MIDI chord trigger / monitor for the Teensy 4.1 + 2.8"
+ILI9341 display. Current state: incoming NoteOn → mapped to a chord
+(maj/min/dim/aug/7/m7/maj7, BLOCK or arpeggiated up/down), played out
+on a per-mapping output channel. Triggers queue FIFO so chords never
+overlap. Three views (monitor / big-BPM / notation) plus a full
+mapping editor on the device.
 
 ## The architectural rule (do not break this)
 
@@ -37,29 +40,48 @@ make clean       # blow away .pio/
 Both environments live in `platformio.ini`. `build_src_filter` enforces the
 "only one platform/ subtree per env" rule.
 
+## Current scope
+
+* **Monitor view** — per-channel coloured worms scrolling up from a
+  4-octave keyboard. Engine-played notes appear as gray rectangular
+  outlines (ghost notes) layered on top. Header shows channel filter +
+  BPM + held-note chord names; queue strip below shows the chord engine's
+  playback list.
+* **Big-BPM view** — current MIDI Clock tempo, large.
+* **Notation view** — grand staff with rolling note heads + stems,
+  held-note names below (drift down + fade after release), held-chord
+  name above.
+* **Mapping mode** — flip the latching panel switch ON. Capture a
+  trigger by pressing a note; configure chord type / gate ticks /
+  direction / output channel with the encoders. Auto-saves to the
+  chord engine. Up to 16 mappings.
+* **Splash + mapping-prompt artwork** — full-screen 320×240 RGB565
+  bitmaps blitted from auto-generated headers
+  (`core/splash_image.h`, `core/mapping_prompt_image.h`). Regenerated
+  from PNG via `scripts/build_splash_image.py`.
+
+Three rotary encoders are wired:
+  * Channel encoder on pins 3 (SW), 4 (CLK), 5 (DT).
+  * BPM encoder on pins 14 (CLK), 15 (DT), 16 (SW).
+  * View encoder on pins 17 (CLK), 18 (DT), 19 (SW).
+
+Latching front-panel switch (DFR0789) on pin 2 drives mapping mode.
+
 ## Where future milestones plug in
 
-* **More rotary encoders** (gate length, swing, pattern length, etc.):
-  the abstraction exists as `core::EncoderInput` (`core/Encoder.h`) and
-  the Teensy implementation in `platform/teensy/TeensyEncoder.*` wraps
-  the PJRC `Encoder` library. Currently two encoders are wired (channel
-  on pins 4/5 + SW 3, BPM on pins 14/15 + SW 16). Add another by
-  reserving 3 GPIOs (CLK/DT/SW), creating a `TeensyEncoder` instance in
-  `platform/teensy/main.cpp`, and adding a polling line to `loop()`
-  that forwards detents to a new `MidiMonitorApp::on*Knob()` method.
-  In the simulator, bind an unused key pair (e.g. `,`/`.` or PgUp/PgDn).
-* **Arpeggiator engine**: pure `core/` code. Build it as `core/Arpeggiator`
-  (note buffer + pattern generator) that consumes `MidiMessage` and emits
-  `MidiMessage` via a new `MidiOutput` abstract interface. Teensy
-  implementation uses `usbMIDI.sendNoteOn(...)`; host implementation can
-  send to a CoreMIDI virtual *output* port via RtMidi.
-* **Settings / UI screens**: a `core/View` hierarchy with `MidiMonitorApp`
-  as the first concrete view. The main loop becomes "active view ->
-  onInput() -> render()" with no platform code involved.
-
-The current layout has been chosen specifically so none of those additions
-require restructuring — only new files in `core/` and matching
+The current layout has been chosen specifically so future additions
+don't require restructuring — only new files in `core/` and matching
 implementations under `platform/teensy/` and `platform/host/`.
+
+Likely next steps:
+  * **Persistence** of mappings to flash so they survive a power
+    cycle (Teensy has 7+ MB free).
+  * **More chord types** in `ChordEngine::ChordType` + interval
+    tables in `core/ChordEngine.cpp`.
+  * **Transport** (Start / Continue / Stop) wired to one of the
+    encoder shaft buttons or a future panel button.
+  * **Per-mapping output channel editor** — currently the editor
+    knobs only cover type / gate / direction.
 
 ## Conventions
 
