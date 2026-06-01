@@ -71,12 +71,52 @@ The clef bitmaps are downsampled from hand-drawn pixel-art references
 ### Mapping mode
 
 Flip the latching panel switch ON to enter the chord-mapping editor.
-The first state — before any note has been pressed — shows a
-full-screen synthwave "PRESS A NOTE / TO MAPPING" prompt. Once an
-incoming NoteOn lands, the editor opens with that note as the
-trigger; rotating the encoders edits the current mapping (chord type,
-gate ticks, direction) and every change auto-saves into the chord
-engine. Flip the switch back OFF to leave.
+The LED on the switch mirrors the state, so you always know visually
+whether you're in normal monitoring or in the editor.
+
+**Step 1 — capture a trigger.** The first state shows a full-screen
+synthwave "PRESS A NOTE / TO MAPPING" prompt and waits. Send any
+NoteOn (from a DAW, keyboard or the simulator's `A`..`G` keys). The
+note becomes the trigger and the editor opens. If a mapping for that
+trigger already exists, it loads instead of creating a new one.
+
+**Step 2 — edit.** The editor is a label/value layout under an orange
+`MAP MODE` header. The header also shows a position counter (`i/N`)
+so you know where you are in the list of stored mappings.
+
+```
+┌───────────────────────────────────────────┐
+│ MAP MODE                          1/3     │   ← orange header bar
+├───────────────────────────────────────────┤
+│   Trigger    C4 any                       │   ← captured note + channel
+│   Chord      C4 maj7                      │   ← root + chord type
+│   Gate       48 ticks                     │   ← per-note duration (24 PPQN)
+│   Dir        BLOCK                        │   ← BLOCK / UP / DOWN
+│   Out        ch 5                         │   ← output channel
+├───────────────────────────────────────────┤
+│ CH: type     BPM: gate                    │   ← bottom hint strip
+│ CHsw: dir    BPMsw: next                  │
+└───────────────────────────────────────────┘
+```
+
+Each control does something different in mapping mode:
+
+| Control | What it edits |
+|---|---|
+| **Channel encoder** (rotate) | Cycles chord type: maj / min / dim / aug / 7 / m7 / maj7 |
+| **Channel SW** (press) | Cycles direction: BLOCK / UP / DOWN |
+| **BPM encoder** (rotate) | Adjusts gate ticks (1..96 at 24 PPQN — i.e. 1 = a sixteenth, 24 = a quarter, 96 = a whole) |
+| **BPM SW** (press) | Browses to the next saved mapping in the table |
+| **NoteOn from MIDI in** | Captures a new trigger (or loads existing) — same as in step 1 |
+
+Every change is auto-saved into the chord engine the moment you
+turn / press, so there's no explicit "Save" action. Up to 16
+mappings are stored at a time.
+
+**Step 3 — exit.** Flip the panel switch OFF. The display returns to
+whichever view (Monitor / BigBpm / Notation) was last active. From
+now on every matching NoteOn fires its chord; triggers that arrive
+while a chord is sounding queue up and play in order.
 
 ## How the chord engine works
 
