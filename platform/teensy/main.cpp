@@ -65,6 +65,14 @@ constexpr uint8_t kPinViewEncoderClk = 17;
 constexpr uint8_t kPinViewEncoderDt  = 18;
 constexpr uint8_t kPinViewEncoderSw  = 19;
 
+// Fourth KY-040 — wired for testing, no app behaviour mapped yet.
+// Visible in the Debug view (rotation count + press count + last
+// change time) so you can verify the hardware works before assigning
+// a real function. Pin 0 is Serial1 RX — we don't use the UART.
+constexpr uint8_t kPinEnc4Clk = 6;
+constexpr uint8_t kPinEnc4Dt  = 7;
+constexpr uint8_t kPinEnc4Sw  = 0;
+
 static ILI9341_t3n     tft(kPinTftCs, kPinTftDc, kPinTftRst);
 static TeensyDisplay   display(tft);
 static TeensyMidiInput midiIn;
@@ -87,6 +95,9 @@ static TeensyEncoder   bpmKnob(kPinBpmEncoderDt, kPinBpmEncoderClk);
 // Third encoder — view selector.
 static TeensyButton    viewSwitch(kPinViewEncoderSw, /*activeHigh=*/false);
 static TeensyEncoder   viewKnob(kPinViewEncoderDt, kPinViewEncoderClk);
+// Fourth encoder — wired but unmapped, surfaced only in the Debug view.
+static TeensyButton    enc4Switch(kPinEnc4Sw, /*activeHigh=*/false);
+static TeensyEncoder   enc4Knob(kPinEnc4Dt, kPinEnc4Clk);
 static core::MidiMonitorApp app;
 
 void setup() {
@@ -97,6 +108,7 @@ void setup() {
     encoderSwitch.begin();
     bpmSwitch.begin();
     viewSwitch.begin();
+    enc4Switch.begin();
     app.tick(millis());
     app.render(display);
 }
@@ -145,6 +157,19 @@ void loop() {
         app.onViewSwPress();
     }
     viewSwLast = viewSwNow;
+
+    // Fourth encoder — wired for testing only; surfaces in the Debug
+    // view but has no app-level action attached yet.
+    const int enc4Detents = enc4Knob.poll();
+    if (enc4Detents != 0) {
+        app.onEnc4Knob(enc4Detents);
+    }
+    static bool enc4SwLast = false;
+    const bool enc4SwNow = enc4Switch.pollOn();
+    if (enc4SwNow && !enc4SwLast) {
+        app.onEnc4SwPress();
+    }
+    enc4SwLast = enc4SwNow;
 
     core::MidiMessage msg;
     while (midiIn.poll(msg)) {

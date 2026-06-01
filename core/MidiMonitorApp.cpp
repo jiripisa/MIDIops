@@ -405,6 +405,21 @@ void MidiMonitorApp::onViewSwPress() {
     // Reserved for a future use (e.g. "home" — jump back to Monitor).
 }
 
+void MidiMonitorApp::onEnc4Knob(int delta) {
+    if (delta != 0) {
+        dbgEnc4Knob_.total       += delta;
+        dbgEnc4Knob_.lastDelta    = static_cast<int8_t>(delta > 0 ? 1 : -1);
+        dbgEnc4Knob_.lastChangeMs = lastTickMs_;
+    }
+    // No app-level action yet — Enc4 is wired but unmapped.
+}
+
+void MidiMonitorApp::onEnc4SwPress() {
+    ++dbgEnc4Sw_.pressCount;
+    dbgEnc4Sw_.lastChangeMs = lastTickMs_;
+    // No app-level action yet.
+}
+
 void MidiMonitorApp::onViewKnob(int delta) {
     if (delta == 0)  return;
     dbgViewKnob_.total       += delta;
@@ -872,6 +887,7 @@ void MidiMonitorApp::drawDebug(Display& d) const {
     drawKnob("CH",   dbgChannelKnob_);
     drawKnob("BPM",  dbgBpmKnob_);
     drawKnob("VIEW", dbgViewKnob_);
+    drawKnob("ENC4", dbgEnc4Knob_);
 
     y += 4;
     d.drawText(kColLabel, y, "Buttons", color::Cyan, color::Black, 1);
@@ -901,10 +917,11 @@ void MidiMonitorApp::drawDebug(Display& d) const {
         d.drawText(kColData,      y, value_buf, col, color::Black, 1);
         y += kRowH;
     };
-    drawButton("PANEL", /*latching=*/true,  mappingMode_, dbgPanelSwitch_);
-    drawButton("CHsw",  /*latching=*/false, false,        dbgChannelSw_);
-    drawButton("BPMsw", /*latching=*/false, false,        dbgBpmSw_);
-    drawButton("VIEWsw",/*latching=*/false, false,        dbgViewSw_);
+    drawButton("PANEL",  /*latching=*/true,  mappingMode_, dbgPanelSwitch_);
+    drawButton("CHsw",   /*latching=*/false, false,        dbgChannelSw_);
+    drawButton("BPMsw",  /*latching=*/false, false,        dbgBpmSw_);
+    drawButton("VIEWsw", /*latching=*/false, false,        dbgViewSw_);
+    drawButton("ENC4sw", /*latching=*/false, false,        dbgEnc4Sw_);
 
     // Hint at the bottom — how to leave the debug view.
     constexpr int kHintY = kScreenH - 12;

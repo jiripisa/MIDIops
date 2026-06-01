@@ -111,6 +111,12 @@ public:
     void onViewKnob(int delta);
     uint8_t view() const { return static_cast<uint8_t>(view_); }
 
+    // Fourth encoder — wired, no app-level behaviour yet. Used to test
+    // the new hardware in the Debug view; will gain a real action once
+    // the user decides what it should control.
+    void onEnc4Knob(int delta);
+    void onEnc4SwPress();
+
     void onMessage(const MidiMessage& msg);
 
     // Advances the scrolling animation. Caller passes a monotonic millisecond
@@ -255,10 +261,12 @@ private:
     DebugKnob   dbgChannelKnob_{};
     DebugKnob   dbgBpmKnob_{};
     DebugKnob   dbgViewKnob_{};
+    DebugKnob   dbgEnc4Knob_{};
     DebugButton dbgPanelSwitch_{};
     DebugButton dbgChannelSw_{};
     DebugButton dbgBpmSw_{};
     DebugButton dbgViewSw_{};
+    DebugButton dbgEnc4Sw_{};
 
     // ---- Mapping mode state -----------------------------------------
     //
