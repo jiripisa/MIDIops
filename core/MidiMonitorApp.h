@@ -119,6 +119,13 @@ public:
     void onEnc5Knob(int delta);
     void onEnc5SwPress();
 
+    // Latching panel buttons #2 and #3 — same DFR0789-style hardware
+    // as the main panel switch. Caller passes the current latched
+    // state every loop; the engine records every transition for the
+    // Debug view. No app-level action attached yet.
+    void onLatchSwitch2(bool on);
+    void onLatchSwitch3(bool on);
+
     void onMessage(const MidiMessage& msg);
 
     // Advances the scrolling animation. Caller passes a monotonic millisecond
@@ -271,6 +278,10 @@ private:
     DebugButton dbgViewSw_{};
     DebugButton dbgEnc4Sw_{};
     DebugButton dbgEnc5Sw_{};
+    DebugButton dbgLatch2_{};
+    DebugButton dbgLatch3_{};
+    bool        latch2On_ = false;
+    bool        latch3On_ = false;
 
     // ---- Mapping mode state -----------------------------------------
     //

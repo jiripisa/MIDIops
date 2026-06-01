@@ -435,6 +435,20 @@ void MidiMonitorApp::onEnc5SwPress() {
     // No app-level action yet.
 }
 
+void MidiMonitorApp::onLatchSwitch2(bool on) {
+    if (on == latch2On_) return;
+    latch2On_ = on;
+    ++dbgLatch2_.pressCount;
+    dbgLatch2_.lastChangeMs = lastTickMs_;
+}
+
+void MidiMonitorApp::onLatchSwitch3(bool on) {
+    if (on == latch3On_) return;
+    latch3On_ = on;
+    ++dbgLatch3_.pressCount;
+    dbgLatch3_.lastChangeMs = lastTickMs_;
+}
+
 void MidiMonitorApp::onViewKnob(int delta) {
     if (delta == 0)  return;
     dbgViewKnob_.total       += delta;
@@ -934,6 +948,8 @@ void MidiMonitorApp::drawDebug(Display& d) const {
         y += kRowH;
     };
     drawButton("PANEL",  /*latching=*/true,  mappingMode_, dbgPanelSwitch_);
+    drawButton("BTN2",   /*latching=*/true,  latch2On_,    dbgLatch2_);
+    drawButton("BTN3",   /*latching=*/true,  latch3On_,    dbgLatch3_);
     drawButton("CHsw",   /*latching=*/false, false,        dbgChannelSw_);
     drawButton("BPMsw",  /*latching=*/false, false,        dbgBpmSw_);
     drawButton("VIEWsw", /*latching=*/false, false,        dbgViewSw_);

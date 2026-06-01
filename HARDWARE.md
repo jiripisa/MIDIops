@@ -42,20 +42,14 @@ This is the single source of truth. The pin numbers come from
 | 17         | View encoder A (clock) | KY-040 #3 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinViewEncoderClk` |
 | 18         | View encoder B (data)  | KY-040 #3 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinViewEncoderDt`  |
 | 19         | View encoder shaft button | KY-040 #3 `SW` | IN, INPUT_PULLUP, **active LOW** — currently reserved (no-op), planned "home / reset to Monitor view" | `kPinViewEncoderSw`  |
-
-**Reserved long-edge pins** (unwired today, earmarked for an upcoming
-expansion — one more encoder, plus two more latching buttons):
-
-| Teensy pin | Reserved for | Wires from |
-|-----------:|--------------|------------|
-| 0          | Encoder #4 `SW` | Pin 0 is also Serial1 RX. We don't use hardware serial. |
-| 1          | Latching button #2 `S` | Pin 1 is also Serial1 TX. |
-| 6          | Encoder #4 `CLK` | |
-| 7          | Encoder #4 `DT`  | |
-| 20         | Encoder #5 `CLK` | |
-| 21         | Encoder #5 `DT`  | |
-| 22         | Encoder #5 `SW`  | |
-| 23         | Latching button #3 `S` | |
+| 0          | Encoder #4 shaft button | KY-040 #4 `SW`  | IN, INPUT_PULLUP, **active LOW** — wired but unmapped; surfaced in the Debug view. Pin 0 is also Serial1 RX (unused). | `kPinEnc4Sw`  |
+| 6          | Encoder #4 A (clock) | KY-040 #4 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc4Clk` |
+| 7          | Encoder #4 B (data)  | KY-040 #4 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc4Dt`  |
+| 20         | Encoder #5 A (clock) | KY-040 #5 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc5Clk` |
+| 21         | Encoder #5 B (data)  | KY-040 #5 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc5Dt`  |
+| 22         | Encoder #5 shaft button | KY-040 #5 `SW` | IN, INPUT_PULLUP, **active LOW** — wired but unmapped; surfaced in the Debug view | `kPinEnc5Sw` |
+| 1          | Latching button #2 signal | DFR0789 `SW` | IN, INPUT_PULLUP, **active HIGH** — wired but unmapped; surfaced in the Debug view as BTN2. Pin 1 is also Serial1 TX (unused). | `kPinLatch2` |
+| 23         | Latching button #3 signal | DFR0789 `SW` | IN, INPUT_PULLUP, **active HIGH** — wired but unmapped; surfaced in the Debug view as BTN3 | `kPinLatch3` |
 
 That's the full set of long-edge GPIOs the device will use. Adding
 a 9th input would require soldering a header to one of the bottom

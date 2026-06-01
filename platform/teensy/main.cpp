@@ -76,6 +76,12 @@ constexpr uint8_t kPinEnc5Clk = 20;
 constexpr uint8_t kPinEnc5Dt  = 21;
 constexpr uint8_t kPinEnc5Sw  = 22;
 
+// Latching panel buttons #2 and #3 — same DFR0789-style hardware as the
+// main panel switch. Wired but unmapped; surfaced in the Debug view as
+// BTN2 / BTN3 (latched-state pill + toggle counter).
+constexpr uint8_t kPinLatch2 = 1;
+constexpr uint8_t kPinLatch3 = 23;
+
 static ILI9341_t3n     tft(kPinTftCs, kPinTftDc, kPinTftRst);
 static TeensyDisplay   display(tft);
 static TeensyMidiInput midiIn;
@@ -104,6 +110,11 @@ static TeensyButton    enc4Switch(kPinEnc4Sw, /*activeHigh=*/false);
 static TeensyEncoder   enc4Knob(kPinEnc4Dt, kPinEnc4Clk);
 static TeensyButton    enc5Switch(kPinEnc5Sw, /*activeHigh=*/false);
 static TeensyEncoder   enc5Knob(kPinEnc5Dt, kPinEnc5Clk);
+// Latching panel buttons #2 + #3 — DFR0789-style, active-HIGH on
+// INPUT_PULLUP (signal pin HIGH when latched closed). Matches the
+// existing monitorButton default.
+static TeensyButton    latch2Button(kPinLatch2);
+static TeensyButton    latch3Button(kPinLatch3);
 static core::MidiMonitorApp app;
 
 void setup() {
@@ -116,6 +127,8 @@ void setup() {
     viewSwitch.begin();
     enc4Switch.begin();
     enc5Switch.begin();
+    latch2Button.begin();
+    latch3Button.begin();
     app.tick(millis());
     app.render(display);
 }
@@ -188,6 +201,12 @@ void loop() {
         app.onEnc5SwPress();
     }
     enc5SwLast = enc5SwNow;
+
+    // Latching panel buttons #2 + #3 — push state every loop; the app
+    // edge-detects internally and only bumps the debug counter on real
+    // transitions.
+    app.onLatchSwitch2(latch2Button.pollOn());
+    app.onLatchSwitch3(latch3Button.pollOn());
 
     core::MidiMessage msg;
     while (midiIn.poll(msg)) {
