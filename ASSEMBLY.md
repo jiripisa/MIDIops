@@ -13,19 +13,23 @@ constants change.
 
 A Teensy 4.1 sitting on a full-size breadboard, driving an ILI9341 2.8"
 TFT display through SPI, with:
-- A latching panel switch (DFRobot DFR0789) — switch ON enters the
-  chord-mapping editor, LED mirrors the state
-- A rotary encoder (KY-040 #1) controlling the monitored MIDI channel;
-  shaft button restarts the app (or cycles chord direction in mapping
-  mode)
-- A second rotary encoder (KY-040 #2) setting the BPM that the device
-  broadcasts as a MIDI Clock master, plus the chord engine's
+- A latching panel switch (DFRobot DFR0789 #1, "PANEL") — switch ON
+  enters the chord-mapping editor, LED mirrors the state
+- A rotary encoder (KY-040 #1, "Channel") controlling the monitored
+  MIDI channel; shaft button restarts the app (or cycles chord
+  direction in mapping mode)
+- A second rotary encoder (KY-040 #2, "BPM") setting the BPM that the
+  device broadcasts as a MIDI Clock master, plus the chord engine's
   NoteOn/NoteOff stream, to any DAW listening on the `MIDIops` USB
   MIDI device; shaft button browses through saved mappings while in
   mapping mode
-- A third rotary encoder (KY-040 #3) cycling between the device's three
-  display views (Monitor, Big-BPM, Notation); shaft button reserved
-  for a future "home" action
+- A third rotary encoder (KY-040 #3, "View") cycling between the
+  device's four display views (Monitor, Big-BPM, Notation, Debug);
+  shaft button reserved for a future "home" action
+- Two extra rotary encoders (KY-040 #4 "Enc4" + KY-040 #5 "Enc5") and
+  two extra DFR0789 latching buttons (BTN2 + BTN3) — all wired up
+  and visible in the Debug view but without app-level actions yet,
+  reserved for future features
 
 ## 1. Tools and parts
 
@@ -33,11 +37,13 @@ Check `HARDWARE.md` for the complete bill of materials. The short list:
 
 - Teensy 4.1 with male headers already soldered along both long edges
 - ILI9341 2.8" SPI display (red PCB, 14-pin header)
-- One DFR0789 panel switch
-- Three KY-040 rotary encoders (channel + BPM + view)
+- Three DFR0789 panel switches (PANEL + BTN2 + BTN3)
+- Five KY-040 rotary encoders (Channel + BPM + View + Enc4 + Enc5)
 - Full-size breadboard (MB-102 or equivalent)
-- About 30 dupont jumper wires (mix of M-M for breadboard rails and
-  signal hops, M-F for connecting modules with their own headers)
+- About 60 dupont jumper wires (mix of M-M for breadboard rails and
+  signal hops, M-F for connecting modules with their own headers).
+  Budget: 9 for display, 3 per DFR0789 × 3, 5 per KY-040 × 5,
+  4 for power-rail bridging, a few spares.
 - USB-Micro data cable
 
 Software side — see `README.md` for `brew install` commands. In short:
@@ -72,8 +78,14 @@ Three rules to remember:
    together) are internally connected.
 2. The center channel breaks the connection — A and F in the same column
    are **not** connected.
-3. The + and − rails are one long wire each. Anything you tie to a + rail
-   hole has 3.3 V available all along that rail.
+3. The + and − rails look like one long wire each, **but on the MB-102
+   they're split in half** in the middle of the board (around hole 30
+   — look for a tiny break in the coloured stripe printed along each
+   rail). The two halves are electrically independent until you bridge
+   them with a jumper. So if you wire a component into the half that
+   doesn't have a power wire back to the Teensy, it gets **no power
+   and no ground** — silent failure. We work around this by adding two
+   short bridge jumpers along each long edge in step 4.
 
 ## 3. Place the Teensy
 
@@ -94,16 +106,34 @@ Relevant pins for this build (see `HARDWARE.md` for the master table):
 
 ## 4. Run the power rails
 
-You need 3.3 V and GND distributed along the breadboard:
+You need 3.3 V and GND distributed along **both halves** of **both
+long edges** of the breadboard (4 rail strips total, since the MB-102
+splits each rail in the middle).
 
-1. **Red wire**: from any Teensy `3.3V` pin to the **+ rail** on the
-   nearest side of the breadboard.
-2. **Black wire**: from any Teensy `GND` pin to the **− rail** on the
-   same side.
+The minimum reliable setup is 4 wires and 4 bridges:
 
-The two `3.3V` and several `GND` pins on the Teensy are all internally
-tied, so pick whichever is convenient. You don't need to bridge the rails
-on opposite sides of the board for this build.
+1. **Red wire**: any Teensy `3.3V` pin → nearest `+` rail half.
+2. **Black wire**: any Teensy `GND` pin → nearest `−` rail half.
+3. **`+` bridge × 2**: one short jumper on each long edge of the
+   board, hopping across the central rail split (around hole 30) so
+   the second half also carries 3.3 V.
+4. **`−` bridge × 2**: same idea on each `−` rail.
+
+(You can skip the bridges to the rails on the opposite long edge if
+no module on that edge needs power — but in this build every long
+edge has modules, so wire all four rail strips.)
+
+The two `3.3V` and several `GND` pins on the Teensy are all
+internally tied, so pick whichever is convenient. The bridges across
+the split take a single ~3 cm jumper each.
+
+**Why this matters.** If you skip a bridge and then plug a DFR0789 or
+KY-040 into the un-bridged rail half, the module gets no `GND`. The
+firmware compensates with internal pull-ups, so the pin reads HIGH
+forever and the button looks "stuck ON" in the Debug view (toggles=1
+at boot, then no change). Same root cause for an encoder whose `+`
+isn't reaching power: the on-board pull-ups die and rotation reads
+as noise. Always continuity-check rails before powering on.
 
 ## 5. Wire the display
 
@@ -228,7 +258,57 @@ future "home / jump to Monitor view" action).
 
 Same direction-reversal trick applies as the other encoders.
 
-## 7d. Use the panel switch for chord-mapping mode
+## 7d. Wire the spare encoder #4 (KY-040 #4)
+
+Identical KY-040 module to the other three. No app-level action
+attached yet — wired purely so the Debug view can show that the
+hardware is alive, and so a future feature can adopt it without
+re-soldering.
+
+| Encoder pin | Goes to |
+|-------------|---------|
+| `GND`       | − rail |
+| `+`         | + rail |
+| `SW`        | Teensy pin **0** (also Serial1 RX — unused, so it's a normal GPIO) |
+| `DT`        | Teensy pin **7** |
+| `CLK`       | Teensy pin **6** |
+
+Rotation increments the `ENC4` total in the Debug view; the shaft
+button increments the `ENC4sw` press counter. That's the whole
+behaviour today.
+
+## 7e. Wire the spare encoder #5 (KY-040 #5)
+
+Identical to #4. Surfaces in the Debug view as `ENC5` / `ENC5sw`.
+
+| Encoder pin | Goes to |
+|-------------|---------|
+| `GND`       | − rail |
+| `+`         | + rail |
+| `SW`        | Teensy pin **22** |
+| `DT`        | Teensy pin **21** |
+| `CLK`       | Teensy pin **20** |
+
+## 7f. Wire the spare latching buttons #2 and #3 (DFR0789 ×2)
+
+Two more DFR0789 modules, same model and pinout as the PANEL switch
+from section 6. They show up in the Debug view as `BTN2` and `BTN3`
+(latch state pill + toggle counter), with no app-level action.
+
+| Switch pin | BTN2 → | BTN3 → |
+|------------|--------|--------|
+| `G` (GND)  | − rail | − rail |
+| `V` (3.3V) | + rail | + rail |
+| `S` (signal) | Teensy pin **1** (also Serial1 TX — unused) | Teensy pin **23** |
+
+**Watch the split rail.** BTN3 sits next to the BPM/View/Enc5 cluster
+on the right side of the breadboard, well past the MB-102's middle
+split. If your `−` rail isn't bridged across the split (step 4),
+BTN3 will look "stuck ON, toggles=1" in the Debug view — the `S` pin
+floats HIGH because `G` has nowhere to drain. Same symptom would hit
+BTN2 if its half of the `−` rail is the un-bridged one.
+
+## 7g. Use the panel switch for chord-mapping mode
 
 The DFR0789 latching switch (wired in section 6) toggles between
 normal operation (switch DOWN, LED off) and the **chord mapping
@@ -262,12 +342,20 @@ Before you connect USB:
   you a lot of squinting.
 - [ ] Every component's GND wire goes to the − rail, every VCC/V/+ goes
   to the + rail.
+- [ ] **Both halves of the `+` and `−` rails are bridged across the
+  MB-102's middle split** (step 4). Multimeter continuity check: probe
+  one end of a rail strip and the far end on the other half — should
+  beep. If not, add a jumper.
 - [ ] No bare wire ends touching each other.
 - [ ] No jumper straddles the center channel by accident (that would
   short two unrelated Teensy pins together).
 - [ ] Pin 11 (MOSI) on the Teensy goes to the display's `SDI/MOSI`, NOT
   to `SCK`. Pin 13 (SCK) goes to the display's `SCK`, NOT to `SDI`.
   Mixing these up is the most common cause of a blank or noisy display.
+- [ ] All three DFR0789 modules have **three** wires connected (`G`,
+  `V`, `S`), not just `S` and `V`. Missing `G` = button stuck ON.
+- [ ] All five KY-040 modules have all **five** wires (`GND`, `+`,
+  `SW`, `DT`, `CLK`). Missing `+` = noisy / dead rotation.
 
 ## 9. First boot
 
@@ -300,7 +388,19 @@ Before you connect USB:
   set the tempo source to `MIDIops` and confirm the project tempo
   follows what's showing on the display.
 - Turn the **view** encoder: the screen should cycle through Monitor,
-  Big-BPM (giant tempo number), and Notation (grand staff).
+  Big-BPM (giant tempo number), Notation (grand staff), and **Debug**
+  (per-control telemetry).
+- In the **Debug view**, exercise every knob and button:
+  - Rotate Channel / BPM / View / Enc4 / Enc5 → the corresponding
+    `total` and `last` columns update, and the row briefly highlights
+    yellow for 500 ms.
+  - Press Channel-SW / BPM-SW / View-SW / Enc4-SW / Enc5-SW → the
+    `press #` counter increments.
+  - Flip the PANEL / BTN2 / BTN3 latches → the `ON`/`off` pill
+    toggles and the row highlights briefly.
+  - If a button is "stuck ON, toggles=1, never changes", suspect a
+    GND wiring problem (most often the MB-102 split rail — see
+    step 4).
 - Toggle the panel switch UP: the screen should show the synthwave
   `PRESS A NOTE / TO MAPPING` prompt. Send any NoteOn from your DAW
   (or from the simulator) and the editor view appears with that note
@@ -325,6 +425,16 @@ Before you connect USB:
   `tft.begin()`).
 - **Knob direction reversed.** Swap the constructor arguments in
   `platform/teensy/main.cpp` (one-line fix, no rewiring).
+- **A DFR0789 latching button looks "stuck ON" in the Debug view
+  (toggles=1 at boot, never changes).** The module's `G` pin has no
+  electrical path to Teensy `GND`. Most common cause: the MB-102's
+  middle rail split wasn't bridged (step 4). Quick check: multimeter
+  continuity from the module's `G` screw terminal to a Teensy `GND`
+  pin should beep — if it doesn't, the rails are split. Less common:
+  cold solder joint on the `G` jumper.
+- **A KY-040 reports noisy or no rotation in the Debug view.**
+  Same root cause family: `+` not reaching the module's on-board
+  pull-ups, or `GND` missing. Continuity-check both rails.
 - **Mapping switch toggles the wrong way.** Check the polarity. The
   `TeensyButton` constructor in `platform/teensy/main.cpp` defaults to
   `activeHigh = true` for the DFR0789; if your latching switch has the

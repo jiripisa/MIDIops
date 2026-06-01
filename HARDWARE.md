@@ -11,10 +11,10 @@ commit. See `ASSEMBLY.md` for the step-by-step build walkthrough.
 |--:|-----------|------------|-------|-----------------|
 | 1 | Teensy 4.1 microcontroller | PJRC Teensy 4.1 | ARM Cortex-M7 600 MHz, headers pre-soldered | PJRC, distributors |
 | 2 | 2.8" TFT SPI display | ILI9341, "2.8 TFT SPI 240x320 V1.2" red PCB | 240x320, integrated XPT2046 touch (unused) and SD slot (unused) | AliExpress / Botland |
-| 3 | Latching panel switch with LED | DFRobot DFR0789 Gravity LED Switch | Set of 5 colors; we use one to enter / leave the chord-mapping editor (LED mirrors the state) | DFRobot, distributors |
-| 4 | Rotary encoder with push button (×2) | Keyes KY-040 | 30 detents/rev, 4 quadrature transitions per detent, integrated SW. We use two: one for channel selection, one for BPM | Generic Arduino kit module |
-| 5 | Full-size breadboard | MB-102 (830 tie points) | Two halves with center channel + 4 power rails | Any electronics shop |
-| 6 | Dupont jumper wires | M-M and M-F, ~15 cm | Need ~30: 9 for display, 3 for the panel switch, 5 per encoder × 3, 2 for power rails, a few spares | Any electronics shop |
+| 3 | Latching panel switch with LED (×3) | DFRobot DFR0789 Gravity LED Switch | Set of 5 colors. First one (PANEL) enters / leaves the chord-mapping editor; second + third (BTN2, BTN3) are wired but unmapped — visible in the Debug view. LED on each mirrors its mechanical state | DFRobot, distributors |
+| 4 | Rotary encoder with push button (×5) | Keyes KY-040 | 30 detents/rev, 4 quadrature transitions per detent, integrated SW. Channel (#1), BPM (#2), View (#3) are wired with real actions; #4 and #5 are wired but unmapped — visible in the Debug view | Generic Arduino kit module |
+| 5 | Full-size breadboard | MB-102 (830 tie points) | Two halves with center channel + 4 power rails. **The power rails on the MB-102 are split in the middle** — see "Power and signal levels" below | Any electronics shop |
+| 6 | Dupont jumper wires | M-M and M-F, ~15 cm | Need ~60: 9 for display, 3 per DFR0789 × 3, 5 per encoder × 5, 4 for power-rail bridging (split halves on both edges), a few spares | Any electronics shop |
 | 7 | USB-Micro cable | Data-capable | Power + flashing + USB-MIDI from the Teensy to the Mac | Any |
 
 ## Teensy 4.1 pin assignment
@@ -61,10 +61,19 @@ cannot be relocated. Every other long-edge pin (2–10, 14–23, plus 0,
 1, 6, 7) is a free choice and can be moved by editing the `kPin*`
 constants at the top of `platform/teensy/main.cpp`.
 
-The channel encoder sits on the top-left strip (pins 3–5); the BPM and
-View encoders sit on the bottom-right strip (pins 14–16 and 17–19
-respectively) so the two "mode" knobs end up next to each other on the
-panel without crowding the channel knob.
+Physical breadboard layout:
+
+* **Edge A (left, pins 0–12)** — top to bottom: `Enc4 SW` (0), `BTN2 S`
+  (1), `PANEL S` (2), `Channel SW/CLK/DT` (3–5), `Enc4 CLK/DT` (6–7),
+  display `RST/DC/CS/MOSI/MISO/SCK` (8–13).
+* **Edge B (right, pins 13–23)** — bottom to top: `BPM CLK/DT/SW`
+  (14–16), `View CLK/DT/SW` (17–19), `Enc5 CLK/DT/SW` (20–22),
+  `BTN3 S` (23).
+
+The two "mode" encoders (BPM + View) sit together on the right edge
+so they're within thumb reach; the channel encoder is on the left
+edge so it doesn't crowd them. Enc4 + Enc5 + BTN2 + BTN3 are the
+debug-only spares — they fill the remaining long-edge pins.
 
 ## Module wiring
 
@@ -160,13 +169,63 @@ knobs are within thumb reach.
 | **CLK** | Teensy pin 17 | Quadrature clock line. |
 
 Rotation cycles the display through **Monitor → BigBpm → Notation →
-Monitor**. CW advances forward, CCW goes backward. One detent =
+Debug → Monitor**. CW advances forward, CCW goes backward. One detent =
 ±1 view. No-op while the panel switch is ON (the mapping editor
 re-purposes both other encoders, but the view encoder is simply
 ignored in that mode).
 
 Direction reversed? Swap the constructor arguments in
 `platform/teensy/main.cpp` exactly as for the channel encoder.
+
+### KY-040 #4 — Spare encoder (debug-only)
+
+Fourth KY-040, identical module. Wired up but no app-level action
+attached yet; rotation and shaft button only update the Debug view's
+`ENC4` and `ENC4sw` rows (last-delta, total, press count, age
+highlight).
+
+| Encoder pin | Goes to | Notes |
+|-------------|---------|-------|
+| **GND** | − rail | |
+| **+** | 3.3V rail | |
+| **SW** | Teensy pin 0 | Active-LOW. Pin 0 is also Serial1 RX — we don't use hardware serial, so this is a normal GPIO. |
+| **DT** | Teensy pin 7 | Quadrature data line. |
+| **CLK** | Teensy pin 6 | Quadrature clock line. |
+
+### KY-040 #5 — Spare encoder (debug-only)
+
+Fifth KY-040, identical module. Same role as #4 — purely a debug
+target until a real action is assigned. Surfaces in the Debug view
+as `ENC5` and `ENC5sw`.
+
+| Encoder pin | Goes to | Notes |
+|-------------|---------|-------|
+| **GND** | − rail | |
+| **+** | 3.3V rail | |
+| **SW** | Teensy pin 22 | Active-LOW. |
+| **DT** | Teensy pin 21 | Quadrature data line. |
+| **CLK** | Teensy pin 20 | Quadrature clock line. |
+
+### DFR0789 #2 + #3 — Spare latching buttons (debug-only)
+
+Two extra DFR0789 latches, same module as the PANEL switch in section
+"DFRobot DFR0789 Gravity LED switch". Wired but unmapped; their
+latched state + toggle counter shows up as `BTN2` / `BTN3` in the
+Debug view.
+
+| Switch pin | BTN2 goes to | BTN3 goes to |
+|------------|---------------|---------------|
+| **G** (GND) | − rail | − rail |
+| **V** (3.3V) | + rail (powers the LED) | + rail |
+| **S** (signal) | Teensy pin **1** | Teensy pin **23** |
+
+Important: the `G` pin **must** have an electrically continuous path
+back to the Teensy's `GND` pin. On the MB-102 breadboard the power
+rails are split in the middle (see "Power and signal levels" below),
+so a DFR0789 placed past the split needs either (a) a jumper bridging
+the two halves of the `−` rail, or (b) a direct GND wire from the
+nearest Teensy `GND`. Without it the `S` pin floats HIGH forever and
+the button looks "stuck ON, never toggles" in the Debug view.
 
 ## Power and signal levels
 
@@ -178,58 +237,100 @@ Direction reversed? Swap the constructor arguments in
 - The breadboard's two power rails are tied to Teensy's `3.3V` and `GND`
   pins (one wire each from the Teensy to the nearest rail). Components
   then tap those rails locally.
+- **MB-102 split-rail gotcha.** On most MB-102 boards the long `+` and
+  `−` rails are not one continuous strip — they're broken in the middle
+  (around hole 30) into two electrically independent halves. The visual
+  cue is a tiny break in the coloured stripe printed along the rail.
+  Anything plugged into the half that doesn't have a wire back to the
+  Teensy gets no power / no ground. Symptom on the DFR0789 wired past
+  the split: `S` reads HIGH forever, BTN row in Debug view shows
+  toggles=1 (single boot transition) and never changes. Fix: bridge
+  the two halves with a single jumper across the split — once on `+`,
+  once on `−`, on each long edge of the board.
 
-## Wiring overview (ASCII)
+## Wiring overview
+
+The Teensy 4.1 has two long edges of header pins. With the USB
+connector pointing up, "edge A" runs along the left (`GND`, `0..12`,
+`3.3V` from top to bottom) and "edge B" runs along the right (`VIN`,
+`GND`, `3.3V`, `23..13` from top to bottom). Every used GPIO and the
+module it terminates at:
 
 ```
-                 ┌─────────────────────────────────────────┐
-                 │            Teensy 4.1                   │
-                 │                                         │
-   USB ──────────┤ USB-Micro                               │
-                 │                                         │
-                 │ 3.3V ──┐  GND ──┐                       │
-                 │        │        │                       │
-                 │   pin 2◀────────┼───┐                   │
-                 │   pin 3◀────────┼───┼──┐                │
-                 │   pin 4◀────────┼───┼──┼──┐             │
-                 │   pin 5◀────────┼───┼──┼──┼──┐          │
-                 │                 │   │  │  │  │          │
-                 │   pin 8──▶──────┼───┼──┼──┼──┼─┐        │
-                 │   pin 9──▶──────┼───┼──┼──┼──┼─┼┐       │
-                 │   pin 10─▶──────┼───┼──┼──┼──┼─┼┼┐      │
-                 │   pin 11─▶──────┼───┼──┼──┼──┼─┼┼┼┐     │
-                 │   pin 12─◀──────┼───┼──┼──┼──┼─┼┼┼┼┐    │
-                 │   pin 13─▶──────┼───┼──┼──┼──┼─┼┼┼┼┼┐   │
-                 └─────────────────┼───┼──┼──┼──┼─┼┼┼┼┼┼───┘
-                                   │   │  │  │  │ ││││││
-       Breadboard + rail (3.3V) ───┘   │  │  │  │ ││││││
-       Breadboard − rail (GND)  ───────┘  │  │  │ ││││││
-                                          │  │  │ ││││││
-       DFR0789  V ◀──┐   S ◀───────────────┘  │  │ ││││││
-                GND ◀┼┐                       │  │ ││││││
-                    └┼┼───────[ + rail ]      │  │ ││││││
-       KY-040    + ◀─┼┘                       │  │ ││││││
-                GND ◀┘                        │  │ ││││││
-                 SW ◀──────────────────────────┘  │ ││││││
-                 DT ◀─────────────────────────────┘ ││││││
-                CLK ◀────────────────────[from p4]──┘│││││
-                                                     │││││
-       ILI9341 VCC ◀──[ + rail ]                     │││││
-                GND ◀──[ − rail ]                    │││││
-              RESET ◀────────────────────────────────┘││││
-                 DC ◀─────────────────────────────────┘│││
-                 CS ◀──────────────────────────────────┘││
-                MOSI◀───────────────────────────────────┘│
-                MISO▶────────────────────────────────────┘
-                SCK ◀───────────────────────[from p13]
-                LED ◀──[ + rail ]
-              T_xxx     (unconnected)
+                  ┌──────────────────────────┐
+                  │       Teensy 4.1         │
+                  │           [USB]          │
+                  │   GND     ────     VIN   │
+   Enc4  SW   <-- │   0                23    │ --> BTN3  S
+   BTN2  S    <-- │   1                22    │ --> Enc5  SW
+   PANEL S    <-- │   2                21    │ --> Enc5  DT
+   Ch    SW   <-- │   3                20    │ --> Enc5  CLK
+   Ch    CLK  <-- │   4                19    │ --> View  SW
+   Ch    DT   <-- │   5                18    │ --> View  DT
+   Enc4  CLK  <-- │   6                17    │ --> View  CLK
+   Enc4  DT   <-- │   7                16    │ --> BPM   SW
+   TFT   RST  --> │   8                15    │ --> BPM   DT
+   TFT   DC   --> │   9                14    │ --> BPM   CLK
+   TFT   CS   --> │  10                13    │ --> TFT   SCK
+   TFT   MOSI --> │  11                12    │ <-- TFT   MISO
+                  │   3.3V    ────    GND    │
+                  └──────────────────────────┘
 ```
 
-Arrow direction = signal flow direction.
+`-->` = Teensy drives the line (output). `<--` = Teensy reads the
+line (input). `Ch` = KY-040 #1 (channel encoder).
 
-The diagram shows the channel encoder wiring as a representative
-example. The BPM and view encoders follow the same `GND / + / SW / DT
-/ CLK` pattern; they just land on Teensy pins **14, 15, 16** (BPM)
-and **17, 18, 19** (view) respectively — see the pin-assignment table
-above for the canonical mapping.
+**Rebuild map.** If the wiring gets pulled apart, this is the table
+to put back together — one row per Teensy GPIO that's actually used,
+top of edge A to bottom of edge B:
+
+| Pin | Module → label on module |
+|----:|---------------------------|
+| `GND` (any) | breadboard `−` rail (left half) + jumper to `−` rail (right half) — bridge the MB-102 split |
+| `3.3V` (any) | breadboard `+` rail (left half) + jumper to `+` rail (right half) — bridge the MB-102 split |
+| 0   | KY-040 #4 (Enc4) — `SW` |
+| 1   | DFR0789 #2 (BTN2) — `S` |
+| 2   | DFR0789 #1 (PANEL) — `S` |
+| 3   | KY-040 #1 (Channel) — `SW` |
+| 4   | KY-040 #1 (Channel) — `CLK` |
+| 5   | KY-040 #1 (Channel) — `DT` |
+| 6   | KY-040 #4 (Enc4) — `CLK` |
+| 7   | KY-040 #4 (Enc4) — `DT` |
+| 8   | ILI9341 — `RESET` |
+| 9   | ILI9341 — `DC` |
+| 10  | ILI9341 — `CS` |
+| 11  | ILI9341 — `SDI` / `MOSI` (hardware SPI, fixed pin) |
+| 12  | ILI9341 — `SDO` / `MISO` (hardware SPI, fixed pin; optional) |
+| 13  | ILI9341 — `SCK` (hardware SPI, fixed pin) |
+| 14  | KY-040 #2 (BPM) — `CLK` |
+| 15  | KY-040 #2 (BPM) — `DT` |
+| 16  | KY-040 #2 (BPM) — `SW` |
+| 17  | KY-040 #3 (View) — `CLK` |
+| 18  | KY-040 #3 (View) — `DT` |
+| 19  | KY-040 #3 (View) — `SW` |
+| 20  | KY-040 #5 (Enc5) — `CLK` |
+| 21  | KY-040 #5 (Enc5) — `DT` |
+| 22  | KY-040 #5 (Enc5) — `SW` |
+| 23  | DFR0789 #3 (BTN3) — `S` |
+
+On top of the per-pin signal wires, **every KY-040 and every DFR0789
+needs both `+` (to the 3.3 V rail) and `GND` (to the `−` rail)**.
+That's a hard requirement, including for the debug-only modules:
+
+* DFR0789 with no `GND` connection: `S` floats HIGH forever via the
+  Teensy's internal pull-up; the button looks "stuck ON, toggles=1"
+  in the Debug view (one boot transition, then nothing). This is
+  exactly what the MB-102 split-rail traps you with — see the
+  warning in the previous section.
+* DFR0789 with no `+` connection: switch logic still works, but the
+  indicator LED in the cap stays dark.
+* KY-040 with no `+` connection: the on-board 10 kΩ pull-ups on CLK
+  and DT are unpowered; the encoder will misread heavily or do
+  nothing at all.
+* KY-040 with no `GND` connection: shaft button can't pull `SW` to
+  ground, so press detection is dead.
+
+Display caveats: the LED pin (display backlight) goes to the `+`
+rail too, separately from `VCC` — they're two different pins on the
+ILI9341 module header. If LED is missing the backlight stays off and
+the display looks completely dark even though the SPI bus is fine.
