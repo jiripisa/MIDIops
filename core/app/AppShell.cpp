@@ -49,15 +49,34 @@ void AppShell::enterMode(int index) {
 
 void AppShell::onEncoderKnob(int index, int delta) {
     fireRaw({RawInput::Kind::EncoderKnob, index, delta, false});
-    if (overlayOpen_) return;           // overlay handling added in Task 4
+    if (overlayOpen_) {
+        if (index == 2 && modeCount_ > 0) {        // Enc2 moves selection
+            const int n = modeCount_;
+            overlayChoice_ = ((overlayChoice_ + delta) % n + n) % n;
+            overlayLastInputMs_ = nowMs_;
+        }
+        return;
+    }
     if (index == 5) { switchScreen(delta); return; }
     if (index >= 1 && index <= 4) activeScreen().onEncoder(index, delta);
 }
 
 void AppShell::onEncoderSw(int index) {
     fireRaw({RawInput::Kind::EncoderSw, index, 0, false});
-    if (overlayOpen_) return;           // overlay handling added in Task 4
-    if (index == 5) return;             // opens overlay (added in Task 4)
+    if (overlayOpen_) {
+        if (index == 5) {                 // confirm
+            const int chosen = overlayChoice_;
+            overlayOpen_ = false;
+            enterMode(chosen);
+        }
+        return;                            // other SW ignored while overlay open
+    }
+    if (index == 5) {                      // open overlay
+        overlayOpen_ = true;
+        overlayChoice_ = activeMode_;
+        overlayLastInputMs_ = nowMs_;
+        return;
+    }
     if (index >= 1 && index <= 4) activeScreen().onEncoderSw(index);
 }
 
@@ -77,6 +96,9 @@ void AppShell::setBpm(uint16_t bpm) {
 
 void AppShell::tick(uint32_t nowMs) {
     nowMs_ = nowMs;
+    if (overlayOpen_ && (nowMs_ - overlayLastInputMs_) >= kOverlayTimeoutMs) {
+        overlayOpen_ = false;              // revert: active mode never changed
+    }
     if (modeCount_ > 0) {
         modes_[activeMode_]->update(nowMs);
         activeScreen().update(nowMs);

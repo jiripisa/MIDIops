@@ -70,6 +70,48 @@ static void test_raw_input_tap_fires_for_all_controls() {
     TEST_ASSERT_EQUAL_INT(2, a.rawCount);
 }
 
+static void test_overlay_open_select_confirm() {
+    core::AppShell shell;
+    FakeMode a("a", 1), b("b", 1), c("c", 1);
+    shell.addMode(&a); shell.addMode(&b); shell.addMode(&c);
+    shell.begin();
+    shell.onEncoderSw(5);                       // open overlay
+    TEST_ASSERT_TRUE(shell.overlayOpen());
+    shell.onEncoderKnob(2, +2);                 // select index 2 (c)
+    TEST_ASSERT_EQUAL_INT(2, shell.overlayChoice());
+    shell.onEncoderSw(5);                        // confirm
+    TEST_ASSERT_FALSE(shell.overlayOpen());
+    TEST_ASSERT_EQUAL_INT(2, shell.activeModeIndex());
+    TEST_ASSERT_EQUAL_INT(1, c.enters);          // entered once on confirm
+}
+
+static void test_overlay_timeout_reverts() {
+    core::AppShell shell;
+    FakeMode a("a", 1), b("b", 1);
+    shell.addMode(&a); shell.addMode(&b);
+    shell.begin();
+    shell.tick(1000);
+    shell.onEncoderSw(5);                        // open at t=1000
+    shell.onEncoderKnob(2, +1);                  // select b at t=1000
+    shell.tick(1000 + 3000);                      // exactly timeout
+    TEST_ASSERT_FALSE(shell.overlayOpen());
+    TEST_ASSERT_EQUAL_INT(0, shell.activeModeIndex());  // unchanged
+    TEST_ASSERT_EQUAL_INT(0, b.enters);
+}
+
+static void test_overlay_rotation_resets_timeout() {
+    core::AppShell shell;
+    FakeMode a("a", 1), b("b", 1);
+    shell.addMode(&a); shell.addMode(&b);
+    shell.begin();
+    shell.tick(1000);
+    shell.onEncoderSw(5);
+    shell.tick(3500);                             // overlay still open (opened at 1000, <4000)
+    shell.onEncoderKnob(2, +1);                   // rotate at t=3500 resets timer
+    shell.tick(3500 + 2999);                       // <3s since last rotate
+    TEST_ASSERT_TRUE(shell.overlayOpen());
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_fake_mode_screen_dispatch);
@@ -77,5 +119,8 @@ int main() {
     RUN_TEST(test_enc5_switches_screen_with_wrap);
     RUN_TEST(test_midi_in_reaches_active_mode);
     RUN_TEST(test_raw_input_tap_fires_for_all_controls);
+    RUN_TEST(test_overlay_open_select_confirm);
+    RUN_TEST(test_overlay_timeout_reverts);
+    RUN_TEST(test_overlay_rotation_resets_timeout);
     return UNITY_END();
 }
