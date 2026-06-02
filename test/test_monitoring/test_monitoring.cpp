@@ -5,6 +5,8 @@
 #include "core/render/KeyLayout.h"
 #include "core/render/WormsRenderer.h"
 #include "core/NoteWormModel.h"
+#include "core/app/AppShell.h"
+#include "core/modes/MonitoringMode.h"
 
 void setUp() {}
 void tearDown() {}
@@ -147,6 +149,30 @@ static void test_live_input_worm_adds_fills() {
     TEST_ASSERT_TRUE(withWorm.rects > before);
 }
 
+// ---- MonitoringMode tests ---------------------------------------------------
+
+static void test_monitoring_mode_renders_injected_note() {
+    core::AppShell shell;
+    core::MonitoringMode mon;
+    shell.addMode(&mon);
+    shell.begin();
+
+    // NoteOn: type=NoteOn, channel=1, data1=note, data2=velocity
+    core::MidiMessage on{};
+    on.type    = core::MidiType::NoteOn;
+    on.channel = 1;
+    on.data1   = 60;   // middle C
+    on.data2   = 100;  // velocity
+
+    shell.onMidiIn(on);
+    shell.tick(200);
+
+    StubDisplay d;
+    shell.render(d);
+    TEST_ASSERT_TRUE(d.rects > 0);               // worms + keyboard drawn
+    TEST_ASSERT_TRUE(d.drewText("Monitoring"));  // top bar shows mode name
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_white_key_index_roundtrip);
@@ -168,5 +194,6 @@ int main() {
     RUN_TEST(test_engine_noteoff_clears_output_state);
     RUN_TEST(test_renderer_draws_keyboard_surface);
     RUN_TEST(test_live_input_worm_adds_fills);
+    RUN_TEST(test_monitoring_mode_renders_injected_note);
     return UNITY_END();
 }
