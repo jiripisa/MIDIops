@@ -2,6 +2,7 @@
 
 #include "support/StubDisplay.h"
 #include "core/render/Color.h"
+#include "core/render/Glyph.h"
 #include "core/render/KeyLayout.h"
 #include "core/render/WormsRenderer.h"
 #include "core/NoteWormModel.h"
@@ -151,6 +152,15 @@ static void test_live_input_worm_adds_fills() {
 
 // ---- MonitoringMode tests ---------------------------------------------------
 
+static void test_glyph_draws_runs_of_set_bits() {
+    // 3-wide, 2-tall glyph. row0 = 0b101 -> two isolated pixels (2 rects);
+    // row1 = 0b111 -> one run of 3 (1 rect). Total 3 fillRects.
+    const uint16_t rows[2] = {0b101, 0b111};
+    StubDisplay d;
+    core::drawGlyph(d, 0, 0, rows, 3, 2, core::color::White);
+    TEST_ASSERT_EQUAL_INT(3, d.rects);
+}
+
 static void test_monitoring_mode_renders_injected_note() {
     core::AppShell shell;
     core::MonitoringMode mon;
@@ -195,5 +205,6 @@ int main() {
     RUN_TEST(test_renderer_draws_keyboard_surface);
     RUN_TEST(test_live_input_worm_adds_fills);
     RUN_TEST(test_monitoring_mode_renders_injected_note);
+    RUN_TEST(test_glyph_draws_runs_of_set_bits);
     return UNITY_END();
 }
