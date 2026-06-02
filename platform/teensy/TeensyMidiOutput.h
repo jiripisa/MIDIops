@@ -5,11 +5,15 @@
 #include "core/MidiOutput.h"
 
 // USB-MIDI output for Teensy 4.1. A hardware IntervalTimer fires at the
-// MIDI Clock period and calls usbMIDI.sendRealTime() directly from its
-// ISR — that gives hardware-timer-precise pulse spacing (sub-microsecond
-// jitter) independent of whatever the main loop is doing. The Teensy 4
-// USB MIDI buffer is interrupt-safe for short status bytes, so this is
-// the standard PJRC pattern for a MIDI Clock master.
+// MIDI Clock period and calls usbMIDI.sendRealTime() + usbMIDI.send_now()
+// directly from its ISR — the timer gives hardware-precise pulse spacing
+// (the float period overload keeps it sub-µs accurate) and send_now()
+// force-flushes the USB TX buffer immediately, bypassing the 0–1 ms
+// micro-frame delay that would otherwise smear pulses into a sawtooth
+// jitter pattern. The Teensy 4 USB MIDI buffer is interrupt-safe for
+// short status bytes; send_now() is non-blocking on T4.x so calling it
+// from the ISR is the standard PJRC pattern for a low-jitter Clock
+// master.
 //
 // Requires the project to be built with the "MIDI + Serial" USB type
 // (-D USB_MIDI_SERIAL in platformio.ini).

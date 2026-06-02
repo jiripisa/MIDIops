@@ -10,12 +10,16 @@ IntervalTimer g_clockTimer;
 uint16_t      g_currentBpm = 0;
 
 void clockIsr() {
-    // Send the clock pulse straight from the ISR — usbMIDI's TX path
-    // queues the single-byte real-time message in an interrupt-safe way
-    // and the USB controller picks it up on the next 1 ms micro-frame.
-    // Hardware-timer-driven pulses ⇒ sub-microsecond jitter, which is
-    // exactly what an external DAW slave needs to lock cleanly.
+    // Send the clock pulse straight from the ISR, then force-flush the USB
+    // TX buffer with send_now(). Without the flush the byte would sit in
+    // the buffer until the next 1 ms USB micro-frame tick — which at 120
+    // BPM (≈20.833 ms period) puts each pulse into a different phase of
+    // the 1 ms grid, producing a sawtooth jitter that downstream DAWs
+    // read as ±0.2 BPM wobble around the nominal tempo. send_now() kicks
+    // the USB DMA immediately; it's non-blocking on Teensy 4.x so calling
+    // it from an ISR is safe.
     usbMIDI.sendRealTime(usbMIDI.Clock);
+    usbMIDI.send_now();
 }
 
 } // namespace
@@ -30,8 +34,13 @@ void TeensyMidiOutput::setClockBpm(uint16_t bpm) {
     }
 
     // 24 PPQN: period = 60_000_000 / (BPM * 24) microseconds.
-    const uint32_t periodUs =
-        60000000ul / (static_cast<uint32_t>(bpm) * 24ul);
+    // Use float to keep sub-microsecond precision — at 120 BPM the exact
+    // period is 20833.333… µs, and the older integer truncation to 20833
+    // µs leaked +0.002 BPM upward. Teensy 4.x IntervalTimer accepts a
+    // float overload and resolves it through the 24 MHz GPT/PIT timer at
+    // far below 1 µs granularity, so we keep the math honest at no cost.
+    const float periodUs =
+        60000000.0f / (static_cast<float>(bpm) * 24.0f);
 
     if (g_currentBpm == 0) {
         g_clockTimer.begin(clockIsr, periodUs);
