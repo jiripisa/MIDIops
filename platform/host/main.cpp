@@ -10,8 +10,8 @@
 //    note presses are injected on — useful to see the per-channel colour
 //    palette without an external multi-channel MIDI source.
 //  * The five rotary encoders are each driven by a key trio
-//    {left, click, right}; see kEncoderTrios below. SPACE toggles
-//    mapping mode, BACKSPACE fires the panic, ESC quits.
+//    {left, click, right}; see kEncoderTrios below. SPACE = Play/Pause
+//    (Latch1), BACKSPACE = Stop (Latch2), RETURN = Reset (Latch3), ESC quits.
 
 #include <SDL.h>
 
@@ -102,8 +102,8 @@ int main(int /*argc*/, char* /*argv*/[]) {
     RtMidiInput  midiIn("MIDIops");
     RtMidiOutput midiOut("MIDIops Clock");
     core::AppShell   app;
-    static core::DebugMode debugMode;
-    static core::BpmMode   bpmMode(app);
+    core::DebugMode debugMode;
+    core::BpmMode   bpmMode(app);
 
     midiIn.begin();
     midiOut.begin();
@@ -123,8 +123,9 @@ int main(int /*argc*/, char* /*argv*/[]) {
                  "    7 8 9 (ýá í)  Enc3               left / SW / right\n"
                  "    0 - = (é= ´)  Enc4               left / SW / right\n"
                  "    q w e         Enc5 (switch screen / mode overlay)\n"
-                 "  SPACE           Play/Pause (Latch1)\n"
-                 "  BACKSPACE       Stop (Latch2)\n"
+                 "  SPACE           Play / Pause  (Latch1)\n"
+                 "  BACKSPACE       Stop          (Latch2)\n"
+                 "  RETURN          Reset         (Latch3)\n"
                  "  ESC             quit\n");
 
     // Test injection state. Each held note remembers which channel it was
@@ -154,11 +155,19 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
                     if (ev.key.keysym.sym == SDLK_SPACE) {
                         static bool s = false; s = !s; app.onLatch(1, s);
+                        std::fprintf(stderr, "[sim] latch1 (play/pause) = %s\n", s ? "on" : "off");
                         break;
                     }
 
                     if (ev.key.keysym.sym == SDLK_BACKSPACE) {
                         static bool s = false; s = !s; app.onLatch(2, s);
+                        std::fprintf(stderr, "[sim] latch2 (stop) = %s\n", s ? "on" : "off");
+                        break;
+                    }
+
+                    if (ev.key.keysym.sym == SDLK_RETURN) {
+                        static bool s = false; s = !s; app.onLatch(3, s);
+                        std::fprintf(stderr, "[sim] latch3 (reset) = %s\n", s ? "on" : "off");
                         break;
                     }
 

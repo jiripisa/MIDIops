@@ -42,15 +42,14 @@ constexpr uint8_t kPinTftRst = 8;   // reset
 //  Hardware controls are named by their physical identity (Latch1..3,
 //  Enc1..5), NOT by what they currently do — the function of each
 //  encoder/button changes per screen, so the role lives in the app
-//  layer, not in these pin names. The "currently" notes below are just
-//  a snapshot of today's behaviour.
+//  layer, not in these pin names. Role is assigned by the active
+//  mode/screen at runtime (see core/app/AppShell).
 //
 //  - Latch1: latching front-panel switch (DFR0789). Active-HIGH via
-//    INPUT_PULLUP — see TeensyButton.cpp for polarity notes. Currently
-//    drives chord-mapping mode.
+//    INPUT_PULLUP — see TeensyButton.cpp for polarity notes. Role is
+//    assigned by the active mode/screen at runtime (see core/app/AppShell).
 //  - Enc1: KY-040 with CLK on `kPinEnc1Clk`, DT on `kPinEnc1Dt`.
-//    Currently steps the listened channel by ±1 (CW = +, CCW = −); the
-//    SW pin currently fires the app restart.
+//    Role is assigned by the active mode/screen at runtime (see core/app/AppShell).
 // ============================================================
 constexpr uint8_t kPinLatch1 = 2;
 constexpr uint8_t kPinEnc1Sw  = 3;
@@ -59,16 +58,15 @@ constexpr uint8_t kPinEnc1Dt  = 5;
 
 // Enc2 — second KY-040. CLK/DT on the opposite long edge of the Teensy
 // so the two encoders sit on physically separate strips of the
-// breadboard. Currently controls the MIDI Clock master's BPM; SW is a
-// no-op in normal mode (browses mappings in mapping mode).
+// breadboard. Role is assigned by the active mode/screen at runtime
+// (see core/app/AppShell).
 constexpr uint8_t kPinEnc2Clk = 14;
 constexpr uint8_t kPinEnc2Dt  = 15;
 constexpr uint8_t kPinEnc2Sw  = 16;
 
-// Enc3 — third KY-040. Currently the view selector: rotation cycles
-// Monitor / big-BPM / notation / debug; the shaft button is a no-op
-// (reserved). Lives next to Enc2 so the two "mode" knobs sit together
-// on the right side of the breadboard.
+// Enc3 — third KY-040. Role is assigned by the active mode/screen at
+// runtime (see core/app/AppShell). Lives next to Enc2 so the two
+// "mode" knobs sit together on the right side of the breadboard.
 constexpr uint8_t kPinEnc3Clk = 17;
 constexpr uint8_t kPinEnc3Dt  = 18;
 constexpr uint8_t kPinEnc3Sw  = 19;
