@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include "core/app/AppShell.h"
+#include "core/modes/BpmMode.h"
 #include "core/modes/DebugMode.h"
 #include "support/Fakes.h"
 #include "support/StubDisplay.h"
@@ -180,6 +181,29 @@ static void test_debug_mode_counts_raw_input() {
     TEST_ASSERT_TRUE(d.drewText("LATCH2"));
 }
 
+static void test_bpm_mode_enc1_adjusts_tempo() {
+    core::AppShell shell;
+    core::BpmMode bpm(shell);
+    shell.addMode(&bpm);
+    shell.begin();
+    shell.setBpm(120);
+    shell.onEncoderKnob(1, +5);
+    TEST_ASSERT_EQUAL_INT(125, shell.bpm());
+    StubDisplay d;
+    shell.render(d);
+    TEST_ASSERT_TRUE(d.drewText("125"));
+}
+
+static void test_bpm_clamps() {
+    core::AppShell shell;
+    core::BpmMode bpm(shell);
+    shell.addMode(&bpm);
+    shell.begin();
+    shell.setBpm(30);
+    shell.onEncoderKnob(1, -10);
+    TEST_ASSERT_EQUAL_INT(30, shell.bpm());
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_fake_mode_screen_dispatch);
@@ -195,5 +219,7 @@ int main() {
     RUN_TEST(test_render_draws_top_bar_with_mode_and_screen);
     RUN_TEST(test_render_overlay_lists_modes);
     RUN_TEST(test_debug_mode_counts_raw_input);
+    RUN_TEST(test_bpm_mode_enc1_adjusts_tempo);
+    RUN_TEST(test_bpm_clamps);
     return UNITY_END();
 }
