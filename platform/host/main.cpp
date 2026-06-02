@@ -21,6 +21,7 @@
 #include "core/app/AppShell.h"
 #include "core/modes/BpmMode.h"
 #include "core/modes/DebugMode.h"
+#include "core/modes/MonitoringMode.h"
 #include "platform/host/RtMidiInput.h"
 #include "platform/host/RtMidiOutput.h"
 #include "platform/host/SdlDisplay.h"
@@ -101,13 +102,15 @@ int main(int /*argc*/, char* /*argv*/[]) {
     SdlDisplay   display(kLogicalW, kLogicalH, kScale, "MIDIops simulator");
     RtMidiInput  midiIn("MIDIops");
     RtMidiOutput midiOut("MIDIops Clock");
-    core::AppShell   app;
-    core::DebugMode debugMode;
-    core::BpmMode   bpmMode(app);
+    core::AppShell      app;
+    core::MonitoringMode monitoringMode;
+    core::DebugMode      debugMode;
+    core::BpmMode        bpmMode(app);
 
     midiIn.begin();
     midiOut.begin();
     app.setMidiOutput(&midiOut);
+    app.addMode(&monitoringMode);
     app.addMode(&bpmMode);
     app.addMode(&debugMode);
     app.setBpm(120);
@@ -115,6 +118,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
     std::fprintf(stderr,
                  "MIDIops simulator running.\n"
+                 "  Boots into Monitoring (worms) view — MIDI in drives the worms.\n"
                  "  z x c v b n m   inject Note On/Off (white keys C4..B4)\n"
                  "  Shift + 1..9    set the test injection channel (default 1)\n"
                  "  Encoders are key trios {left, click, right}:\n"
