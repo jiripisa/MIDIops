@@ -8,8 +8,11 @@ namespace core {
 
 static constexpr int     kScreenW          = 320;
 static constexpr int     kRollTop          = 22;   // inclusive upper edge
-static constexpr int     kRollBottom       = 180;  // exclusive lower edge
-static constexpr int     kKeyboardTop      = 180;
+// Roll/keyboard boundary. Lowered from 180 to 187 so the keyboard (anchored
+// at the bottom edge) is a bit shorter: white keys 240-187=53px against the
+// unchanged 32px black keys (~0.60 ratio, closer to a real piano).
+static constexpr int     kRollBottom       = 187;  // exclusive lower edge
+static constexpr int     kKeyboardTop      = 187;
 static constexpr int     kKeyboardBot      = 240;
 static constexpr int     kBlackKeyH        = 32;
 
