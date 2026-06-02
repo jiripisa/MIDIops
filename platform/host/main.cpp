@@ -3,11 +3,15 @@
 //  * Opens a 960x720 SDL window (320x240 logical, scaled 3x).
 //  * Creates a CoreMIDI virtual input port named "MIDIops" so external
 //    apps (Ableton -> IAC Driver -> MIDIops) can drive the monitor.
-//  * Maps keyboard keys A..G to inject local Note On/Off messages so the
-//    UI can be verified without any external MIDI source.
-//  * Number keys 1..9 pick the MIDI channel that subsequent A..G presses
-//    are injected on — useful to see the per-channel colour palette
-//    without an external multi-channel MIDI source. ESC quits.
+//  * Maps the bottom-row keys z x c v b n m to inject local Note On/Off
+//    messages (white keys C4..B4) so the UI can be verified without any
+//    external MIDI source.
+//  * Shift + number row (1..9) picks the MIDI channel that subsequent
+//    note presses are injected on — useful to see the per-channel colour
+//    palette without an external multi-channel MIDI source.
+//  * The five rotary encoders are each driven by a key trio
+//    {left, click, right}; see kEncoderTrios below. SPACE toggles
+//    mapping mode, BACKSPACE fires the panic, ESC quits.
 
 #include <SDL.h>
 
@@ -25,18 +29,78 @@ constexpr int kLogicalW = 320;
 constexpr int kLogicalH = 240;
 constexpr int kScale    = 3;
 
-// White-key A..G -> MIDI note numbers, all in octave 4.
+// Bottom-row white keys z x c v b n m -> C4..B4 MIDI note numbers, laid
+// out like a little piano. Keyed by SDL_Keycode (the layout's letter, not
+// the physical position) so a Czech QWERTZ keyboard — where Y/Z are
+// swapped — still injects from the key actually labelled "z". The encoder
+// trios below deliberately use scancodes instead; the two schemes don't
+// overlap (no note key is a digit / minus / equals / q / w / e).
 int keyToNote(SDL_Keycode k) {
     switch (k) {
-        case SDLK_c: return 60; // C4
-        case SDLK_d: return 62; // D4
-        case SDLK_e: return 64; // E4
-        case SDLK_f: return 65; // F4
-        case SDLK_g: return 67; // G4
-        case SDLK_a: return 69; // A4
-        case SDLK_b: return 71; // B4
+        case SDLK_z: return 60; // C4
+        case SDLK_x: return 62; // D4
+        case SDLK_c: return 64; // E4
+        case SDLK_v: return 65; // F4
+        case SDLK_b: return 67; // G4
+        case SDLK_n: return 69; // A4
+        case SDLK_m: return 71; // B4
         default:     return -1;
     }
+}
+
+// Each rotary encoder is exercised by a trio of physical keys
+// {left, click, right}. Keyed by SDL_Scancode (position, not the produced
+// character) so the Czech-keyboard renderings the user picked land on the
+// right keys regardless of layout: trio 1 is "+ě š", trio 2 "č ř ž",
+// trio 3 "ý á í", trio 4 "é = ´", trio 5 "q w e".
+enum class EncoderId { Enc1, Enc2, Enc3, Enc4, Enc5 };
+
+struct EncoderTrio {
+    SDL_Scancode left;
+    SDL_Scancode click;
+    SDL_Scancode right;
+    EncoderId    id;
+};
+
+constexpr EncoderTrio kEncoderTrios[] = {
+    {SDL_SCANCODE_1, SDL_SCANCODE_2,     SDL_SCANCODE_3,      EncoderId::Enc1},
+    {SDL_SCANCODE_4, SDL_SCANCODE_5,     SDL_SCANCODE_6,      EncoderId::Enc2},
+    {SDL_SCANCODE_7, SDL_SCANCODE_8,     SDL_SCANCODE_9,      EncoderId::Enc3},
+    {SDL_SCANCODE_0, SDL_SCANCODE_MINUS, SDL_SCANCODE_EQUALS, EncoderId::Enc4},
+    {SDL_SCANCODE_Q, SDL_SCANCODE_W,     SDL_SCANCODE_E,      EncoderId::Enc5},
+};
+
+// Dispatches a key press to the matching encoder entry point. Returns true
+// if the scancode belonged to an encoder trio (so the caller can stop).
+bool handleEncoderKey(core::MidiMonitorApp& app, SDL_Scancode sc) {
+    for (const EncoderTrio& t : kEncoderTrios) {
+        int  delta = 0;
+        bool click = false;
+        if      (sc == t.left)  delta = -1;
+        else if (sc == t.right) delta = +1;
+        else if (sc == t.click) click = true;
+        else continue;
+
+        switch (t.id) {
+            case EncoderId::Enc1:
+                if (click) app.onChannelSwPress(); else app.onChannelKnob(delta);
+                break;
+            case EncoderId::Enc2:
+                if (click) app.onBpmSwPress();     else app.onBpmKnob(delta);
+                break;
+            case EncoderId::Enc3:
+                if (click) app.onViewSwPress();    else app.onViewKnob(delta);
+                break;
+            case EncoderId::Enc4:
+                if (click) app.onEnc4SwPress();    else app.onEnc4Knob(delta);
+                break;
+            case EncoderId::Enc5:
+                if (click) app.onEnc5SwPress();    else app.onEnc5Knob(delta);
+                break;
+        }
+        return true;
+    }
+    return false;
 }
 
 } // namespace
@@ -58,17 +122,17 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
     std::fprintf(stderr,
                  "MIDIops simulator running.\n"
-                 "  A..G          inject Note On/Off\n"
-                 "  1..9          set the test injection channel (default 1)\n"
-                 "  LEFT / RIGHT  cycle monitored channel (OMNI..16)\n"
-                 "  UP / DOWN     adjust BPM (MIDI Clock master)\n"
-                 "  SPACE         toggle chord-mapping mode (= panel switch)\n"
-                 "  F5            channel-SW press (restart, or cycle dir in MAP)\n"
-                 "  BACKSPACE     panic — release stuck notes\n"
-                 "  TAB           BPM-SW press (no-op in normal, next mapping in MAP)\n"
-                 "  PgUp / PgDn   view encoder (cycle Monitor / BigBPM / Notation)\n"
-                 "  END           view-encoder SW (reserved)\n"
-                 "  ESC           quit\n");
+                 "  z x c v b n m   inject Note On/Off (white keys C4..B4)\n"
+                 "  Shift + 1..9    set the test injection channel (default 1)\n"
+                 "  Encoders are key trios {left, click, right}:\n"
+                 "    1 2 3 (+ě š)  Enc1 (now: channel)  left / SW / right\n"
+                 "    4 5 6 (čř ž)  Enc2 (now: BPM)       left / SW / right\n"
+                 "    7 8 9 (ýá í)  Enc3 (now: view)      left / SW / right\n"
+                 "    0 - = (é= ´)  Enc4 (debug)          left / SW / right\n"
+                 "    q w e         Enc5 (debug)          left / SW / right\n"
+                 "  SPACE           toggle chord-mapping mode (= panel switch)\n"
+                 "  BACKSPACE       panic — release stuck notes\n"
+                 "  ESC             quit\n");
 
     // Test injection state. Each held note remembers which channel it was
     // pressed on so that NoteOff goes back to the same channel even if the
@@ -104,75 +168,35 @@ int main(int /*argc*/, char* /*argv*/[]) {
                         break;
                     }
 
-                    if (ev.key.keysym.sym == SDLK_F5) {
-                        app.onChannelSwPress();
-                        std::fprintf(stderr, "[sim] channel-SW press\n");
-                        break;
-                    }
-
                     if (ev.key.keysym.sym == SDLK_BACKSPACE) {
                         app.panic();
                         std::fprintf(stderr, "[sim] panic — released stuck notes\n");
                         break;
                     }
 
-                    if (ev.key.keysym.sym == SDLK_TAB) {
-                        app.onBpmSwPress();
-                        std::fprintf(stderr, "[sim] bpm-SW press\n");
-                        break;
-                    }
-
-                    // Page Up / Down emulate the view-selector encoder
-                    // (third KY-040). Page Up cycles to the next view,
-                    // Page Down to the previous one.
-                    if (ev.key.keysym.sym == SDLK_PAGEUP ||
-                        ev.key.keysym.sym == SDLK_PAGEDOWN) {
-                        app.onViewKnob(
-                            ev.key.keysym.sym == SDLK_PAGEUP ? +1 : -1);
-                        std::fprintf(stderr, "[sim] view-knob = %d\n",
-                                     static_cast<int>(app.view()));
-                        break;
-                    }
-                    if (ev.key.keysym.sym == SDLK_END) {
-                        // Backslash / End = view-encoder SW (reserved).
-                        app.onViewSwPress();
-                        std::fprintf(stderr, "[sim] view-SW press\n");
-                        break;
-                    }
-
-                    // Horizontal arrows = channel encoder. RIGHT = CW
-                    // (channel++), LEFT = CCW (channel--).
-                    if (ev.key.keysym.sym == SDLK_RIGHT ||
-                        ev.key.keysym.sym == SDLK_LEFT) {
-                        app.onChannelKnob(
-                            ev.key.keysym.sym == SDLK_RIGHT ? +1 : -1);
-                        char buf[8];
-                        if (app.channel() == 0) std::snprintf(buf, sizeof(buf), "OMNI");
-                        else std::snprintf(buf, sizeof(buf), "%u", app.channel());
-                        std::fprintf(stderr, "[sim] monitored channel = %s\n", buf);
-                        break;
-                    }
-
-                    // Vertical arrows = BPM encoder.
-                    if (ev.key.keysym.sym == SDLK_UP ||
-                        ev.key.keysym.sym == SDLK_DOWN) {
-                        app.onBpmKnob(
-                            ev.key.keysym.sym == SDLK_UP ? +1 : -1);
-                        std::fprintf(stderr, "[sim] BPM = %u\n", app.bpm());
-                        break;
-                    }
-
-                    // Channel selector keys. Use the layout-independent
-                    // scancode so this works on non-US keyboards too — on a
-                    // Czech layout, for instance, the "1" key produces "ě"
-                    // without Shift and the SDLK_1 symbol never arrives.
-                    if (ev.key.keysym.scancode >= SDL_SCANCODE_1 &&
+                    // Shift + number row picks the test injection channel.
+                    // Keyed by scancode so it's layout-independent: on a
+                    // Czech keyboard Shift over the number row produces the
+                    // actual digits, and unshifted those same keys are the
+                    // first three encoder trios (handled just below).
+                    if ((ev.key.keysym.mod & KMOD_SHIFT) &&
+                        ev.key.keysym.scancode >= SDL_SCANCODE_1 &&
                         ev.key.keysym.scancode <= SDL_SCANCODE_9) {
                         injectChannel = static_cast<uint8_t>(
                             ev.key.keysym.scancode - SDL_SCANCODE_1 + 1);
                         std::fprintf(stderr,
                                      "[sim] test injection channel = %u\n",
                                      injectChannel);
+                        break;
+                    }
+
+                    // Encoder key trios {left, click, right}. Layout-
+                    // independent (scancode-based). See kEncoderTrios.
+                    if (handleEncoderKey(app, ev.key.keysym.scancode)) {
+                        std::fprintf(stderr,
+                                     "[sim] CH=%u BPM=%u view=%d\n",
+                                     app.channel(), app.bpm(),
+                                     static_cast<int>(app.view()));
                         break;
                     }
 
