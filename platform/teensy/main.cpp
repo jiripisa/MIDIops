@@ -35,35 +35,41 @@ constexpr uint8_t kPinTftDc  = 9;   // data/command
 constexpr uint8_t kPinTftRst = 8;   // reset
 
 // ============================================================
-//  Front-panel buttons & encoder
+//  Front-panel buttons & encoders
 // ------------------------------------------------------------
-//  - Monitor button: latching front-panel switch. Active-LOW
-//    via INPUT_PULLUP — see TeensyButton.cpp for polarity notes.
-//  - Channel encoder: KY-040 with CLK on `kPinEncoderClk`, DT on
-//    `kPinEncoderDt`. Each detent click steps the listened
-//    channel by ±1 (CW = +, CCW = −).
-//    The integrated SW pin is wired to `kPinEncoderSw` but not
-//    used yet — reserved for a future short-press action.
+//  Hardware controls are named by their physical identity (Latch1..3,
+//  Enc1..5), NOT by what they currently do — the function of each
+//  encoder/button changes per screen, so the role lives in the app
+//  layer, not in these pin names. The "currently" notes below are just
+//  a snapshot of today's behaviour.
+//
+//  - Latch1: latching front-panel switch (DFR0789). Active-HIGH via
+//    INPUT_PULLUP — see TeensyButton.cpp for polarity notes. Currently
+//    drives chord-mapping mode.
+//  - Enc1: KY-040 with CLK on `kPinEnc1Clk`, DT on `kPinEnc1Dt`.
+//    Currently steps the listened channel by ±1 (CW = +, CCW = −); the
+//    SW pin currently fires the app restart.
 // ============================================================
-constexpr uint8_t kPinMonitorButton = 2;
-constexpr uint8_t kPinEncoderSw     = 3;
-constexpr uint8_t kPinEncoderClk    = 4;
-constexpr uint8_t kPinEncoderDt     = 5;
+constexpr uint8_t kPinLatch1 = 2;
+constexpr uint8_t kPinEnc1Sw  = 3;
+constexpr uint8_t kPinEnc1Clk = 4;
+constexpr uint8_t kPinEnc1Dt  = 5;
 
-// Second KY-040 — BPM control for the MIDI Clock master.
-// CLK/DT on the opposite long edge of the Teensy so the two encoders sit
-// on physically separate strips of the breadboard.
-constexpr uint8_t kPinBpmEncoderClk = 14;
-constexpr uint8_t kPinBpmEncoderDt  = 15;
-constexpr uint8_t kPinBpmEncoderSw  = 16;   // wired, no behaviour yet
+// Enc2 — second KY-040. CLK/DT on the opposite long edge of the Teensy
+// so the two encoders sit on physically separate strips of the
+// breadboard. Currently controls the MIDI Clock master's BPM; SW is a
+// no-op in normal mode (browses mappings in mapping mode).
+constexpr uint8_t kPinEnc2Clk = 14;
+constexpr uint8_t kPinEnc2Dt  = 15;
+constexpr uint8_t kPinEnc2Sw  = 16;
 
-// Third KY-040 — view selector. Rotation cycles through Monitor /
-// big-BPM / notation views; the shaft button is wired but currently
-// no-op (reserved). Lives next to the BPM encoder so the two "mode"
-// knobs sit together on the right side of the breadboard.
-constexpr uint8_t kPinViewEncoderClk = 17;
-constexpr uint8_t kPinViewEncoderDt  = 18;
-constexpr uint8_t kPinViewEncoderSw  = 19;
+// Enc3 — third KY-040. Currently the view selector: rotation cycles
+// Monitor / big-BPM / notation / debug; the shaft button is a no-op
+// (reserved). Lives next to Enc2 so the two "mode" knobs sit together
+// on the right side of the breadboard.
+constexpr uint8_t kPinEnc3Clk = 17;
+constexpr uint8_t kPinEnc3Dt  = 18;
+constexpr uint8_t kPinEnc3Sw  = 19;
 
 // Fourth + fifth KY-040 — wired for testing, no app behaviour mapped
 // yet. Visible in the Debug view (rotation count + press count + last
@@ -76,9 +82,9 @@ constexpr uint8_t kPinEnc5Clk = 20;
 constexpr uint8_t kPinEnc5Dt  = 21;
 constexpr uint8_t kPinEnc5Sw  = 22;
 
-// Latching panel buttons #2 and #3 — same DFR0789-style hardware as the
-// main panel switch. Wired but unmapped; surfaced in the Debug view as
-// BTN2 / BTN3 (latched-state pill + toggle counter).
+// Latch2 + Latch3 — two more DFR0789-style latching switches, same
+// hardware as Latch1. Wired but unmapped; surfaced in the Debug view as
+// LATCH2 / LATCH3 (latched-state pill + toggle counter).
 constexpr uint8_t kPinLatch2 = 1;
 constexpr uint8_t kPinLatch3 = 23;
 
@@ -86,33 +92,27 @@ static ILI9341_t3n     tft(kPinTftCs, kPinTftDc, kPinTftRst);
 static TeensyDisplay   display(tft);
 static TeensyMidiInput midiIn;
 static TeensyMidiOutput midiOut;
-static TeensyButton    monitorButton(kPinMonitorButton);
-// Channel encoder shaft button — momentary push, active-LOW (shorts to GND).
-// Used as a one-shot "restart app" trigger so we can re-test the splash
-// screen without unplugging USB.
-static TeensyButton    encoderSwitch(kPinEncoderSw, /*activeHigh=*/false);
-// BPM encoder shaft button — momentary push, active-LOW. Fires the
-// "release all stuck notes" panic so the user can recover from a sender
-// (e.g. Ableton edited mid-loop) that forgot to send a NoteOff.
-static TeensyButton    bpmSwitch(kPinBpmEncoderSw, /*activeHigh=*/false);
+static TeensyButton    latch1Button(kPinLatch1);
+// Encoder shaft buttons — momentary push, active-LOW (shorts to GND).
+// Each forwards to app.onEncNSwPress(); the app decides what the press
+// does for the current screen.
+static TeensyButton    enc1Switch(kPinEnc1Sw, /*activeHigh=*/false);
+static TeensyButton    enc2Switch(kPinEnc2Sw, /*activeHigh=*/false);
 // Pin order here picks the direction: passing DT first yields CW = positive
-// (channel goes up) on the KY-040 module silkscreen we have. If you ever
-// swap to a differently-laid-out encoder and find rotation reversed, swap
-// these two arguments — no wiring change needed.
-static TeensyEncoder   channelKnob(kPinEncoderDt, kPinEncoderClk);
-static TeensyEncoder   bpmKnob(kPinBpmEncoderDt, kPinBpmEncoderClk);
-// Third encoder — view selector.
-static TeensyButton    viewSwitch(kPinViewEncoderSw, /*activeHigh=*/false);
-static TeensyEncoder   viewKnob(kPinViewEncoderDt, kPinViewEncoderClk);
-// Fourth + fifth encoders — wired but unmapped, surfaced only in the
-// Debug view.
+// on the KY-040 module silkscreen we have. If you ever swap to a
+// differently-laid-out encoder and find rotation reversed, swap these two
+// arguments — no wiring change needed.
+static TeensyEncoder   enc1Knob(kPinEnc1Dt, kPinEnc1Clk);
+static TeensyEncoder   enc2Knob(kPinEnc2Dt, kPinEnc2Clk);
+static TeensyButton    enc3Switch(kPinEnc3Sw, /*activeHigh=*/false);
+static TeensyEncoder   enc3Knob(kPinEnc3Dt, kPinEnc3Clk);
+// Enc4 + Enc5 — wired but unmapped, surfaced only in the Debug view.
 static TeensyButton    enc4Switch(kPinEnc4Sw, /*activeHigh=*/false);
 static TeensyEncoder   enc4Knob(kPinEnc4Dt, kPinEnc4Clk);
 static TeensyButton    enc5Switch(kPinEnc5Sw, /*activeHigh=*/false);
 static TeensyEncoder   enc5Knob(kPinEnc5Dt, kPinEnc5Clk);
-// Latching panel buttons #2 + #3 — DFR0789-style, active-HIGH on
-// INPUT_PULLUP (signal pin HIGH when latched closed). Matches the
-// existing monitorButton default.
+// Latch2 + Latch3 — DFR0789-style, active-HIGH on INPUT_PULLUP (signal
+// pin HIGH when latched closed). Matches the latch1Button default.
 static TeensyButton    latch2Button(kPinLatch2);
 static TeensyButton    latch3Button(kPinLatch3);
 static core::MidiMonitorApp app;
@@ -121,10 +121,10 @@ void setup() {
     display.begin();
     midiIn.begin();
     app.setMidiOutput(&midiOut);
-    monitorButton.begin();
-    encoderSwitch.begin();
-    bpmSwitch.begin();
-    viewSwitch.begin();
+    latch1Button.begin();
+    enc1Switch.begin();
+    enc2Switch.begin();
+    enc3Switch.begin();
     enc4Switch.begin();
     enc5Switch.begin();
     latch2Button.begin();
@@ -136,47 +136,47 @@ void setup() {
 void loop() {
     // The latching panel switch now drives the chord-mapping editor.
     // LED on = mapping mode active. Monitoring itself is always on.
-    app.setMappingMode(monitorButton.pollOn());
+    app.onLatch1(latch1Button.pollOn());
 
     // Edge-triggered. In normal mode this restarts the app; inside
     // mapping mode it cycles the edit's chord direction
-    // (BLOCK / UP / DOWN). The app's onChannelSwPress() routes both.
-    static bool channelSwLast = false;
-    const bool channelSwNow = encoderSwitch.pollOn();
-    if (channelSwNow && !channelSwLast) {
-        app.onChannelSwPress();
+    // (BLOCK / UP / DOWN). The app's onEnc1SwPress() routes both.
+    static bool enc1SwLast = false;
+    const bool enc1SwNow = enc1Switch.pollOn();
+    if (enc1SwNow && !enc1SwLast) {
+        app.onEnc1SwPress();
     }
-    channelSwLast = channelSwNow;
+    enc1SwLast = enc1SwNow;
 
     // Edge-triggered. Normal mode: cycle monitor / big-BPM / notation
     // views. Mapping mode: browse to the next existing mapping in the
     // engine.
-    static bool bpmSwLast = false;
-    const bool bpmSwNow = bpmSwitch.pollOn();
-    if (bpmSwNow && !bpmSwLast) {
-        app.onBpmSwPress();
+    static bool enc2SwLast = false;
+    const bool enc2SwNow = enc2Switch.pollOn();
+    if (enc2SwNow && !enc2SwLast) {
+        app.onEnc2SwPress();
     }
-    bpmSwLast = bpmSwNow;
+    enc2SwLast = enc2SwNow;
 
-    const int channelDetents = channelKnob.poll();
-    if (channelDetents != 0) {
-        app.onChannelKnob(channelDetents);
+    const int enc1Detents = enc1Knob.poll();
+    if (enc1Detents != 0) {
+        app.onEnc1Knob(enc1Detents);
     }
-    const int bpmDetents = bpmKnob.poll();
-    if (bpmDetents != 0) {
-        app.onBpmKnob(bpmDetents);
+    const int enc2Detents = enc2Knob.poll();
+    if (enc2Detents != 0) {
+        app.onEnc2Knob(enc2Detents);
     }
-    const int viewDetents = viewKnob.poll();
-    if (viewDetents != 0) {
-        app.onViewKnob(viewDetents);
+    const int enc3Detents = enc3Knob.poll();
+    if (enc3Detents != 0) {
+        app.onEnc3Knob(enc3Detents);
     }
     // Edge-triggered SW on the view encoder; currently reserved.
-    static bool viewSwLast = false;
-    const bool viewSwNow = viewSwitch.pollOn();
-    if (viewSwNow && !viewSwLast) {
-        app.onViewSwPress();
+    static bool enc3SwLast = false;
+    const bool enc3SwNow = enc3Switch.pollOn();
+    if (enc3SwNow && !enc3SwLast) {
+        app.onEnc3SwPress();
     }
-    viewSwLast = viewSwNow;
+    enc3SwLast = enc3SwNow;
 
     // Fourth + fifth encoders — wired for testing only; surface in
     // the Debug view but have no app-level action attached yet.
@@ -205,8 +205,8 @@ void loop() {
     // Latching panel buttons #2 + #3 — push state every loop; the app
     // edge-detects internally and only bumps the debug counter on real
     // transitions.
-    app.onLatchSwitch2(latch2Button.pollOn());
-    app.onLatchSwitch3(latch3Button.pollOn());
+    app.onLatch2(latch2Button.pollOn());
+    app.onLatch3(latch3Button.pollOn());
 
     core::MidiMessage msg;
     while (midiIn.poll(msg)) {

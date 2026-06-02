@@ -83,13 +83,13 @@ bool handleEncoderKey(core::MidiMonitorApp& app, SDL_Scancode sc) {
 
         switch (t.id) {
             case EncoderId::Enc1:
-                if (click) app.onChannelSwPress(); else app.onChannelKnob(delta);
+                if (click) app.onEnc1SwPress(); else app.onEnc1Knob(delta);
                 break;
             case EncoderId::Enc2:
-                if (click) app.onBpmSwPress();     else app.onBpmKnob(delta);
+                if (click) app.onEnc2SwPress();     else app.onEnc2Knob(delta);
                 break;
             case EncoderId::Enc3:
-                if (click) app.onViewSwPress();    else app.onViewKnob(delta);
+                if (click) app.onEnc3SwPress();    else app.onEnc3Knob(delta);
                 break;
             case EncoderId::Enc4:
                 if (click) app.onEnc4SwPress();    else app.onEnc4Knob(delta);
@@ -162,7 +162,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     if (ev.key.keysym.sym == SDLK_SPACE) {
                         // Simulates flipping the latching panel switch:
                         // toggles in/out of mapping mode.
-                        app.setMappingMode(!app.mappingMode());
+                        app.onLatch1(!app.mappingMode());
                         std::fprintf(stderr, "[sim] mapping mode = %s\n",
                                      app.mappingMode() ? "ON" : "OFF");
                         break;

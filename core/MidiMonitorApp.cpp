@@ -286,11 +286,11 @@ void MidiMonitorApp::setChannel(uint8_t channel) {
     }
 }
 
-void MidiMonitorApp::onChannelKnob(int delta) {
+void MidiMonitorApp::onEnc1Knob(int delta) {
     if (delta != 0) {
-        dbgChannelKnob_.total       += delta;
-        dbgChannelKnob_.lastDelta    = static_cast<int8_t>(delta > 0 ? 1 : -1);
-        dbgChannelKnob_.lastChangeMs = lastTickMs_;
+        dbgEnc1Knob_.total       += delta;
+        dbgEnc1Knob_.lastDelta    = static_cast<int8_t>(delta > 0 ? 1 : -1);
+        dbgEnc1Knob_.lastChangeMs = lastTickMs_;
     }
     if (mappingMode_) { cycleEditChordType(delta); return; }
     int next = static_cast<int>(channel_) + delta;
@@ -314,11 +314,11 @@ void MidiMonitorApp::setBpm(uint16_t bpm) {
     chordEngine_.setBpm(bpm_);
 }
 
-void MidiMonitorApp::onBpmKnob(int delta) {
+void MidiMonitorApp::onEnc2Knob(int delta) {
     if (delta != 0) {
-        dbgBpmKnob_.total       += delta;
-        dbgBpmKnob_.lastDelta    = static_cast<int8_t>(delta > 0 ? 1 : -1);
-        dbgBpmKnob_.lastChangeMs = lastTickMs_;
+        dbgEnc2Knob_.total       += delta;
+        dbgEnc2Knob_.lastDelta    = static_cast<int8_t>(delta > 0 ? 1 : -1);
+        dbgEnc2Knob_.lastChangeMs = lastTickMs_;
     }
     if (mappingMode_) { adjustEditGate(delta); return; }
     int next = static_cast<int>(bpm_) + delta;
@@ -349,12 +349,12 @@ void MidiMonitorApp::toggleView() {
 
 // ---------- Mapping mode -------------------------------------------------
 
-void MidiMonitorApp::setMappingMode(bool on) {
+void MidiMonitorApp::onLatch1(bool on) {
     if (on == mappingMode_) return;
     mappingMode_ = on;
     // Debug view records every panel-switch transition.
-    dbgPanelSwitch_.pressCount  += 1;
-    dbgPanelSwitch_.lastChangeMs = lastTickMs_;
+    dbgLatch1_.pressCount  += 1;
+    dbgLatch1_.lastChangeMs = lastTickMs_;
     if (on) {
         // Enter: clear any in-progress edit; the first NoteOn after
         // entry will become the captured trigger. If there are no
@@ -384,24 +384,24 @@ void MidiMonitorApp::setMappingMode(bool on) {
     }
 }
 
-void MidiMonitorApp::onChannelSwPress() {
-    ++dbgChannelSw_.pressCount;
-    dbgChannelSw_.lastChangeMs = lastTickMs_;
+void MidiMonitorApp::onEnc1SwPress() {
+    ++dbgEnc1Sw_.pressCount;
+    dbgEnc1Sw_.lastChangeMs = lastTickMs_;
     if (mappingMode_) { cycleEditDirection(); return; }
     restart();
 }
 
-void MidiMonitorApp::onBpmSwPress() {
-    ++dbgBpmSw_.pressCount;
-    dbgBpmSw_.lastChangeMs = lastTickMs_;
+void MidiMonitorApp::onEnc2SwPress() {
+    ++dbgEnc2Sw_.pressCount;
+    dbgEnc2Sw_.lastChangeMs = lastTickMs_;
     if (mappingMode_) { browseNextMapping(); return; }
     // Normal mode: view cycling was moved to the dedicated view
     // encoder. Reserved for a future use.
 }
 
-void MidiMonitorApp::onViewSwPress() {
-    ++dbgViewSw_.pressCount;
-    dbgViewSw_.lastChangeMs = lastTickMs_;
+void MidiMonitorApp::onEnc3SwPress() {
+    ++dbgEnc3Sw_.pressCount;
+    dbgEnc3Sw_.lastChangeMs = lastTickMs_;
     // Reserved for a future use (e.g. "home" — jump back to Monitor).
 }
 
@@ -435,25 +435,25 @@ void MidiMonitorApp::onEnc5SwPress() {
     // No app-level action yet.
 }
 
-void MidiMonitorApp::onLatchSwitch2(bool on) {
+void MidiMonitorApp::onLatch2(bool on) {
     if (on == latch2On_) return;
     latch2On_ = on;
     ++dbgLatch2_.pressCount;
     dbgLatch2_.lastChangeMs = lastTickMs_;
 }
 
-void MidiMonitorApp::onLatchSwitch3(bool on) {
+void MidiMonitorApp::onLatch3(bool on) {
     if (on == latch3On_) return;
     latch3On_ = on;
     ++dbgLatch3_.pressCount;
     dbgLatch3_.lastChangeMs = lastTickMs_;
 }
 
-void MidiMonitorApp::onViewKnob(int delta) {
+void MidiMonitorApp::onEnc3Knob(int delta) {
     if (delta == 0)  return;
-    dbgViewKnob_.total       += delta;
-    dbgViewKnob_.lastDelta    = static_cast<int8_t>(delta > 0 ? 1 : -1);
-    dbgViewKnob_.lastChangeMs = lastTickMs_;
+    dbgEnc3Knob_.total       += delta;
+    dbgEnc3Knob_.lastDelta    = static_cast<int8_t>(delta > 0 ? 1 : -1);
+    dbgEnc3Knob_.lastChangeMs = lastTickMs_;
     if (mappingMode_) return;
     const int n = static_cast<int>(View::kCount);
     int v = (static_cast<int>(view_) + delta) % n;
@@ -913,9 +913,9 @@ void MidiMonitorApp::drawDebug(Display& d) const {
         d.drawText(kColData,      y, value_buf, col, color::Black, 1);
         y += kRowH;
     };
-    drawKnob("CH",   dbgChannelKnob_);
-    drawKnob("BPM",  dbgBpmKnob_);
-    drawKnob("VIEW", dbgViewKnob_);
+    drawKnob("ENC1", dbgEnc1Knob_);
+    drawKnob("ENC2", dbgEnc2Knob_);
+    drawKnob("ENC3", dbgEnc3Knob_);
     drawKnob("ENC4", dbgEnc4Knob_);
     drawKnob("ENC5", dbgEnc5Knob_);
 
@@ -947,12 +947,12 @@ void MidiMonitorApp::drawDebug(Display& d) const {
         d.drawText(kColData,      y, value_buf, col, color::Black, 1);
         y += kRowH;
     };
-    drawButton("PANEL",  /*latching=*/true,  mappingMode_, dbgPanelSwitch_);
-    drawButton("BTN2",   /*latching=*/true,  latch2On_,    dbgLatch2_);
-    drawButton("BTN3",   /*latching=*/true,  latch3On_,    dbgLatch3_);
-    drawButton("CHsw",   /*latching=*/false, false,        dbgChannelSw_);
-    drawButton("BPMsw",  /*latching=*/false, false,        dbgBpmSw_);
-    drawButton("VIEWsw", /*latching=*/false, false,        dbgViewSw_);
+    drawButton("LATCH1", /*latching=*/true,  mappingMode_, dbgLatch1_);
+    drawButton("LATCH2", /*latching=*/true,  latch2On_,    dbgLatch2_);
+    drawButton("LATCH3", /*latching=*/true,  latch3On_,    dbgLatch3_);
+    drawButton("ENC1sw", /*latching=*/false, false,        dbgEnc1Sw_);
+    drawButton("ENC2sw", /*latching=*/false, false,        dbgEnc2Sw_);
+    drawButton("ENC3sw", /*latching=*/false, false,        dbgEnc3Sw_);
     drawButton("ENC4sw", /*latching=*/false, false,        dbgEnc4Sw_);
     drawButton("ENC5sw", /*latching=*/false, false,        dbgEnc5Sw_);
 
@@ -1177,8 +1177,8 @@ void MidiMonitorApp::drawBigBpm(Display& d) const {
     constexpr int kNumY = 50;
     d.drawText(numX, kNumY, num, color::White, color::Black, kNumSize);
 
-    // ---- "BPM" label below, smaller, gray ---------------------------
-    constexpr const char* kLabel = "BPM";
+    // ---- "ENC2" label below, smaller, gray ---------------------------
+    constexpr const char* kLabel = "ENC2";
     constexpr int kLabelSize = 3;
     const int labelLen = static_cast<int>(std::strlen(kLabel));
     const int labelW   = labelLen * kStride * kLabelSize;

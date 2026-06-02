@@ -33,7 +33,7 @@ public:
     // Range is [0..16] where 0 = OMNI; values are clamped at both ends so
     // turning past the limits is a no-op. Clears the visible note/worm
     // state on actual change.
-    void onChannelKnob(int delta);
+    void onEnc1Knob(int delta);
 
     // Where to send outgoing real-time MIDI messages. The output owns its
     // own clock timing source — `setMidiOutput` immediately reconfigures
@@ -44,7 +44,7 @@ public:
     // Tempo in BPM for the MIDI Clock master. Clamped to [kBpmMin..kBpmMax].
     void     setBpm(uint16_t bpm);
     uint16_t bpm() const { return bpm_; }
-    void     onBpmKnob(int delta);
+    void     onEnc2Knob(int delta);
 
     // Master monitoring switch. When OFF, incoming MIDI is ignored and the
     // held-note + worm state is cleared so the screen reflects "muted".
@@ -54,8 +54,8 @@ public:
 
     // Re-shows the boot splash and wipes the volatile MIDI state. Lets us
     // test the splash + first-render path without power-cycling the
-    // device. Triggered by the encoder SW button on hardware and by F5
-    // in the simulator.
+    // device. Currently triggered by the Enc1 shaft button (its click
+    // key in the simulator).
     void restart();
 
     // "Panic" — releases every note that is currently shown as held,
@@ -66,11 +66,10 @@ public:
     // is Backspace.
     void panic();
 
-    // Cycles between three views: monitor (header + worms + keyboard)
-    // -> big-BPM focus -> notation (grand staff with held notes) ->
-    // back to monitor. The BPM encoder's SW button drives this on
-    // hardware; Tab in the simulator. BPM rotation still adjusts
-    // tempo in every view.
+    // Cycles between the display views: monitor (header + worms +
+    // keyboard) -> big-BPM focus -> notation (grand staff with held
+    // notes) -> debug -> back to monitor. Currently driven by Enc3
+    // rotation; see onEnc3Knob.
     void toggleView();
 
     // ---- Mapping mode ------------------------------------------------
@@ -83,14 +82,14 @@ public:
     // for the mapping being edited. All edits are auto-saved into the
     // chord engine as they happen. Flipping the switch OFF returns to
     // the previously selected view.
-    void setMappingMode(bool on);
+    void onLatch1(bool on);
     bool mappingMode() const { return mappingMode_; }
 
     // Encoder-rotation entry points. In normal mode these update the
     // listened channel / BPM. In mapping mode they edit the current
     // mapping's parameters (chord type, gate ticks).
     // (The rotation methods are the same as before; the dispatch sits
-    // inside the existing onChannelKnob / onBpmKnob.)
+    // inside the existing onEnc1Knob / onEnc2Knob.)
 
     // SW-button entry points.
     //   Channel SW — normal mode: restart the app.
@@ -101,14 +100,14 @@ public:
     //                mapping mode: browse to the next saved mapping.
     //   View SW    — currently a no-op in both modes; reserved for a
     //                future "home" / reset action.
-    void onChannelSwPress();
-    void onBpmSwPress();
-    void onViewSwPress();
+    void onEnc1SwPress();
+    void onEnc2SwPress();
+    void onEnc3SwPress();
 
     // View-encoder rotation. Cycles views forward (+) or backward (-)
     // through Monitor → BigBpm → Notation. No-op in mapping mode (the
     // editor doesn't have a notion of "next view").
-    void onViewKnob(int delta);
+    void onEnc3Knob(int delta);
     uint8_t view() const { return static_cast<uint8_t>(view_); }
 
     // Fourth + fifth encoders — wired, no app-level behaviour yet.
@@ -123,8 +122,8 @@ public:
     // as the main panel switch. Caller passes the current latched
     // state every loop; the engine records every transition for the
     // Debug view. No app-level action attached yet.
-    void onLatchSwitch2(bool on);
-    void onLatchSwitch3(bool on);
+    void onLatch2(bool on);
+    void onLatch3(bool on);
 
     void onMessage(const MidiMessage& msg);
 
@@ -255,7 +254,7 @@ private:
     // ---- Debug view state -------------------------------------------
     //
     // Per-control activity counters surfaced by the debug view. Updated
-    // at the top of each on*Knob() / on*SwPress() / setMappingMode()
+    // at the top of each on*Knob() / on*SwPress() / onLatch1()
     // entry point so the view shows real input even when the dispatched
     // action is a no-op in the current mode.
     struct DebugKnob {
@@ -267,15 +266,15 @@ private:
         uint16_t pressCount   = 0;   // monotonic per-boot
         uint32_t lastChangeMs = 0;   // 0 = "never pressed"
     };
-    DebugKnob   dbgChannelKnob_{};
-    DebugKnob   dbgBpmKnob_{};
-    DebugKnob   dbgViewKnob_{};
+    DebugKnob   dbgEnc1Knob_{};
+    DebugKnob   dbgEnc2Knob_{};
+    DebugKnob   dbgEnc3Knob_{};
     DebugKnob   dbgEnc4Knob_{};
     DebugKnob   dbgEnc5Knob_{};
-    DebugButton dbgPanelSwitch_{};
-    DebugButton dbgChannelSw_{};
-    DebugButton dbgBpmSw_{};
-    DebugButton dbgViewSw_{};
+    DebugButton dbgLatch1_{};
+    DebugButton dbgEnc1Sw_{};
+    DebugButton dbgEnc2Sw_{};
+    DebugButton dbgEnc3Sw_{};
     DebugButton dbgEnc4Sw_{};
     DebugButton dbgEnc5Sw_{};
     DebugButton dbgLatch2_{};
