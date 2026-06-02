@@ -1,5 +1,7 @@
 #include "core/app/AppShell.h"
 
+#include <cstdio>
+
 #include "core/Display.h"
 #include "core/MidiOutput.h"
 
@@ -139,9 +141,40 @@ void AppShell::tick(uint32_t nowMs) {
     }
 }
 
-// Stub — full implementation in a later task.
-void AppShell::render(Display&) {}
+void AppShell::drawTopBar(Display& d) const {
+    d.fillRect(0, 0, d.width(), 10, color::DarkGray);
+    if (modeCount_ == 0) return;
+    char line[48];
+    const char* mode   = modes_[activeMode_]->name();
+    const char* screen = modes_[activeMode_]->screen(screenIndex_).name();
+    std::snprintf(line, sizeof(line), "%s  -  %s", mode, screen);
+    d.drawText(2, 2, line, color::White, color::DarkGray, 1);
+}
 
-// drawTopBar / drawOverlay implemented in later tasks.
+void AppShell::drawOverlay(Display& d) const {
+    const int w = 200, h = 16 * modeCount_ + 8;
+    const int x = (d.width() - w) / 2;
+    const int y = (d.height() - h) / 2;
+    d.fillRect(x, y, w, h, color::Black);
+    d.fillRect(x, y, w, 12, color::Blue);
+    d.drawText(x + 4, y + 2, "SELECT MODE", color::White, color::Blue, 1);
+    for (int i = 0; i < modeCount_; ++i) {
+        const bool sel = (i == overlayChoice_);
+        const uint16_t bg = sel ? color::Yellow : color::Black;
+        const uint16_t fg = sel ? color::Black : color::White;
+        d.drawText(x + 8, y + 14 + i * 16, modes_[i]->name(), fg, bg, 1);
+    }
+}
+
+void AppShell::render(Display& d) {
+    d.clear(color::Black);
+    if (overlayOpen_) {
+        drawOverlay(d);
+    } else if (modeCount_ > 0) {
+        activeScreen().render(d);
+    }
+    drawTopBar(d);
+    d.present();
+}
 
 } // namespace core

@@ -143,6 +143,28 @@ static void test_latch2_stop_latch3_reset() {
     TEST_ASSERT_EQUAL_INT(2, out.stops);     // stop + reset both send 0xFC
 }
 
+static void test_render_draws_top_bar_with_mode_and_screen() {
+    core::AppShell shell;
+    FakeMode a("mon", 2);
+    shell.addMode(&a);
+    shell.begin();
+    StubDisplay d;
+    shell.render(d);
+    TEST_ASSERT_TRUE(d.drewText("mon"));
+    TEST_ASSERT_EQUAL_INT(1, d.presents);
+}
+
+static void test_render_overlay_lists_modes() {
+    core::AppShell shell;
+    FakeMode a("a", 1), b("berlin", 1);
+    shell.addMode(&a); shell.addMode(&b);
+    shell.begin();
+    shell.onEncoderSw(5);            // open overlay
+    StubDisplay d;
+    shell.render(d);
+    TEST_ASSERT_TRUE(d.drewText("berlin"));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_fake_mode_screen_dispatch);
@@ -155,5 +177,7 @@ int main() {
     RUN_TEST(test_overlay_rotation_resets_timeout);
     RUN_TEST(test_latch1_toggles_play_pause_and_sends_realtime);
     RUN_TEST(test_latch2_stop_latch3_reset);
+    RUN_TEST(test_render_draws_top_bar_with_mode_and_screen);
+    RUN_TEST(test_render_overlay_lists_modes);
     return UNITY_END();
 }
