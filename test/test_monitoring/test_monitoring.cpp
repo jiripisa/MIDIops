@@ -97,6 +97,37 @@ static void test_clearInput_freezes_and_clears() {
     for (int i=0;i<m.maxWorms();++i) if (m.worms()[i].live) TEST_ASSERT_FALSE(m.worms()[i].growing);
 }
 
+static void test_two_channels_same_note() {
+    core::NoteWormModel m; m.tick(0);
+    m.onNoteOn(1, 60);
+    m.onNoteOn(2, 60);
+    TEST_ASSERT_EQUAL_INT(2, countLive(m));
+    TEST_ASSERT_EQUAL_INT(1, m.pressedChannelFor(60));  // lowest held channel
+    m.onNoteOff(1, 60);
+    TEST_ASSERT_EQUAL_INT(2, m.pressedChannelFor(60));  // ch2 still holds
+    // ch2's worm is still growing; ch1's worm is released (not growing)
+    int growing = 0;
+    for (int i = 0; i < m.maxWorms(); ++i)
+        if (m.worms()[i].live && m.worms()[i].growing) ++growing;
+    TEST_ASSERT_EQUAL_INT(1, growing);
+}
+
+static void test_channel_out_of_range_is_ignored() {
+    core::NoteWormModel m; m.tick(0);
+    m.onNoteOn(0, 60);
+    m.onNoteOn(17, 60);
+    TEST_ASSERT_EQUAL_INT(0, countLive(m));
+    TEST_ASSERT_EQUAL_INT(0, m.pressedChannelFor(60));
+}
+
+static void test_engine_noteoff_clears_output_state() {
+    core::NoteWormModel m; m.tick(0);
+    m.onEngineNoteOn(2, 67);
+    TEST_ASSERT_EQUAL_INT(2, m.outPressedChannelFor(67));
+    m.onEngineNoteOff(2, 67);
+    TEST_ASSERT_EQUAL_INT(0, m.outPressedChannelFor(67));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_white_key_index_roundtrip);
@@ -113,5 +144,8 @@ int main() {
     RUN_TEST(test_released_worm_eventually_expires);
     RUN_TEST(test_engine_worm_is_output);
     RUN_TEST(test_clearInput_freezes_and_clears);
+    RUN_TEST(test_two_channels_same_note);
+    RUN_TEST(test_channel_out_of_range_is_ignored);
+    RUN_TEST(test_engine_noteoff_clears_output_state);
     return UNITY_END();
 }
