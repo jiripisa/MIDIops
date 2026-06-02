@@ -112,6 +112,37 @@ static void test_overlay_rotation_resets_timeout() {
     TEST_ASSERT_TRUE(shell.overlayOpen());
 }
 
+static void test_latch1_toggles_play_pause_and_sends_realtime() {
+    core::AppShell shell;
+    FakeMidiOutput out;
+    FakeMode a("a", 1);
+    shell.addMode(&a);
+    shell.setMidiOutput(&out);
+    shell.begin();
+    shell.onLatch(1, true);                  // Play (rising)
+    TEST_ASSERT_EQUAL_INT(1, out.starts);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Transport::Play), static_cast<int>(a.transports.back()));
+    shell.onLatch(1, false);                 // change -> Pause
+    TEST_ASSERT_EQUAL_INT(1, out.stops);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Transport::Pause), static_cast<int>(a.transports.back()));
+    shell.onLatch(1, true);                  // change -> Play (continue)
+    TEST_ASSERT_EQUAL_INT(1, out.continues);
+}
+
+static void test_latch2_stop_latch3_reset() {
+    core::AppShell shell;
+    FakeMidiOutput out;
+    FakeMode a("a", 1);
+    shell.addMode(&a);
+    shell.setMidiOutput(&out);
+    shell.begin();
+    shell.onLatch(2, true);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Transport::Stop), static_cast<int>(a.transports.back()));
+    shell.onLatch(3, true);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Transport::Reset), static_cast<int>(a.transports.back()));
+    TEST_ASSERT_EQUAL_INT(2, out.stops);     // stop + reset both send 0xFC
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_fake_mode_screen_dispatch);
@@ -122,5 +153,7 @@ int main() {
     RUN_TEST(test_overlay_open_select_confirm);
     RUN_TEST(test_overlay_timeout_reverts);
     RUN_TEST(test_overlay_rotation_resets_timeout);
+    RUN_TEST(test_latch1_toggles_play_pause_and_sends_realtime);
+    RUN_TEST(test_latch2_stop_latch3_reset);
     return UNITY_END();
 }

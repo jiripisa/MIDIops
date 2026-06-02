@@ -82,7 +82,41 @@ void AppShell::onEncoderSw(int index) {
 
 void AppShell::onLatch(int index, bool on) {
     fireRaw({RawInput::Kind::Latch, index, 0, on});
-    // transport handling added in Task 5
+    if (overlayOpen_) return;                 // transport suppressed in overlay
+    if (index < 1 || index > 3) return;
+    if (on == lastLatchOn_[index]) return;    // act on any state change
+    lastLatchOn_[index] = on;
+    switch (index) {
+        case 1:  // Play / Pause toggles
+            applyTransport(transportState_ == TransportState::Playing
+                               ? Transport::Pause : Transport::Play);
+            break;
+        case 2: applyTransport(Transport::Stop);  break;
+        case 3: applyTransport(Transport::Reset); break;
+    }
+}
+
+void AppShell::applyTransport(Transport t) {
+    switch (t) {
+        case Transport::Play:
+            if (out_) {
+                if (transportState_ == TransportState::Paused) out_->sendContinue();
+                else out_->sendStart();
+            }
+            transportState_ = TransportState::Playing;
+            break;
+        case Transport::Pause:
+            if (out_) out_->sendStop();
+            transportState_ = TransportState::Paused;
+            break;
+        case Transport::Stop:
+        case Transport::Reset:
+            if (out_) out_->sendStop();
+            transportState_ = TransportState::Stopped;
+            break;
+    }
+    transport_ = t;
+    if (modeCount_ > 0) modes_[activeMode_]->onTransport(t);
 }
 
 void AppShell::onMidiIn(const MidiMessage& msg) {
@@ -108,6 +142,6 @@ void AppShell::tick(uint32_t nowMs) {
 // Stub — full implementation in a later task.
 void AppShell::render(Display&) {}
 
-// drawTopBar / drawOverlay / applyTransport implemented in later tasks.
+// drawTopBar / drawOverlay implemented in later tasks.
 
 } // namespace core
