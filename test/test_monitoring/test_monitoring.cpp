@@ -4,6 +4,7 @@
 #include "core/render/Color.h"
 #include "core/render/Glyph.h"
 #include "core/render/KeyLayout.h"
+#include "core/render/NotationRenderer.h"
 #include "core/render/WormsRenderer.h"
 #include "core/NoteWormModel.h"
 #include "core/app/AppShell.h"
@@ -183,6 +184,30 @@ static void test_monitoring_mode_renders_injected_note() {
     TEST_ASSERT_TRUE(d.drewText("Monitoring"));  // top bar shows mode name
 }
 
+// ---- NotationRenderer tests -----------------------------------------------
+
+static void test_notation_draws_staff() {
+    core::NoteWormModel m; m.tick(0);
+    core::NotationRenderer n; n.update(m, 0);
+    StubDisplay d; n.render(m, d);
+    TEST_ASSERT_TRUE(d.rects > 0);
+}
+
+static void test_notation_shows_held_note_name() {
+    core::NoteWormModel m; m.tick(0); m.onNoteOn(1, 60);
+    core::NotationRenderer n; n.update(m, 0);
+    StubDisplay d; n.render(m, d);
+    TEST_ASSERT_TRUE(d.drewText("C"));   // C4 name contains "C"
+}
+
+static void test_notation_update_render_no_crash_through_release() {
+    core::NoteWormModel m; m.tick(0); core::NotationRenderer n;
+    m.onNoteOn(1, 64); n.update(m, 0); m.onNoteOff(1, 64);
+    for (uint32_t t=100;t<=3000;t+=100){ m.tick(t); n.update(m, t); }
+    StubDisplay d; n.render(m, d);
+    TEST_ASSERT_TRUE(true);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_white_key_index_roundtrip);
@@ -206,5 +231,8 @@ int main() {
     RUN_TEST(test_live_input_worm_adds_fills);
     RUN_TEST(test_monitoring_mode_renders_injected_note);
     RUN_TEST(test_glyph_draws_runs_of_set_bits);
+    RUN_TEST(test_notation_draws_staff);
+    RUN_TEST(test_notation_shows_held_note_name);
+    RUN_TEST(test_notation_update_render_no_crash_through_release);
     return UNITY_END();
 }
