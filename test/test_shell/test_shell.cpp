@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include "core/app/AppShell.h"
+#include "core/modes/DebugMode.h"
 #include "support/Fakes.h"
 #include "support/StubDisplay.h"
 #include "support/FakeMidiOutput.h"
@@ -165,6 +166,20 @@ static void test_render_overlay_lists_modes() {
     TEST_ASSERT_TRUE(d.drewText("berlin"));
 }
 
+static void test_debug_mode_counts_raw_input() {
+    core::AppShell shell;
+    core::DebugMode dbg;
+    shell.addMode(&dbg);
+    shell.begin();
+    shell.onEncoderKnob(5, +1);   // Enc5 rotate also reaches raw tap
+    shell.onEncoderSw(3);
+    shell.onLatch(2, true);
+    StubDisplay d;
+    shell.render(d);
+    TEST_ASSERT_TRUE(d.drewText("ENC5"));
+    TEST_ASSERT_TRUE(d.drewText("LATCH2"));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_fake_mode_screen_dispatch);
@@ -179,5 +194,6 @@ int main() {
     RUN_TEST(test_latch2_stop_latch3_reset);
     RUN_TEST(test_render_draws_top_bar_with_mode_and_screen);
     RUN_TEST(test_render_overlay_lists_modes);
+    RUN_TEST(test_debug_mode_counts_raw_input);
     return UNITY_END();
 }
