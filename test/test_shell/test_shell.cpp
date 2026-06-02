@@ -1,6 +1,8 @@
 #include <unity.h>
 
 #include "support/Fakes.h"
+#include "support/StubDisplay.h"
+#include "support/FakeMidiOutput.h"
 
 void setUp() {}
 void tearDown() {}
