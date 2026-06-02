@@ -1,7 +1,9 @@
 #include <unity.h>
 
+#include "support/StubDisplay.h"
 #include "core/render/Color.h"
 #include "core/render/KeyLayout.h"
+#include "core/render/WormsRenderer.h"
 #include "core/NoteWormModel.h"
 
 void setUp() {}
@@ -128,6 +130,23 @@ static void test_engine_noteoff_clears_output_state() {
     TEST_ASSERT_EQUAL_INT(0, m.outPressedChannelFor(67));
 }
 
+// ---- WormsRenderer tests -------------------------------------------------
+
+static void test_renderer_draws_keyboard_surface() {
+    core::NoteWormModel m; m.tick(0);
+    StubDisplay d;
+    core::WormsRenderer::render(m, d);
+    TEST_ASSERT_TRUE(d.rects > 0);   // keyboard surface + separators at least
+}
+static void test_live_input_worm_adds_fills() {
+    core::NoteWormModel m; m.tick(0);
+    StubDisplay empty; core::WormsRenderer::drawWorms(m, empty);
+    const int before = empty.rects;
+    m.onNoteOn(1, 60); m.tick(200);   // grow a worm a few px
+    StubDisplay withWorm; core::WormsRenderer::drawWorms(m, withWorm);
+    TEST_ASSERT_TRUE(withWorm.rects > before);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_white_key_index_roundtrip);
@@ -147,5 +166,7 @@ int main() {
     RUN_TEST(test_two_channels_same_note);
     RUN_TEST(test_channel_out_of_range_is_ignored);
     RUN_TEST(test_engine_noteoff_clears_output_state);
+    RUN_TEST(test_renderer_draws_keyboard_surface);
+    RUN_TEST(test_live_input_worm_adds_fills);
     return UNITY_END();
 }
