@@ -634,7 +634,7 @@ In `onEncoderKnob`, replace the `if (overlayOpen_) return;` line:
 
 ```cpp
     if (overlayOpen_) {
-        if (index == 2 && modeCount_ > 0) {        // Enc2 moves selection
+        if (index == 5 && modeCount_ > 0) {        // Enc5 moves selection
             const int n = modeCount_;
             overlayChoice_ = ((overlayChoice_ + delta) % n + n) % n;
             overlayLastInputMs_ = nowMs_;
@@ -1319,7 +1319,7 @@ Run: `pio run -e native -t exec` (or `./scripts/run-sim.sh`).
 Confirm:
 - Boots into the **BPM** mode showing `120`.
 - `q` then `w` (Enc5 rotate / click): rotate is a no-op (BPM has 1 screen); **click opens the mode overlay** listing `BPM` and `Debug`.
-- In the overlay, `č`/`ř`/`ž` (Enc2 rotate) moves the highlight; Enc5 click confirms → switches mode. Waiting 3 s reverts.
+- In the overlay, rotating Enc5 (`q`/`e` keys in the sim) moves the highlight; Enc5 click confirms → switches mode. Waiting 3 s reverts.
 - In **BPM** mode, `+`/`š` (Enc1 rotate) changes the number.
 - In **Debug** mode, every encoder/latch updates its row.
 - Top bar shows `BPM - tempo` / `Debug - io`.

@@ -52,7 +52,7 @@ void AppShell::enterMode(int index) {
 void AppShell::onEncoderKnob(int index, int delta) {
     fireRaw({RawInput::Kind::EncoderKnob, index, delta, false});
     if (overlayOpen_) {
-        if (index == 2 && modeCount_ > 0) {        // Enc2 moves selection
+        if (index == 5 && modeCount_ > 0) {        // Enc5 moves selection
             const int n = modeCount_;
             overlayChoice_ = ((overlayChoice_ + delta) % n + n) % n;
             overlayLastInputMs_ = nowMs_;

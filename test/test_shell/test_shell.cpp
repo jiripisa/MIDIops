@@ -79,7 +79,7 @@ static void test_overlay_open_select_confirm() {
     shell.begin();
     shell.onEncoderSw(5);                       // open overlay
     TEST_ASSERT_TRUE(shell.overlayOpen());
-    shell.onEncoderKnob(2, +2);                 // select index 2 (c)
+    shell.onEncoderKnob(5, +2);                 // Enc5 selects index 2 (c)
     TEST_ASSERT_EQUAL_INT(2, shell.overlayChoice());
     shell.onEncoderSw(5);                        // confirm
     TEST_ASSERT_FALSE(shell.overlayOpen());
@@ -94,7 +94,7 @@ static void test_overlay_timeout_reverts() {
     shell.begin();
     shell.tick(1000);
     shell.onEncoderSw(5);                        // open at t=1000
-    shell.onEncoderKnob(2, +1);                  // select b at t=1000
+    shell.onEncoderKnob(5, +1);                  // Enc5 selects b at t=1000
     shell.tick(1000 + 3000);                      // exactly timeout
     TEST_ASSERT_FALSE(shell.overlayOpen());
     TEST_ASSERT_EQUAL_INT(0, shell.activeModeIndex());  // unchanged
@@ -109,7 +109,7 @@ static void test_overlay_rotation_resets_timeout() {
     shell.tick(1000);
     shell.onEncoderSw(5);
     shell.tick(3500);                             // overlay still open (opened at 1000, <4000)
-    shell.onEncoderKnob(2, +1);                   // rotate at t=3500 resets timer
+    shell.onEncoderKnob(5, +1);                   // Enc5 rotate at t=3500 resets timer
     shell.tick(3500 + 2999);                       // <3s since last rotate
     TEST_ASSERT_TRUE(shell.overlayOpen());
 }

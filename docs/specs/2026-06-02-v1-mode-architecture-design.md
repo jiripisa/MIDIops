@@ -54,14 +54,18 @@ change is planned for v1.
 
 ## 4. Mode-change overlay
 
+Enc5 is the single "navigation" knob: outside the overlay its rotation
+switches screens; inside the overlay its rotation selects a mode. Its
+press both opens and confirms.
+
 - **Enc5 press** opens an overlay panel listing the available modes.
-- **Enc2 rotate** moves the selection through the list.
+- **Enc5 rotate** moves the selection through the list.
 - **Enc5 press** confirms → switch to the selected mode.
-- If **3 s** elapse since the last Enc2 rotation without a confirm, the
+- If **3 s** elapse since the last Enc5 rotation without a confirm, the
   overlay closes and the **previous mode is restored** (no change).
-- While the overlay is open, Enc1/Enc3/Enc4 and the transport latches are
-  suppressed (only Enc2 + Enc5 act). MIDI input continues to be processed
-  by the active mode underneath.
+- While the overlay is open, Enc1–Enc4 and the transport latches are
+  suppressed (only Enc5 acts). MIDI input continues to be processed by
+  the active mode underneath.
 
 ## 5. Core abstractions
 
