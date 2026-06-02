@@ -29,6 +29,7 @@ void AppShell::fireRaw(const RawInput& in) {
 }
 
 void AppShell::switchScreen(int delta) {
+    if (modeCount_ == 0) return;
     const int n = modes_[activeMode_]->screenCount();
     if (n <= 1) return;
     activeScreen().onExit();

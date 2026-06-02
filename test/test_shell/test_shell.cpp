@@ -27,6 +27,8 @@ static void test_enc1to4_route_to_active_screen() {
     TEST_ASSERT_EQUAL_INT(1, static_cast<int>(s0.encoders.size()));
     TEST_ASSERT_EQUAL_INT(3, s0.encoders[0].second);
     TEST_ASSERT_EQUAL_INT(1, static_cast<int>(s0.sws.size()));
+    TEST_ASSERT_EQUAL_INT(1, s0.encoders[0].first);  // index preserved
+    TEST_ASSERT_EQUAL_INT(2, s0.sws[0]);             // switch index preserved
 }
 
 static void test_enc5_switches_screen_with_wrap() {
@@ -40,6 +42,12 @@ static void test_enc5_switches_screen_with_wrap() {
     shell.onEncoderKnob(5, -1);
     shell.onEncoderKnob(5, -1);
     TEST_ASSERT_EQUAL_INT(2, shell.activeScreenIndex());  // wrapped past 0
+    shell.onEncoderKnob(5, +1);                       // 2 -> 0, forward wrap
+    TEST_ASSERT_EQUAL_INT(0, shell.activeScreenIndex());
+    // Each screen switch must fire the lifecycle pair on the screens involved.
+    auto& s1 = static_cast<FakeScreen&>(a.screen(1));
+    TEST_ASSERT_TRUE(s1.enters >= 1);
+    TEST_ASSERT_TRUE(s1.exits  >= 1);
 }
 
 static void test_midi_in_reaches_active_mode() {

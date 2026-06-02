@@ -20,7 +20,7 @@ public:
 
     void addMode(Mode* mode);          // call once per mode before begin()
     void setMidiOutput(MidiOutput* o); // for transport realtime messages
-    void begin();                      // enters mode 0
+    void begin();                      // enters mode 0 — call exactly once
 
     // Hardware input. Encoder index 1..5, latch index 1..3.
     void onEncoderKnob(int index, int delta);
@@ -56,6 +56,8 @@ private:
 
     MidiOutput*    out_ = nullptr;
     uint16_t       bpm_ = 120;
+    // transportState_ is the authoritative playback state (used from the
+    // transport task on); transport_ holds the last command issued.
     TransportState transportState_ = TransportState::Stopped;
     Transport      transport_ = Transport::Stop;
     bool           lastLatchOn_[4] = {};   // 1-based; [0] unused
