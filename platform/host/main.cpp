@@ -10,15 +10,17 @@
 //    note presses are injected on — useful to see the per-channel colour
 //    palette without an external multi-channel MIDI source.
 //  * The five rotary encoders are each driven by a key trio
-//    {left, click, right}; see kEncoderTrios below. SPACE toggles
-//    mapping mode, BACKSPACE fires the panic, ESC quits.
+//    {left, click, right}; see kEncoderTrios below. SPACE = Play/Pause
+//    (Latch1), BACKSPACE = Stop (Latch2), RETURN = Reset (Latch3), ESC quits.
 
 #include <SDL.h>
 
 #include <cstdio>
 
 #include "core/MidiMessage.h"
-#include "core/MidiMonitorApp.h"
+#include "core/app/AppShell.h"
+#include "core/modes/BpmMode.h"
+#include "core/modes/DebugMode.h"
 #include "platform/host/RtMidiInput.h"
 #include "platform/host/RtMidiOutput.h"
 #include "platform/host/SdlDisplay.h"
@@ -72,7 +74,7 @@ constexpr EncoderTrio kEncoderTrios[] = {
 
 // Dispatches a key press to the matching encoder entry point. Returns true
 // if the scancode belonged to an encoder trio (so the caller can stop).
-bool handleEncoderKey(core::MidiMonitorApp& app, SDL_Scancode sc) {
+bool handleEncoderKey(core::AppShell& app, SDL_Scancode sc) {
     for (const EncoderTrio& t : kEncoderTrios) {
         int  delta = 0;
         bool click = false;
@@ -81,23 +83,8 @@ bool handleEncoderKey(core::MidiMonitorApp& app, SDL_Scancode sc) {
         else if (sc == t.click) click = true;
         else continue;
 
-        switch (t.id) {
-            case EncoderId::Enc1:
-                if (click) app.onEnc1SwPress(); else app.onEnc1Knob(delta);
-                break;
-            case EncoderId::Enc2:
-                if (click) app.onEnc2SwPress();     else app.onEnc2Knob(delta);
-                break;
-            case EncoderId::Enc3:
-                if (click) app.onEnc3SwPress();    else app.onEnc3Knob(delta);
-                break;
-            case EncoderId::Enc4:
-                if (click) app.onEnc4SwPress();    else app.onEnc4Knob(delta);
-                break;
-            case EncoderId::Enc5:
-                if (click) app.onEnc5SwPress();    else app.onEnc5Knob(delta);
-                break;
-        }
+        const int idx = static_cast<int>(t.id) + 1;   // Enc1->1 .. Enc5->5
+        if (click) app.onEncoderSw(idx); else app.onEncoderKnob(idx, delta);
         return true;
     }
     return false;
@@ -114,24 +101,31 @@ int main(int /*argc*/, char* /*argv*/[]) {
     SdlDisplay   display(kLogicalW, kLogicalH, kScale, "MIDIops simulator");
     RtMidiInput  midiIn("MIDIops");
     RtMidiOutput midiOut("MIDIops Clock");
-    core::MidiMonitorApp app;
+    core::AppShell   app;
+    core::DebugMode debugMode;
+    core::BpmMode   bpmMode(app);
 
     midiIn.begin();
     midiOut.begin();
     app.setMidiOutput(&midiOut);
+    app.addMode(&bpmMode);
+    app.addMode(&debugMode);
+    app.setBpm(120);
+    app.begin();
 
     std::fprintf(stderr,
                  "MIDIops simulator running.\n"
                  "  z x c v b n m   inject Note On/Off (white keys C4..B4)\n"
                  "  Shift + 1..9    set the test injection channel (default 1)\n"
                  "  Encoders are key trios {left, click, right}:\n"
-                 "    1 2 3 (+ě š)  Enc1 (now: channel)  left / SW / right\n"
-                 "    4 5 6 (čř ž)  Enc2 (now: BPM)       left / SW / right\n"
-                 "    7 8 9 (ýá í)  Enc3 (now: view)      left / SW / right\n"
-                 "    0 - = (é= ´)  Enc4 (debug)          left / SW / right\n"
-                 "    q w e         Enc5 (debug)          left / SW / right\n"
-                 "  SPACE           toggle chord-mapping mode (= panel switch)\n"
-                 "  BACKSPACE       panic — release stuck notes\n"
+                 "    1 2 3 (+ě š)  Enc1               left / SW / right\n"
+                 "    4 5 6 (čř ž)  Enc2               left / SW / right\n"
+                 "    7 8 9 (ýá í)  Enc3               left / SW / right\n"
+                 "    0 - = (é= ´)  Enc4               left / SW / right\n"
+                 "    q w e         Enc5 (switch screen / mode overlay)\n"
+                 "  SPACE           Play / Pause  (Latch1)\n"
+                 "  BACKSPACE       Stop          (Latch2)\n"
+                 "  RETURN          Reset         (Latch3)\n"
                  "  ESC             quit\n");
 
     // Test injection state. Each held note remembers which channel it was
@@ -160,17 +154,20 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     if (ev.key.repeat) break;
 
                     if (ev.key.keysym.sym == SDLK_SPACE) {
-                        // Simulates flipping the latching panel switch:
-                        // toggles in/out of mapping mode.
-                        app.onLatch1(!app.mappingMode());
-                        std::fprintf(stderr, "[sim] mapping mode = %s\n",
-                                     app.mappingMode() ? "ON" : "OFF");
+                        static bool s = false; s = !s; app.onLatch(1, s);
+                        std::fprintf(stderr, "[sim] latch1 (play/pause) = %s\n", s ? "on" : "off");
                         break;
                     }
 
                     if (ev.key.keysym.sym == SDLK_BACKSPACE) {
-                        app.panic();
-                        std::fprintf(stderr, "[sim] panic — released stuck notes\n");
+                        static bool s = false; s = !s; app.onLatch(2, s);
+                        std::fprintf(stderr, "[sim] latch2 (stop) = %s\n", s ? "on" : "off");
+                        break;
+                    }
+
+                    if (ev.key.keysym.sym == SDLK_RETURN) {
+                        static bool s = false; s = !s; app.onLatch(3, s);
+                        std::fprintf(stderr, "[sim] latch3 (reset) = %s\n", s ? "on" : "off");
                         break;
                     }
 
@@ -193,10 +190,6 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     // Encoder key trios {left, click, right}. Layout-
                     // independent (scancode-based). See kEncoderTrios.
                     if (handleEncoderKey(app, ev.key.keysym.scancode)) {
-                        std::fprintf(stderr,
-                                     "[sim] CH=%u BPM=%u view=%d\n",
-                                     app.channel(), app.bpm(),
-                                     static_cast<int>(app.view()));
                         break;
                     }
 
@@ -237,7 +230,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
         core::MidiMessage msg;
         while (midiIn.poll(msg)) {
-            app.onMessage(msg);
+            app.onMidiIn(msg);
         }
 
         // Re-render every frame so worms scroll smoothly even when no new
