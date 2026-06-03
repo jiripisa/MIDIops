@@ -1,7 +1,5 @@
 #include "core/render/NotationRenderer.h"
 
-#include <cstdio>
-#include <cstring>
 #include <string>
 
 #include "core/Display.h"
