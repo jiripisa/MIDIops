@@ -208,6 +208,24 @@ static void test_notation_update_render_no_crash_through_release() {
     TEST_ASSERT_TRUE(true);
 }
 
+static void test_monitoring_notes_screen_renders() {
+    core::AppShell shell;
+    core::MonitoringMode mon;
+    shell.addMode(&mon);
+    shell.begin();
+    TEST_ASSERT_EQUAL_INT(2, mon.screenCount());
+    shell.onEncoderKnob(5, +1);          // Enc5 rotate -> switch to notes screen
+    TEST_ASSERT_EQUAL_INT(1, shell.activeScreenIndex());
+    core::MidiMessage on{};
+    on.type = core::MidiType::NoteOn; on.channel = 1; on.data1 = 60; on.data2 = 100;
+    shell.onMidiIn(on);
+    shell.tick(50);
+    StubDisplay d;
+    shell.render(d);
+    TEST_ASSERT_TRUE(d.rects > 0);                 // staff drawn
+    TEST_ASSERT_TRUE(d.drewText("notes"));         // top bar shows the screen name
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_white_key_index_roundtrip);
@@ -234,5 +252,6 @@ int main() {
     RUN_TEST(test_notation_draws_staff);
     RUN_TEST(test_notation_shows_held_note_name);
     RUN_TEST(test_notation_update_render_no_crash_through_release);
+    RUN_TEST(test_monitoring_notes_screen_renders);
     return UNITY_END();
 }
