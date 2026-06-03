@@ -2,7 +2,9 @@
 
 #include "support/StubDisplay.h"
 #include "core/render/Color.h"
+#include "core/render/Glyph.h"
 #include "core/render/KeyLayout.h"
+#include "core/render/NotationRenderer.h"
 #include "core/render/WormsRenderer.h"
 #include "core/NoteWormModel.h"
 #include "core/app/AppShell.h"
@@ -151,6 +153,15 @@ static void test_live_input_worm_adds_fills() {
 
 // ---- MonitoringMode tests ---------------------------------------------------
 
+static void test_glyph_draws_runs_of_set_bits() {
+    // 3-wide, 2-tall glyph. row0 = 0b101 -> two isolated pixels (2 rects);
+    // row1 = 0b111 -> one run of 3 (1 rect). Total 3 fillRects.
+    const uint16_t rows[2] = {0b101, 0b111};
+    StubDisplay d;
+    core::drawGlyph(d, 0, 0, rows, 3, 2, core::color::White);
+    TEST_ASSERT_EQUAL_INT(3, d.rects);
+}
+
 static void test_monitoring_mode_renders_injected_note() {
     core::AppShell shell;
     core::MonitoringMode mon;
@@ -171,6 +182,48 @@ static void test_monitoring_mode_renders_injected_note() {
     shell.render(d);
     TEST_ASSERT_TRUE(d.rects > 0);               // worms + keyboard drawn
     TEST_ASSERT_TRUE(d.drewText("Monitoring"));  // top bar shows mode name
+}
+
+// ---- NotationRenderer tests -----------------------------------------------
+
+static void test_notation_draws_staff() {
+    core::NoteWormModel m; m.tick(0);
+    core::NotationRenderer n; n.update(m, 0);
+    StubDisplay d; n.render(m, d);
+    TEST_ASSERT_TRUE(d.rects > 0);
+}
+
+static void test_notation_shows_held_note_name() {
+    core::NoteWormModel m; m.tick(0); m.onNoteOn(1, 60);
+    core::NotationRenderer n; n.update(m, 0);
+    StubDisplay d; n.render(m, d);
+    TEST_ASSERT_TRUE(d.drewText("C"));   // C4 name contains "C"
+}
+
+static void test_notation_update_render_no_crash_through_release() {
+    core::NoteWormModel m; m.tick(0); core::NotationRenderer n;
+    m.onNoteOn(1, 64); n.update(m, 0); m.onNoteOff(1, 64);
+    for (uint32_t t=100;t<=3000;t+=100){ m.tick(t); n.update(m, t); }
+    StubDisplay d; n.render(m, d);
+    TEST_ASSERT_TRUE(true);
+}
+
+static void test_monitoring_notes_screen_renders() {
+    core::AppShell shell;
+    core::MonitoringMode mon;
+    shell.addMode(&mon);
+    shell.begin();
+    TEST_ASSERT_EQUAL_INT(2, mon.screenCount());
+    shell.onEncoderKnob(5, +1);          // Enc5 rotate -> switch to notes screen
+    TEST_ASSERT_EQUAL_INT(1, shell.activeScreenIndex());
+    core::MidiMessage on{};
+    on.type = core::MidiType::NoteOn; on.channel = 1; on.data1 = 60; on.data2 = 100;
+    shell.onMidiIn(on);
+    shell.tick(50);
+    StubDisplay d;
+    shell.render(d);
+    TEST_ASSERT_TRUE(d.rects > 0);                 // staff drawn
+    TEST_ASSERT_TRUE(d.drewText("notes"));         // top bar shows the screen name
 }
 
 int main() {
@@ -195,5 +248,10 @@ int main() {
     RUN_TEST(test_renderer_draws_keyboard_surface);
     RUN_TEST(test_live_input_worm_adds_fills);
     RUN_TEST(test_monitoring_mode_renders_injected_note);
+    RUN_TEST(test_glyph_draws_runs_of_set_bits);
+    RUN_TEST(test_notation_draws_staff);
+    RUN_TEST(test_notation_shows_held_note_name);
+    RUN_TEST(test_notation_update_render_no_crash_through_release);
+    RUN_TEST(test_monitoring_notes_screen_renders);
     return UNITY_END();
 }
