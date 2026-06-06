@@ -146,32 +146,109 @@ static void test_param_edit_rate_cycles() {
 }
 
 // ---------------------------------------------------------------------------
-// test_param_edit_latch_toggle
-//   enc4 on params2 toggles latch (any non-zero delta).
+// test_param_edit_latch_enc4_noop
+//   enc4 on params2 no longer controls latch (Latch is now Latch1 button).
+//   Verify enc4 does nothing.
 // ---------------------------------------------------------------------------
-static void test_param_edit_latch_toggle() {
+static void test_param_edit_latch_enc4_noop() {
     core::AppShell shell;
     core::ArpMode  arp(shell);
 
     // Default latch = false
     TEST_ASSERT_FALSE(arp.params().latch);
 
+    // enc4 must no longer toggle latch
     arp.screen(1).onEncoder(4, +1);
-    TEST_ASSERT_TRUE(arp.params().latch);
-
-    arp.screen(1).onEncoder(4, -1);
     TEST_ASSERT_FALSE(arp.params().latch);
 
-    // delta == 0 should NOT toggle
-    arp.screen(1).onEncoder(4, 0);
+    arp.screen(1).onEncoder(4, -1);
     TEST_ASSERT_FALSE(arp.params().latch);
 }
 
 // ---------------------------------------------------------------------------
-// test_transport_stop_silences_engine
-//   onTransport(Stop) calls engine_.stop() — engine is no longer playing.
+// test_arp_captures_transport
+//   ArpMode::capturesTransport() must return true.
 // ---------------------------------------------------------------------------
-static void test_transport_stop_silences_engine() {
+static void test_arp_captures_transport() {
+    core::AppShell shell;
+    core::ArpMode  arp(shell);
+    TEST_ASSERT_TRUE(arp.capturesTransport());
+}
+
+// ---------------------------------------------------------------------------
+// test_hold_via_latch1
+//   onRawInput({Latch, 1, 0, true}) → hold() == true;
+//   onRawInput({Latch, 1, 0, false}) → hold() == false.
+// ---------------------------------------------------------------------------
+static void test_hold_via_latch1() {
+    core::AppShell shell;
+    core::ArpMode  arp(shell);
+
+    core::RawInput in{};
+    in.kind  = core::RawInput::Kind::Latch;
+    in.index = 1;
+    in.delta = 0;
+
+    in.on = true;
+    arp.onRawInput(in);
+    TEST_ASSERT_TRUE(arp.hold());
+
+    in.on = false;
+    arp.onRawInput(in);
+    TEST_ASSERT_FALSE(arp.hold());
+}
+
+// ---------------------------------------------------------------------------
+// test_mute_via_latch2
+//   onRawInput({Latch, 2, 0, true}) → muted() == true;
+//   onRawInput({Latch, 2, 0, false}) → muted() == false.
+// ---------------------------------------------------------------------------
+static void test_mute_via_latch2() {
+    core::AppShell shell;
+    core::ArpMode  arp(shell);
+
+    core::RawInput in{};
+    in.kind  = core::RawInput::Kind::Latch;
+    in.index = 2;
+    in.delta = 0;
+
+    in.on = true;
+    arp.onRawInput(in);
+    TEST_ASSERT_TRUE(arp.muted());
+
+    in.on = false;
+    arp.onRawInput(in);
+    TEST_ASSERT_FALSE(arp.muted());
+}
+
+// ---------------------------------------------------------------------------
+// test_reset_via_latch3
+//   onRawInput({Latch, 3, 0, true}) must not crash.
+//   onRawInput({Latch, 3, 0, false}) must not crash either.
+// ---------------------------------------------------------------------------
+static void test_reset_via_latch3() {
+    core::AppShell shell;
+    core::ArpMode  arp(shell);
+
+    core::RawInput in{};
+    in.kind  = core::RawInput::Kind::Latch;
+    in.index = 3;
+    in.delta = 0;
+
+    in.on = false;
+    arp.onRawInput(in);  // no-op (falling edge)
+
+    in.on = true;
+    arp.onRawInput(in);  // rising edge: engine_.reset() — must not crash
+    // No crash == pass
+    TEST_ASSERT_TRUE(true);
+}
+
+// ---------------------------------------------------------------------------
+// test_arp_mode_exit_silences_engine
+//   onExit() calls engine_.stop() — engine is no longer playing after mode exit.
+// ---------------------------------------------------------------------------
+static void test_arp_mode_exit_silences_engine() {
     core::AppShell shell;
     core::ArpMode  arp(shell);
     FakeMidiOutput out;
@@ -185,14 +262,10 @@ static void test_transport_stop_silences_engine() {
     // Engine should now be playing
     TEST_ASSERT_TRUE(arp.params().steps > 0);  // sanity
 
-    // Issue Stop transport
-    arp.onTransport(core::Transport::Stop);
+    // Exit the mode (simulates switching away) — engine_.stop() is called.
+    arp.onExit();
 
-    // After stop, any NoteOff for the sounding note should have been emitted.
-    // Just verify it doesn't crash and the engine is quiescent.
-    shell.tick(200);
-    // No assertion on event count — the key test is no crash + future ticks are silent.
-    // Verify no new NoteOn events after stop (clear events, tick more, check).
+    // After exit, verify no new NoteOn events are produced.
     out.events.clear();
     shell.tick(400);
     shell.tick(600);
@@ -201,7 +274,7 @@ static void test_transport_stop_silences_engine() {
         if (ev.isOn) { newNoteOn = true; break; }
     }
     TEST_ASSERT_FALSE_MESSAGE(newNoteOn,
-        "After stop(), engine should not emit new NoteOn events");
+        "After onExit(), engine should not emit new NoteOn events");
 }
 
 // ---------------------------------------------------------------------------
@@ -213,7 +286,12 @@ int main() {
     RUN_TEST(test_param_edit_steps);
     RUN_TEST(test_arp_outgoing_visualised);
     RUN_TEST(test_param_edit_rate_cycles);
-    RUN_TEST(test_param_edit_latch_toggle);
-    RUN_TEST(test_transport_stop_silences_engine);
+    RUN_TEST(test_param_edit_latch_enc4_noop);
+    RUN_TEST(test_arp_mode_exit_silences_engine);
+    // Arp-mode transport capture + latch button wiring
+    RUN_TEST(test_arp_captures_transport);
+    RUN_TEST(test_hold_via_latch1);
+    RUN_TEST(test_mute_via_latch2);
+    RUN_TEST(test_reset_via_latch3);
     return UNITY_END();
 }

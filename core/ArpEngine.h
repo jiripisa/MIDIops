@@ -42,6 +42,8 @@ public:
     void setScale(const Scale* s) { scale_ = s; }
     void setParams(const ArpParams& p) { params_ = p; }
     void setOutChannel(uint8_t ch) { outChannel_ = ch; }
+    void setMuted(bool m) { muted_ = m; }
+    bool muted() const { return muted_; }
 
     void noteOn(uint8_t note, uint8_t velocity, uint32_t nowMs);
     void noteOff(uint8_t note, uint32_t nowMs);
@@ -103,6 +105,7 @@ private:
     uint16_t     bpm_ = 120;
     uint8_t      outChannel_ = 1;
 
+    bool     muted_  = false;
     bool     active_ = false;
     uint8_t  rootVel_ = 100;
     uint8_t  seq_[16] = {};

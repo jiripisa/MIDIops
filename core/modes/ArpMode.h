@@ -27,14 +27,17 @@ public:
     void onEnter() override;
     void onExit() override;
     void onMidiIn(const MidiMessage& msg) override;
-    void onTransport(Transport t) override;
+    void onRawInput(const RawInput& in) override;
+    bool capturesTransport() const override { return true; }
     void update(uint32_t nowMs) override;
 
     // Attach the real MIDI output (called from Task 7 / tests).
     void setMidiOutput(MidiOutput* o) { engine_.setOutput(o); }
 
-    // Test inspector.
+    // Test inspectors.
     const ArpParams& params() const { return params_; }
+    bool hold()  const { return params_.latch; }
+    bool muted() const { return engine_.muted(); }
 
 private:
     // Echo thunk: forwards ArpEngine output events to model_.

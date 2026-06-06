@@ -86,6 +86,9 @@ void AppShell::onLatch(int index, bool on) {
     fireRaw({RawInput::Kind::Latch, index, 0, on});
     if (overlayOpen_) return;                 // transport suppressed in overlay
     if (index < 1 || index > 3) return;
+    // Modes that capture transport (e.g. Arp uses the latches for hold/mute)
+    // handle the latch via onRawInput; skip the shell's global transport.
+    if (modeCount_ > 0 && modes_[activeMode_]->capturesTransport()) return;
     if (on == lastLatchOn_[index]) return;    // act on any state change
     lastLatchOn_[index] = on;
     switch (index) {

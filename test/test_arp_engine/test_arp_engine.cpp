@@ -999,6 +999,97 @@ static void test_queue_full_no_crash() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: setMuted — suppresses NoteOn to out, keeps NoteOff, echo still fires.
+//
+// Setup: steps=1, Quarter=500ms (simplest: every step is a cycle boundary).
+//   Step 0 at t=0  : NoteOn(60) → out + echo fired.
+//   setMuted(true)
+//   Step 1 at t=500: NoteOff(60) sent to out (no stuck note),
+//                    NoteOn(next) NOT sent to out,
+//                    but echo IS still fired (visualisation runs).
+//   setMuted(false)
+//   Step 2 at t=1000: NoteOn fires to out again.
+// ---------------------------------------------------------------------------
+
+// File-static echo counter, reset in the test itself.
+static int g_echoCount = 0;
+static void echoCounter(void* /*user*/, bool /*isOn*/,
+                         uint8_t /*ch*/, uint8_t /*note*/, uint8_t /*vel*/) {
+    ++g_echoCount;
+}
+
+static void test_mute_suppresses_noteon_keeps_off_and_echo() {
+    // Use a fresh engine (setUp already created g_eng but we want clean counts).
+    // Reset the echo counter.
+    g_echoCount = 0;
+    g_eng->setEcho(&echoCounter, nullptr);
+
+    core::ArpParams p;
+    p.steps         = 1;
+    p.rate          = core::ArpRate::Quarter;   // 500 ms/step at 120 BPM
+    p.gatePercent   = 80;                        // gate NoteOff at 400 ms
+    p.direction     = core::ArpDirection::Up;
+    p.velocityMode  = core::ArpVelocityMode::Fixed;
+    p.fixedVelocity = 100;
+    p.swingPercent  = 50;
+    p.latch         = true;                      // latch so it keeps looping
+    g_eng->setParams(p);
+
+    // t=0: step0 NoteOn(60) → out + echo
+    g_eng->noteOn(60, 100, 0);
+    TEST_ASSERT_EQUAL_INT(1, (int)g_out->events.size());
+    TEST_ASSERT_TRUE(g_out->events[0].isOn);
+    TEST_ASSERT_EQUAL_INT(1, g_echoCount);
+
+    // Mute on
+    g_eng->setMuted(true);
+
+    // t=400: gate NoteOff for step0 fires to out (no stuck note), echo fires too
+    g_eng->tick(400);
+    // There must be a NoteOff for 60 in out
+    {
+        bool hasOff60 = false;
+        for (auto& e : g_out->events) {
+            if (!e.isOn && e.note == 60) { hasOff60 = true; break; }
+        }
+        TEST_ASSERT_TRUE_MESSAGE(hasOff60, "NoteOff for 60 must reach out even when muted");
+    }
+    int echoAfterGate = g_echoCount;  // echo fired for NoteOff
+
+    // t=500: step1 fires — NoteOn must NOT be in out, but echo must fire
+    int outSizeBefore = (int)g_out->events.size();
+    g_eng->tick(500);
+
+    // Count new NoteOn events added after t=500
+    int newNoteOns = 0;
+    for (int i = outSizeBefore; i < (int)g_out->events.size(); ++i) {
+        if (g_out->events[i].isOn) ++newNoteOns;
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, newNoteOns,
+        "NoteOn must NOT reach out while muted");
+
+    // Echo must have fired for the step (NoteOn side of echo)
+    TEST_ASSERT_GREATER_THAN_MESSAGE(echoAfterGate, g_echoCount,
+        "echo must still fire while muted (visualisation)");
+
+    // Unmute
+    g_eng->setMuted(false);
+
+    // t=900: gate NoteOff fires for the step that ran at t=500
+    g_eng->tick(900);
+
+    // t=1000: step2 fires — NoteOn MUST now appear in out
+    int outSizeBefore2 = (int)g_out->events.size();
+    g_eng->tick(1000);
+    int newNoteOns2 = 0;
+    for (int i = outSizeBefore2; i < (int)g_out->events.size(); ++i) {
+        if (g_out->events[i].isOn) ++newNoteOns2;
+    }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, newNoteOns2,
+        "NoteOn must resume in out after unmute");
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 int main() {
@@ -1027,5 +1118,6 @@ int main() {
     RUN_TEST(test_steps1_many_staccato_no_stuck_note);
     RUN_TEST(test_latch_latest_wins);
     RUN_TEST(test_queue_full_no_crash);
+    RUN_TEST(test_mute_suppresses_noteon_keeps_off_and_echo);
     return UNITY_END();
 }

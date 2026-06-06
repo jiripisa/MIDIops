@@ -142,12 +142,10 @@ void ArpEngine::reset() {
 
 void ArpEngine::emit(bool isOn, uint8_t note, uint8_t velocity) {
     if (out_) {
-        if (isOn) out_->sendNoteOn(outChannel_, note, velocity);
+        if (isOn) { if (!muted_) out_->sendNoteOn(outChannel_, note, velocity); }
         else      out_->sendNoteOff(outChannel_, note);
     }
-    if (echo_) {
-        echo_(echoUser_, isOn, outChannel_, note, velocity);
-    }
+    if (echo_) echo_(echoUser_, isOn, outChannel_, note, velocity);
 }
 
 void ArpEngine::initSeqFromHead() {

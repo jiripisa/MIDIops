@@ -110,11 +110,13 @@ void ArpMode::onMidiIn(const MidiMessage& msg) {
     }
 }
 
-void ArpMode::onTransport(Transport t) {
-    switch (t) {
-        case Transport::Stop:  engine_.stop();  break;
-        case Transport::Reset: engine_.reset(); break;
-        default:               break;
+void ArpMode::onRawInput(const RawInput& in) {
+    if (in.kind != RawInput::Kind::Latch) return;
+    switch (in.index) {
+        case 1: params_.latch = in.on;          break;  // Hold follows switch position
+        case 2: engine_.setMuted(in.on);        break;  // Mute follows switch position
+        case 3: if (in.on) engine_.reset();     break;  // Reset on rising edge
+        default: break;
     }
 }
 
@@ -206,9 +208,6 @@ void ArpMode::ParamScreenB::onEncoder(int index, int delta) {
         case 3:
             p.velocityMode = cycleEnum(p.velocityMode, delta);
             break;
-        case 4:
-            if (delta != 0) p.latch = !p.latch;
-            break;
         default:
             break;
     }
@@ -221,10 +220,20 @@ void ArpMode::ParamScreenB::render(Display& d) const {
     snprintf(swing, sizeof(swing), "%d",  static_cast<int>(p.swingPercent));
 
     drawParamGridDividers(d);
-    drawParamCell(d, 0, 0, "OCT",   oct);                       // Enc1
-    drawParamCell(d, 1, 0, "SWING", swing);                     // Enc2
+    drawParamCell(d, 0, 0, "OCT",   oct);                         // Enc1
+    drawParamCell(d, 1, 0, "SWING", swing);                       // Enc2
     drawParamCell(d, 0, 1, "VEL",   velModeName(p.velocityMode)); // Enc3
-    drawParamCell(d, 1, 1, "LATCH", p.latch ? "On" : "Off");    // Enc4
+
+    // Bottom-right cell: read-only HOLD + MUTE status (driven by Latch1/2 switches).
+    const int sx = kCellW + 8;
+    const int sy = kGridTop + kCellH + 8;
+    char hbuf[16], mbuf[16];
+    snprintf(hbuf, sizeof(hbuf), "HOLD %s", mode_.hold()  ? "On" : "Off");
+    snprintf(mbuf, sizeof(mbuf), "MUTE %s", mode_.muted() ? "On" : "Off");
+    d.drawText(sx, sy,      hbuf, mode_.hold()  ? core::color::Yellow : core::color::Gray,
+               core::color::Black, 2);
+    d.drawText(sx, sy + 26, mbuf, mode_.muted() ? core::color::Yellow : core::color::Gray,
+               core::color::Black, 2);
 }
 
 // ---------------------------------------------------------------------------

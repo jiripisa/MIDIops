@@ -28,6 +28,7 @@ struct FakeMode : core::Mode {
     std::vector<FakeScreen*> screens;
     std::vector<core::Transport> transports;
     int rawCount = 0, midiCount = 0, enters = 0, exits = 0;
+    bool capturesTransport_ = false;
 
     FakeMode(std::string l, int screenN) : label(std::move(l)) {
         for (int i = 0; i < screenN; ++i)
@@ -43,4 +44,5 @@ struct FakeMode : core::Mode {
     void onMidiIn(const core::MidiMessage&) override { ++midiCount; }
     void onTransport(core::Transport t) override { transports.push_back(t); }
     void onRawInput(const core::RawInput&) override { ++rawCount; }
+    bool capturesTransport() const override { return capturesTransport_; }
 };
