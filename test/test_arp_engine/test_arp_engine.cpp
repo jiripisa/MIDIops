@@ -523,6 +523,277 @@ static void test_swing_delays_odd_steps() {
 }
 
 // ---------------------------------------------------------------------------
+// Helper: collect only NoteOn notes in emission order.
+// ---------------------------------------------------------------------------
+static std::vector<uint8_t> noteOnSequence() {
+    std::vector<uint8_t> result;
+    for (auto& e : g_out->events) {
+        if (e.isOn) result.push_back(e.note);
+    }
+    return result;
+}
+
+// Helper: make a standard 3-step Up Quarter params struct.
+static core::ArpParams makeStdParams() {
+    core::ArpParams p;
+    p.steps         = 3;
+    p.rate          = core::ArpRate::Quarter;   // 500 ms/step at 120 BPM
+    p.gatePercent   = 80;
+    p.direction     = core::ArpDirection::Up;
+    p.velocityMode  = core::ArpVelocityMode::Fixed;
+    p.fixedVelocity = 100;
+    p.swingPercent  = 50;
+    p.latch         = false;
+    return p;
+}
+
+// ---------------------------------------------------------------------------
+// Task-5 test: loop while held
+//   noteOn(60) — never release.  Drive 7 steps (t=0,500,...,3000).
+//   C major triad from 60 with steps=3: seq=[60,64,67] (Up).
+//   Expected NoteOn order: 60,64,67,60,64,67,60  (wrap at cycle boundary).
+// ---------------------------------------------------------------------------
+static void test_loop_while_held() {
+    g_eng->setParams(makeStdParams());
+
+    g_eng->noteOn(60, 100, 0);      // t=0: step0=60
+    g_eng->tick(500);               // t=500: step1=64
+    g_eng->tick(1000);              // t=1000: step2=67  → cycle 1 done, still held → loop
+    g_eng->tick(1500);              // t=1500: step0=60
+    g_eng->tick(2000);              // t=2000: step1=64
+    g_eng->tick(2500);              // t=2500: step2=67  → cycle 2 done, still held → loop
+    g_eng->tick(3000);              // t=3000: step0=60
+
+    auto seq = noteOnSequence();
+    TEST_ASSERT_EQUAL_INT(7, (int)seq.size());
+    TEST_ASSERT_EQUAL_INT(60, seq[0]);
+    TEST_ASSERT_EQUAL_INT(64, seq[1]);
+    TEST_ASSERT_EQUAL_INT(67, seq[2]);
+    TEST_ASSERT_EQUAL_INT(60, seq[3]);
+    TEST_ASSERT_EQUAL_INT(64, seq[4]);
+    TEST_ASSERT_EQUAL_INT(67, seq[5]);
+    TEST_ASSERT_EQUAL_INT(60, seq[6]);
+}
+
+// ---------------------------------------------------------------------------
+// Task-5 test: release finishes current cycle then goes idle
+//   noteOn(60) at t=0; noteOff(60,500) mid-cycle; continue ticking.
+//   The arp must play through step2=67 at t=1000 to complete the cycle,
+//   then at t=1500 it must NOT emit a new NoteOn (idle).
+//   Also a NoteOff for the last sounding note must be emitted after t=1000.
+// ---------------------------------------------------------------------------
+static void test_release_finishes_cycle_then_idle() {
+    g_eng->setParams(makeStdParams());
+
+    g_eng->noteOn(60, 100, 0);          // step0=60 at t=0
+    g_eng->tick(500);                   // step1=64 at t=500
+    g_eng->noteOff(60, 500);            // released after step1 — cycle not done yet
+    g_eng->tick(1000);                  // step2=67 at t=1000 → cycle complete
+
+    // 67 must have been emitted after the noteOff
+    {
+        auto seq = noteOnSequence();
+        bool has67 = false;
+        for (auto n : seq) if (n == 67) { has67 = true; break; }
+        TEST_ASSERT_TRUE_MESSAGE(has67, "step2=67 must still play after noteOff");
+    }
+
+    // Tick past gate NoteOff for 67, then the next step boundary
+    g_eng->tick(1400);  // gate NoteOff for 67 fires here (80%*500=400ms after t=1000 → t=1400)
+    g_eng->tick(1500);  // next step boundary — should NOT produce a new NoteOn
+
+    {
+        auto seq = noteOnSequence();
+        // Only 3 NoteOns: 60, 64, 67
+        TEST_ASSERT_EQUAL_INT_MESSAGE(3, (int)seq.size(), "no 4th NoteOn after cycle complete + release");
+    }
+
+    // Engine must be idle (not playing)
+    TEST_ASSERT_FALSE(g_eng->isPlaying());
+
+    // A NoteOff for 67 must have been emitted (either from gate or from dequeue)
+    bool hasOff67 = false;
+    for (auto& e : g_out->events) {
+        if (!e.isOn && e.note == 67) { hasOff67 = true; break; }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(hasOff67, "NoteOff for final note 67 must be emitted");
+}
+
+// ---------------------------------------------------------------------------
+// Task-5 test: FIFO two staccato notes
+//   noteOn(60) then noteOff(60) immediately (staccato, before anything plays).
+//   noteOn(67) then noteOff(67) immediately.
+//   Active is 60 → plays one full cycle (60,64,67), then dequeues.
+//   67 becomes active → plays its triad.
+//   C major from 67 with steps=3: 67,71,74.
+//   Expected NoteOn prefix: 60,64,67,67,71,74.
+// ---------------------------------------------------------------------------
+static void test_fifo_two_staccato_notes() {
+    g_eng->setParams(makeStdParams());
+
+    g_eng->noteOn(60, 100, 0);
+    g_eng->noteOff(60, 0);      // staccato — already !held when active
+    g_eng->noteOn(67, 100, 0);  // appended to FIFO while 60 is active
+    g_eng->noteOff(67, 0);      // staccato too
+
+    // Drive 60's cycle: steps at t=500 and t=1000
+    g_eng->tick(500);   // step1=64
+    g_eng->tick(1000);  // step2=67 → 60's cycle complete → dequeue 60, promote 67
+
+    // Drive 67's cycle: at t=1500 the new active note's first loop step
+    // Wait — when 67 becomes active it fires its step0 immediately at t=1000 (same tick).
+    // Then step1 at t=1500, step2 at t=2000.
+    g_eng->tick(1500);  // 67's step1=71
+    g_eng->tick(2000);  // 67's step2=74 → cycle complete, !held → dequeue → idle
+
+    auto seq = noteOnSequence();
+    // Expect at least 6: 60,64,67,67,71,74
+    TEST_ASSERT_TRUE_MESSAGE((int)seq.size() >= 6, "expected >=6 NoteOns");
+    TEST_ASSERT_EQUAL_INT(60, seq[0]);
+    TEST_ASSERT_EQUAL_INT(64, seq[1]);
+    TEST_ASSERT_EQUAL_INT(67, seq[2]);
+    TEST_ASSERT_EQUAL_INT(67, seq[3]);
+    TEST_ASSERT_EQUAL_INT(71, seq[4]);
+    TEST_ASSERT_EQUAL_INT(74, seq[5]);
+}
+
+// ---------------------------------------------------------------------------
+// Task-5 test: held note, then queue another, release first → switch at boundary
+//   noteOn(60) held; let it complete one cycle; noteOn(67) while 60 held.
+//   60 keeps looping. Then noteOff(60); after the CURRENT cycle of 60 completes,
+//   67 becomes active.  Assert 67's triad appears only after a 60-cycle boundary
+//   following the release.
+//
+//   Timeline (500ms/step, steps=3):
+//     t=0:    noteOn(60)  → 60 fires
+//     t=500:  tick        → 64 fires
+//     t=1000: tick        → 67 fires  (60's cycle 1 complete, still held → loop)
+//     t=1000: noteOn(67)  → queued
+//     t=1500: tick        → 60 fires  (60's cycle 2, step0)
+//     t=1500: noteOff(60) → released mid-cycle2
+//     t=2000: tick        → 64 fires  (60's cycle 2, step1)
+//     t=2500: tick        → 67 fires  (60's cycle 2, step2 → cycle complete → dequeue)
+//     t=2500: 67 becomes active, fires its step0 (=67)
+//     t=3000: tick        → 71
+//     t=3500: tick        → 74
+// ---------------------------------------------------------------------------
+static void test_held_then_queue_switch() {
+    g_eng->setParams(makeStdParams());
+
+    g_eng->noteOn(60, 100, 0);      // t=0
+    g_eng->tick(500);               // t=500: 64
+    g_eng->tick(1000);              // t=1000: 67 — cycle1 done, still held
+    g_eng->noteOn(67, 100, 1000);   // queue 67 while 60 is active
+    g_eng->tick(1500);              // t=1500: 60 (cycle2 start)
+    g_eng->noteOff(60, 1500);       // release 60 mid cycle2
+    g_eng->tick(2000);              // t=2000: 64
+    g_eng->tick(2500);              // t=2500: 67 (cycle2 complete → dequeue → 67 fires)
+    g_eng->tick(3000);              // t=3000: 71
+    g_eng->tick(3500);              // t=3500: 74
+
+    auto seq = noteOnSequence();
+    // Expected: 60,64,67, 60,64,67, 67,71,74
+    //   (60's cycle1, 60's cycle2, then 67's cycle)
+    TEST_ASSERT_TRUE_MESSAGE((int)seq.size() >= 9, "expected >=9 NoteOns");
+    // 60 must not appear after position 5 (index 5 = last step of 60's cycle2)
+    for (int i = 6; i < (int)seq.size(); ++i) {
+        TEST_ASSERT_NOT_EQUAL_MESSAGE(60, seq[i], "60 must not play after it was dequeued");
+    }
+    // 67,71,74 must appear after 60 is done
+    TEST_ASSERT_EQUAL_INT(67, seq[6]);
+    TEST_ASSERT_EQUAL_INT(71, seq[7]);
+    TEST_ASSERT_EQUAL_INT(74, seq[8]);
+}
+
+// ---------------------------------------------------------------------------
+// Task-5 test: latch replaces at cycle boundary
+//   latch=true. noteOn(60); noteOff(60) → latch ignores it, 60 keeps looping.
+//   noteOn(67) → queued as pending replacement.
+//   At next cycle boundary after noteOn(67), 67 becomes active; 60 stops.
+//   Assert: 67's triad appears at a cycle boundary, and 60 does not play after.
+//
+//   Timeline (500ms/step, steps=3):
+//     t=0:    noteOn(60) → 60 fires (latch mode)
+//     t=500:  tick       → 64
+//     t=1000: tick       → 67 (60's cycle1 complete, latch→keep looping 60)
+//     t=1000: noteOff(60) → latch ignores
+//     t=1000: noteOn(67) → pending replacement
+//     t=1500: tick       → 60 fires (cycle2, step0)
+//     t=2000: tick       → 64
+//     t=2500: tick       → 67 (cycle2 complete → replace → 67 becomes active, fires step0=67)
+//     t=3000: tick       → 71
+//     t=3500: tick       → 74
+// ---------------------------------------------------------------------------
+static void test_latch_replaces_at_boundary() {
+    core::ArpParams p = makeStdParams();
+    p.latch = true;
+    g_eng->setParams(p);
+
+    g_eng->noteOn(60, 100, 0);
+    g_eng->tick(500);
+    g_eng->tick(1000);             // cycle1 complete
+    g_eng->noteOff(60, 1000);      // latch: ignore
+    g_eng->noteOn(67, 100, 1000);  // pending replacement
+    g_eng->tick(1500);             // 60 cycle2 step0
+    g_eng->tick(2000);             // 60 cycle2 step1
+    g_eng->tick(2500);             // 60 cycle2 step2 → boundary → replace with 67
+    g_eng->tick(3000);             // 67 step1
+    g_eng->tick(3500);             // 67 step2
+
+    auto seq = noteOnSequence();
+    // 60 plays: cycle1 (60,64,67) + cycle2 (60,64,67) = 6 times
+    // then 67 plays: 67,71,74
+    TEST_ASSERT_TRUE_MESSAGE((int)seq.size() >= 9, "expected >=9 NoteOns");
+
+    // After position 5 (0-indexed), 60 must not appear
+    for (int i = 6; i < (int)seq.size(); ++i) {
+        TEST_ASSERT_NOT_EQUAL_MESSAGE(60, seq[i], "60 must not play after latch replacement");
+    }
+    // 67's triad must follow
+    TEST_ASSERT_EQUAL_INT(67, seq[6]);
+    TEST_ASSERT_EQUAL_INT(71, seq[7]);
+    TEST_ASSERT_EQUAL_INT(74, seq[8]);
+}
+
+// ---------------------------------------------------------------------------
+// Task-5 test: stop() clears queue and silences everything
+//   Queue two staccato notes (60, 67). After stop():
+//     - isPlaying() == false
+//     - A NoteOff is emitted for any sounding note
+//     - Further ticks emit nothing new
+// ---------------------------------------------------------------------------
+static void test_stop_clears_queue() {
+    g_eng->setParams(makeStdParams());
+
+    g_eng->noteOn(60, 100, 0);   // active
+    g_eng->noteOff(60, 0);       // staccato
+    g_eng->noteOn(67, 100, 0);   // queued
+    g_eng->noteOff(67, 0);       // staccato
+
+    // 60 is playing step0 right now
+    TEST_ASSERT_TRUE(g_eng->isPlaying());
+
+    int eventsBefore = (int)g_out->events.size();
+    g_eng->stop();
+
+    TEST_ASSERT_FALSE(g_eng->isPlaying());
+
+    // At least one NoteOff must have been emitted by stop()
+    int noteOffsAdded = 0;
+    for (int i = eventsBefore; i < (int)g_out->events.size(); ++i) {
+        if (!g_out->events[i].isOn) ++noteOffsAdded;
+    }
+    TEST_ASSERT_GREATER_THAN(0, noteOffsAdded);
+
+    // Further ticks must not emit anything
+    int eventsAfterStop = (int)g_out->events.size();
+    g_eng->tick(500);
+    g_eng->tick(1000);
+    g_eng->tick(1500);
+    TEST_ASSERT_EQUAL_INT(eventsAfterStop, (int)g_out->events.size());
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 int main() {
@@ -540,5 +811,12 @@ int main() {
     RUN_TEST(test_downup_single_step_no_crash);
     RUN_TEST(test_direction_downup);
     RUN_TEST(test_swing_delays_odd_steps);
+    // Task-5: FIFO queue + loop-while-held + latch + transport
+    RUN_TEST(test_loop_while_held);
+    RUN_TEST(test_release_finishes_cycle_then_idle);
+    RUN_TEST(test_fifo_two_staccato_notes);
+    RUN_TEST(test_held_then_queue_switch);
+    RUN_TEST(test_latch_replaces_at_boundary);
+    RUN_TEST(test_stop_clears_queue);
     return UNITY_END();
 }

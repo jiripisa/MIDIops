@@ -9,6 +9,29 @@ namespace core {
 class MidiOutput;
 class Scale;
 
+// ArpEngine — clock-driven arpeggiator with FIFO note queue.
+//
+// Queue model (Task 5):
+//   - FIFO of up to kQueueCap entries: { note, velocity, held }.
+//   - The queue HEAD is the "active" note; the engine plays its arpeggio.
+//   - Loop-while-held: while the active entry is held (no NoteOff received),
+//     the arpeggio loops continuously (wrap to step 0 and keep going).
+//   - Cycle-quantized release: when the active entry becomes !held, the engine
+//     finishes the current cycle before dequeuing.  A "cycle" is defined as
+//     seqLen_ emitted steps counted from the moment the note became active
+//     (activeCycleSteps_ resets on promotion), regardless of direction.
+//     Reason: direction modes like UpDown/DownUp have irregular periods; a
+//     fixed seqLen_-step cycle gives a predictable, testable boundary.
+//   - Append, never interrupt: new NoteOns append to the FIFO tail while an
+//     active note is playing.
+//   - Staccato: a note pressed+released before it becomes active is already
+//     !held when promoted; it plays exactly one cycle then dequeues.
+//   - Latch (params_.latch): NoteOffs are ignored.  A new NoteOn is stored as
+//     a single pending replacement; at the next cycle boundary the active note
+//     is replaced by the pending one (queue cleared).
+//   - stop(): emit NoteOff for any sounding note, clear queue, go idle.
+//   - reset(): return step index to 0; keep the active note.
+
 class ArpEngine {
 public:
     using EchoFn = void(*)(void* user, bool isOn, uint8_t channel, uint8_t note, uint8_t velocity);
@@ -29,12 +52,48 @@ public:
     bool isPlaying() const { return active_; }
 
 private:
+    // ---------------------------------------------------------------------------
+    // Queue
+    // ---------------------------------------------------------------------------
+    static constexpr int kQueueCap = 16;
+    struct QueueEntry { uint8_t note; uint8_t velocity; bool held; };
+    QueueEntry queue_[kQueueCap] = {};
+    int        qHead_  = 0;   // index of head element
+    int        qCount_ = 0;   // number of valid elements
+
+    void     qPush(uint8_t note, uint8_t velocity, bool held);
+    void     qPop();          // remove head
+    bool     qMarkReleased(uint8_t note);  // find entry by note, set held=false; returns true if found
+
+    // Latch: pending replacement note (latest noteOn under latch while active)
+    bool     latchHasPending_ = false;
+    uint8_t  latchPendingNote_ = 0;
+    uint8_t  latchPendingVel_  = 0;
+
+    // ---------------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------------
     void     emit(bool isOn, uint8_t note, uint8_t velocity);
     uint32_t msPerStep() const;
-    void     beginStep(uint32_t nowMs);   // emit current step note-on + schedule its note-off + next step time
-    int      nextSeqIndex();              // advance per direction (no immediate repeat for Random)
+
+    // Set up seq_/seqPos_/udDir_/stepCount_/activeCycleSteps_ from the queue
+    // head WITHOUT emitting any notes.  Call beginStep() afterwards.
+    void     initSeqFromHead();
+
+    // Core step-emission:
+    //   1. Kill any prev sounding note (NoteOff).
+    //   2. Emit the current step NoteOn, schedule gate NoteOff + next step time.
+    //   3. Advance seqPos_, increment activeCycleSteps_.
+    //   4. If cycle complete: immediately dequeue / replace / loop (calls itself
+    //      once recursively for the new head note — depth ≤ 1).
+    void     beginStep(uint32_t nowMs);
+
+    int      nextSeqIndex();              // advance seqPos_ per direction
     uint8_t  velocityForStep(int seqPos) const;
 
+    // ---------------------------------------------------------------------------
+    // State
+    // ---------------------------------------------------------------------------
     MidiOutput*  out_ = nullptr;
     EchoFn       echo_ = nullptr; void* echoUser_ = nullptr;
     const Scale* scale_ = nullptr;
@@ -46,7 +105,7 @@ private:
     uint8_t  rootVel_ = 100;
     uint8_t  seq_[16] = {};
     int      seqLen_ = 0;
-    int      seqPos_ = 0;          // index into seq_ for the current step
+    int      seqPos_ = 0;          // index into seq_ for the NEXT step to emit
     int      stepCount_ = 0;       // emitted-step counter, for swing odd-step detection
     int8_t   udDir_ = +1;          // for UpDown/DownUp traversal
     uint32_t nextStepMs_ = 0;
@@ -54,6 +113,12 @@ private:
     uint8_t  soundingNote_ = 0;
     uint32_t noteOffMs_ = 0;
     uint32_t randState_ = 0x12345;
+
+    // Per-active-note cycle tracking.
+    // activeCycleSteps_: steps emitted since the current queue-head note
+    //   became active.  Resets to 0 at each cycle boundary (and on promotion)
+    //   to prevent integer overflow over long sessions.
+    int  activeCycleSteps_ = 0;
 };
 
 } // namespace core

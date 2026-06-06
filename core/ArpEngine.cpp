@@ -19,37 +19,82 @@ uint32_t ArpEngine::msPerStep() const {
 }
 
 // ---------------------------------------------------------------------------
+// Queue helpers
+// ---------------------------------------------------------------------------
+
+void ArpEngine::qPush(uint8_t note, uint8_t velocity, bool held) {
+    if (qCount_ >= kQueueCap) return;  // drop new note if full
+    int tail = (qHead_ + qCount_) % kQueueCap;
+    queue_[tail] = { note, velocity, held };
+    ++qCount_;
+}
+
+void ArpEngine::qPop() {
+    if (qCount_ <= 0) return;
+    qHead_ = (qHead_ + 1) % kQueueCap;
+    --qCount_;
+}
+
+bool ArpEngine::qMarkReleased(uint8_t note) {
+    for (int i = 0; i < qCount_; ++i) {
+        int idx = (qHead_ + i) % kQueueCap;
+        if (queue_[idx].note == note) {
+            queue_[idx].held = false;
+            return true;
+        }
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
 // Public interface
 // ---------------------------------------------------------------------------
 
 void ArpEngine::noteOn(uint8_t note, uint8_t velocity, uint32_t nowMs) {
     if (!scale_) return;
 
-    // Build ascending note sequence
-    seqLen_ = ArpGenerator::build(note, *scale_, params_, seq_, 16);
-    if (seqLen_ <= 0) return;
-
-    active_    = true;
-    rootVel_   = velocity;
-    stepCount_ = 0;
-    udDir_     = +1;
-
-    // Direction=Down starts at the highest note
-    if (params_.direction == ArpDirection::Down) {
-        seqPos_ = seqLen_ - 1;
-    } else if (params_.direction == ArpDirection::DownUp) {
-        seqPos_ = seqLen_ - 1;
-        udDir_  = -1;
-    } else {
-        seqPos_ = 0;
+    if (params_.latch) {
+        if (!active_) {
+            // Nothing playing — start fresh
+            qCount_ = 0;
+            qHead_  = 0;
+            latchHasPending_ = false;
+            qPush(note, velocity, true);  // held=true (latch never clears it)
+            initSeqFromHead();
+            active_ = true;
+            beginStep(nowMs);
+        } else {
+            // Active note is looping — store as pending replacement
+            latchHasPending_  = true;
+            latchPendingNote_ = note;
+            latchPendingVel_  = velocity;
+        }
+        return;
     }
 
-    beginStep(nowMs);
+    // Normal (non-latch) mode
+    if (!active_) {
+        qCount_ = 0;
+        qHead_  = 0;
+        qPush(note, velocity, true);
+        initSeqFromHead();
+        active_ = true;
+        beginStep(nowMs);
+    } else {
+        // Append to FIFO — never interrupt the active cycle
+        qPush(note, velocity, true);
+    }
 }
 
-void ArpEngine::noteOff(uint8_t /*note*/, uint32_t /*nowMs*/) {
-    // Task 5 will handle latch/hold logic; for now single-note, just stop
-    stop();
+void ArpEngine::noteOff(uint8_t note, uint32_t /*nowMs*/) {
+    if (params_.latch) {
+        // Latch ignores all NoteOffs
+        return;
+    }
+    // Mark the entry released (may be head or any queued entry)
+    qMarkReleased(note);
+    // The cycle-boundary logic inside beginStep will handle dequeuing
+    // when the current cycle of the active note completes.
 }
 
 void ArpEngine::tick(uint32_t nowMs) {
@@ -70,12 +115,17 @@ void ArpEngine::stop() {
         emit(false, soundingNote_, 0);
         noteSounding_ = false;
     }
-    active_ = false;
+    active_           = false;
+    qCount_           = 0;
+    qHead_            = 0;
+    latchHasPending_  = false;
+    activeCycleSteps_ = 0;
 }
 
 void ArpEngine::reset() {
-    stepCount_ = 0;
-    udDir_     = +1;
+    stepCount_        = 0;
+    activeCycleSteps_ = 0;
+    udDir_ = +1;
     if (params_.direction == ArpDirection::Down) {
         seqPos_ = seqLen_ - 1;
     } else if (params_.direction == ArpDirection::DownUp) {
@@ -100,15 +150,43 @@ void ArpEngine::emit(bool isOn, uint8_t note, uint8_t velocity) {
     }
 }
 
+void ArpEngine::initSeqFromHead() {
+    if (qCount_ <= 0 || !scale_) return;
+
+    uint8_t note = queue_[qHead_].note;
+    rootVel_  = queue_[qHead_].velocity;
+    seqLen_   = ArpGenerator::build(note, *scale_, params_, seq_, 16);
+    if (seqLen_ <= 0) { seqLen_ = 0; return; }
+
+    stepCount_        = 0;
+    activeCycleSteps_ = 0;
+    udDir_ = +1;
+
+    if (params_.direction == ArpDirection::Down) {
+        seqPos_ = seqLen_ - 1;
+    } else if (params_.direction == ArpDirection::DownUp) {
+        seqPos_ = seqLen_ - 1;
+        udDir_  = -1;
+    } else {
+        seqPos_ = 0;
+    }
+}
+
+
 void ArpEngine::beginStep(uint32_t nowMs) {
-    // Kill any previous sounding note first
+    // --- 1. Kill any previous sounding note ---
     if (noteSounding_) {
         emit(false, soundingNote_, 0);
         noteSounding_ = false;
     }
 
-    if (seqLen_ <= 0) return;
+    // --- 2. Guard ---
+    if (seqLen_ <= 0 || qCount_ == 0) {
+        active_ = false;
+        return;
+    }
 
+    // --- 3. Emit current step ---
     uint8_t note = seq_[seqPos_];
     uint8_t vel  = velocityForStep(seqPos_);
 
@@ -120,9 +198,7 @@ void ArpEngine::beginStep(uint32_t nowMs) {
     noteOffMs_  = nowMs + stepMs * params_.gatePercent / 100u;
     nextStepMs_ = nowMs + stepMs;
 
-    // Swing: on odd steps (stepCount_ is 0-based, so step 1, 3, 5...) shift
-    // the next-step boundary forward.  swingPercent=50 means no swing;
-    // values above 50 delay odd beats.
+    // Swing: on odd steps shift the next-step boundary forward
     if (params_.swingPercent != 50 && (stepCount_ & 1)) {
         int swing = (static_cast<int>(params_.swingPercent) - 50)
                     * static_cast<int>(stepMs) / 100;
@@ -131,8 +207,54 @@ void ArpEngine::beginStep(uint32_t nowMs) {
 
     ++stepCount_;
 
-    // Advance seqPos_ to the NEXT step
+    // --- 4. Advance seqPos_ to the NEXT step ---
     seqPos_ = nextSeqIndex();
+
+    // --- 5. Track cycle completion ---
+    // A cycle is seqLen_ steps from when this note became active.
+    ++activeCycleSteps_;
+    bool cycleComplete = (activeCycleSteps_ % seqLen_ == 0);
+    if (cycleComplete) {
+        // Reset counter to prevent integer overflow over long sessions.
+        activeCycleSteps_ = 0;
+    }
+
+    // --- 6. Cycle-boundary: decide whether to loop, dequeue, or replace ---
+    // This executes immediately (same tick) when a cycle ends, so the next
+    // note can start without waiting for the next scheduled step boundary.
+    if (cycleComplete) {
+        if (!params_.latch) {
+            if (qCount_ > 0 && !queue_[qHead_].held) {
+                // Active note was released — dequeue it now.
+                qPop();
+                if (qCount_ == 0) {
+                    // Queue empty → go idle after the last note's gate expires.
+                    // noteSounding_ will be cleared in tick(); active_ → false.
+                    active_ = false;
+                    return;
+                }
+                // Promote new head immediately (same tick): re-init and fire step0.
+                initSeqFromHead();
+                beginStep(nowMs);  // tail-recursive depth = 1
+                return;
+            }
+            // else: still held → loop (seqPos_ already wraps via nextSeqIndex)
+        } else {
+            // Latch mode
+            if (latchHasPending_) {
+                latchHasPending_ = false;
+                // Install pending note as the new (only) queue entry
+                qCount_ = 0;
+                qHead_  = 0;
+                queue_[0] = { latchPendingNote_, latchPendingVel_, true };
+                qCount_   = 1;
+                initSeqFromHead();
+                beginStep(nowMs);  // tail-recursive depth = 1
+                return;
+            }
+            // else: no pending → loop
+        }
+    }
 }
 
 int ArpEngine::nextSeqIndex() {
