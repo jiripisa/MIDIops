@@ -22,10 +22,10 @@ uint32_t ArpEngine::msPerStep() const {
 // Queue helpers
 // ---------------------------------------------------------------------------
 
-void ArpEngine::qPush(uint8_t note, uint8_t velocity, bool held) {
+void ArpEngine::qPush(uint8_t note, uint8_t velocity) {
     if (qCount_ >= kQueueCap) return;  // drop new note if full
     int tail = (qHead_ + qCount_) % kQueueCap;
-    queue_[tail] = { note, velocity, held };
+    queue_[tail] = { note, velocity };
     ++qCount_;
 }
 
@@ -33,17 +33,6 @@ void ArpEngine::qPop() {
     if (qCount_ <= 0) return;
     qHead_ = (qHead_ + 1) % kQueueCap;
     --qCount_;
-}
-
-bool ArpEngine::qMarkReleased(uint8_t note) {
-    for (int i = 0; i < qCount_; ++i) {
-        int idx = (qHead_ + i) % kQueueCap;
-        if (queue_[idx].note == note) {
-            queue_[idx].held = false;
-            return true;
-        }
-    }
-    return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,7 +48,7 @@ void ArpEngine::noteOn(uint8_t note, uint8_t velocity, uint32_t nowMs) {
             qCount_ = 0;
             qHead_  = 0;
             latchHasPending_ = false;
-            qPush(note, velocity, true);  // held=true (latch never clears it)
+            qPush(note, velocity);
             initSeqFromHead();
             active_ = true;
             beginStep(nowMs);
@@ -76,25 +65,20 @@ void ArpEngine::noteOn(uint8_t note, uint8_t velocity, uint32_t nowMs) {
     if (!active_) {
         qCount_ = 0;
         qHead_  = 0;
-        qPush(note, velocity, true);
+        qPush(note, velocity);
         initSeqFromHead();
         active_ = true;
         beginStep(nowMs);
     } else {
         // Append to FIFO — never interrupt the active cycle
-        qPush(note, velocity, true);
+        qPush(note, velocity);
     }
 }
 
-void ArpEngine::noteOff(uint8_t note, uint32_t /*nowMs*/) {
-    if (params_.latch) {
-        // Latch ignores all NoteOffs
-        return;
-    }
-    // Mark the entry released (may be head or any queued entry)
-    qMarkReleased(note);
-    // The cycle-boundary logic inside beginStep will handle dequeuing
-    // when the current cycle of the active note completes.
+void ArpEngine::noteOff(uint8_t /*note*/, uint32_t /*nowMs*/) {
+    // One-shot model: noteOff is a no-op in both latch and non-latch modes.
+    // Non-latch: each note plays exactly one cycle then auto-advances.
+    // Latch: loops forever; replacement is triggered by a new noteOn.
 }
 
 void ArpEngine::tick(uint32_t nowMs) {
@@ -222,23 +206,20 @@ void ArpEngine::beginStep(uint32_t nowMs) {
     // note can start without waiting for the next scheduled step boundary.
     if (cycleComplete) {
         if (!params_.latch) {
-            if (qCount_ > 0 && !queue_[qHead_].held) {
-                // Active note was released — dequeue it now.
-                qPop();
-                if (qCount_ == 0) {
-                    // Queue empty → go idle after the last note's gate expires.
-                    // noteSounding_ will be cleared in tick(); active_ → false.
-                    active_ = false;
-                    return;
-                }
-                // Promote new head immediately (same tick): re-init and fire step0.
-                // Tail-recursive same-tick promotion; depth ≤ 1 for steps>1,
-                // ≤ kQueueCap (16) when steps==1 — bounded and safe on the target's stack.
-                initSeqFromHead();
-                beginStep(nowMs);
+            // Hold off = one-shot: each note plays exactly one cycle, then advance.
+            qPop();
+            if (qCount_ == 0) {
+                // Queue empty → go idle after the last note's gate expires.
+                // noteSounding_ will be cleared in tick(); active_ → false.
+                active_ = false;
                 return;
             }
-            // else: still held → loop (seqPos_ already wraps via nextSeqIndex)
+            // Promote new head immediately (same tick): re-init and fire step0.
+            // Tail-recursive same-tick promotion; depth ≤ 1 for steps>1,
+            // ≤ kQueueCap (16) when steps==1 — bounded and safe on the target's stack.
+            initSeqFromHead();
+            beginStep(nowMs);
+            return;
         } else {
             // Latch mode
             if (latchHasPending_) {
@@ -246,7 +227,7 @@ void ArpEngine::beginStep(uint32_t nowMs) {
                 // Install pending note as the new (only) queue entry
                 qCount_ = 0;
                 qHead_  = 0;
-                queue_[0] = { latchPendingNote_, latchPendingVel_, true };
+                queue_[0] = { latchPendingNote_, latchPendingVel_ };
                 qCount_   = 1;
                 initSeqFromHead();
                 // Tail-recursive same-tick promotion; depth ≤ 1 for steps>1,

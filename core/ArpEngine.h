@@ -11,24 +11,24 @@ class Scale;
 
 // ArpEngine — clock-driven arpeggiator with FIFO note queue.
 //
-// Queue model (Task 5):
-//   - FIFO of up to kQueueCap entries: { note, velocity, held }.
+// Queue model:
+//   - FIFO of up to kQueueCap entries: { note, velocity }.
 //   - The queue HEAD is the "active" note; the engine plays its arpeggio.
-//   - Loop-while-held: while the active entry is held (no NoteOff received),
-//     the arpeggio loops continuously (wrap to step 0 and keep going).
-//   - Cycle-quantized release: when the active entry becomes !held, the engine
-//     finishes the current cycle before dequeuing.  A "cycle" is defined as
-//     seqLen_ emitted steps counted from the moment the note became active
-//     (activeCycleSteps_ resets on promotion), regardless of direction.
-//     Reason: direction modes like UpDown/DownUp have irregular periods; a
-//     fixed seqLen_-step cycle gives a predictable, testable boundary.
+//   - One-shot (hold off, params_.latch == false): each played note plays
+//     exactly ONE cycle (seqLen_ steps), then the engine advances the FIFO
+//     (next queued note) or goes idle.  Physical hold state is irrelevant;
+//     noteOff is a no-op.
+//   - A "cycle" is seqLen_ emitted steps counted from the moment the note
+//     became active (activeCycleSteps_ resets on promotion), regardless of
+//     direction.  Reason: direction modes like UpDown/DownUp have irregular
+//     periods; a fixed seqLen_-step cycle gives a predictable boundary.
 //   - Append, never interrupt: new NoteOns append to the FIFO tail while an
 //     active note is playing.
-//   - Staccato: a note pressed+released before it becomes active is already
-//     !held when promoted; it plays exactly one cycle then dequeues.
-//   - Latch (params_.latch): NoteOffs are ignored.  A new NoteOn is stored as
-//     a single pending replacement; at the next cycle boundary the active note
-//     is replaced by the pending one (queue cleared).
+//   - Latch (params_.latch == true): loops forever; noteOff is also a no-op.
+//     A new NoteOn is stored as a single pending replacement; at the next
+//     cycle boundary the active note is replaced by the pending one.
+//     Toggling latch ON→OFF while looping makes the engine finish the current
+//     cycle then stop (falls out naturally: next boundary takes one-shot path).
 //   - stop(): emit NoteOff for any sounding note, clear queue, go idle.
 //   - reset(): return step index to 0; keep the active note.
 
@@ -58,14 +58,13 @@ private:
     // Queue
     // ---------------------------------------------------------------------------
     static constexpr int kQueueCap = 16;
-    struct QueueEntry { uint8_t note; uint8_t velocity; bool held; };
+    struct QueueEntry { uint8_t note; uint8_t velocity; };
     QueueEntry queue_[kQueueCap] = {};
     int        qHead_  = 0;   // index of head element
     int        qCount_ = 0;   // number of valid elements
 
-    void     qPush(uint8_t note, uint8_t velocity, bool held);
+    void     qPush(uint8_t note, uint8_t velocity);
     void     qPop();          // remove head
-    bool     qMarkReleased(uint8_t note);  // find entry by note, set held=false; returns true if found
 
     // Latch: pending replacement note (latest noteOn under latch while active)
     bool     latchHasPending_ = false;

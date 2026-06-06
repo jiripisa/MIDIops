@@ -243,12 +243,19 @@ int main(int /*argc*/, char* /*argv*/[]) {
             app.onMidiIn(msg);
         }
 
-        // Re-render every frame so worms scroll smoothly even when no new
-        // MIDI is arriving.
+        // Tick the engine every loop iteration (~1 ms granularity) so that
+        // arp step timing is accurate and not limited to 16 ms.
         app.tick(SDL_GetTicks());
-        app.render(display);
 
-        SDL_Delay(16);  // ~60 Hz pacing
+        // Throttle rendering to ~60 Hz (16 ms) to keep CPU usage reasonable.
+        static Uint32 lastRender = 0;
+        Uint32 now = SDL_GetTicks();
+        if (now - lastRender >= 16) {
+            app.render(display);
+            lastRender = now;
+        }
+
+        SDL_Delay(1);  // ~1 ms granularity for engine timing
     }
 
     SDL_Quit();

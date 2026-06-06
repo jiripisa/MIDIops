@@ -8,6 +8,15 @@
 //
 // Random: LCG state=0x12345, no-immediate-repeat rule: if raw%seqLen == prevIdx
 //   then advance by 1 (mod seqLen). seqLen>1 guarantees no consecutive repeats.
+//
+// One-shot model (hold off, params_.latch == false):
+//   Each played note plays exactly ONE cycle (seqLen_ steps), then the engine
+//   advances the FIFO (next queued note) or goes idle. Physical hold state is
+//   irrelevant; noteOff is a no-op in both modes.
+//
+// Hold (latch) model (params_.latch == true):
+//   Loops forever; a new noteOn stores a pending replacement; at the next cycle
+//   boundary the active note is replaced by the pending one (queue cleared).
 
 #include <unity.h>
 
@@ -47,7 +56,7 @@ static std::vector<FakeMidiOutput::Ev> noteEventsFrom(int from) {
 }
 
 // ---------------------------------------------------------------------------
-// Test: stepping/Up direction — immediate noteOn, correct timing
+// Test: stepping/Up direction — immediate noteOn, correct timing, ONE cycle
 // ---------------------------------------------------------------------------
 static void test_stepping_up_sequence() {
     core::ArpParams p;
@@ -98,16 +107,20 @@ static void test_stepping_up_sequence() {
         TEST_ASSERT_TRUE(found67);
     }
 
-    // t=1500 → NoteOff(67) + NoteOn(60) (wrap back to start)
+    // t=1000: cycle complete (3 steps: 60,64,67) → one-shot model → engine goes idle.
+    // t=1500 → NO new NoteOn (the engine is idle after one cycle).
     g_eng->tick(1500);
     {
-        // Count NoteOns for note 60
+        // Exactly one NoteOn for note 60 (the first step), no wrap-around.
         int count60 = 0;
         for (auto& e : g_out->events) {
             if (e.isOn && e.note == 60) ++count60;
         }
-        TEST_ASSERT_EQUAL_INT(2, count60);  // first at t=0, again at t=1500
+        TEST_ASSERT_EQUAL_INT_MESSAGE(1, count60,
+            "hold-off: note 60 must play only once (no wrap-around after idle)");
     }
+    TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(),
+        "engine must be idle after one cycle (hold-off one-shot)");
 }
 
 // ---------------------------------------------------------------------------
@@ -153,7 +166,7 @@ static void test_gate_50_percent() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Direction=Down — highest note first
+// Test: Direction=Down — highest note first (one cycle of 3 steps)
 // ---------------------------------------------------------------------------
 static void test_direction_down() {
     core::ArpParams p;
@@ -170,7 +183,7 @@ static void test_direction_down() {
     g_eng->tick(500);
     g_eng->tick(1000);
 
-    // Collect only NoteOn events in order
+    // Collect only NoteOn events in order (one cycle = 3 steps)
     std::vector<uint8_t> noteOns;
     for (auto& e : g_out->events) {
         if (e.isOn) noteOns.push_back(e.note);
@@ -182,8 +195,10 @@ static void test_direction_down() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Direction=UpDown — ping-pong, endpoints not doubled
-// Sequence: 60,64,67,64,60,64,67,...
+// Test: Direction=UpDown one-shot — only 3 steps then idle.
+// In UpDown mode one cycle = seqLen_=3 steps: 60,64,67.
+// Further steps (64,60 etc.) belong to the next cycle which is NOT played
+// in one-shot mode (the engine goes idle after the first 3 steps).
 // ---------------------------------------------------------------------------
 static void test_direction_updown() {
     core::ArpParams p;
@@ -194,6 +209,42 @@ static void test_direction_updown() {
     p.velocityMode  = core::ArpVelocityMode::Fixed;
     p.fixedVelocity = 100;
     p.swingPercent  = 50;
+    p.latch         = false;
+    g_eng->setParams(p);
+
+    g_eng->noteOn(60, 100, 0);
+    g_eng->tick(125);
+    g_eng->tick(250);
+    g_eng->tick(375);  // step boundary after cycle completes → idle
+    g_eng->tick(500);  // no new events
+
+    std::vector<uint8_t> noteOns;
+    for (auto& e : g_out->events) {
+        if (e.isOn) noteOns.push_back(e.note);
+    }
+    // One cycle = 3 steps: 60,64,67 then idle
+    TEST_ASSERT_EQUAL_INT_MESSAGE(3, (int)noteOns.size(),
+        "UpDown one-shot: exactly 3 NoteOns (one cycle)");
+    TEST_ASSERT_EQUAL_INT(60, noteOns[0]);
+    TEST_ASSERT_EQUAL_INT(64, noteOns[1]);
+    TEST_ASSERT_EQUAL_INT(67, noteOns[2]);
+    TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(), "idle after one cycle");
+}
+
+// ---------------------------------------------------------------------------
+// Test: Direction=UpDown latch — verify the full ping-pong pattern across cycles.
+// latch=true so the engine keeps looping; confirms 60,64,67,64,60 sequence.
+// ---------------------------------------------------------------------------
+static void test_direction_updown_latch() {
+    core::ArpParams p;
+    p.steps         = 3;
+    p.rate          = core::ArpRate::Sixteenth;  // 125 ms
+    p.gatePercent   = 80;
+    p.direction     = core::ArpDirection::UpDown;
+    p.velocityMode  = core::ArpVelocityMode::Fixed;
+    p.fixedVelocity = 100;
+    p.swingPercent  = 50;
+    p.latch         = true;
     g_eng->setParams(p);
 
     g_eng->noteOn(60, 100, 0);
@@ -208,7 +259,8 @@ static void test_direction_updown() {
     for (auto& e : g_out->events) {
         if (e.isOn) noteOns.push_back(e.note);
     }
-    TEST_ASSERT_EQUAL_INT(5, (int)noteOns.size());
+    TEST_ASSERT_EQUAL_INT_MESSAGE(5, (int)noteOns.size(),
+        "UpDown latch: 5 NoteOns over ping-pong");
     TEST_ASSERT_EQUAL_INT(60, noteOns[0]);
     TEST_ASSERT_EQUAL_INT(64, noteOns[1]);
     TEST_ASSERT_EQUAL_INT(67, noteOns[2]);
@@ -217,7 +269,8 @@ static void test_direction_updown() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Direction=Random — no two consecutive NoteOns are the same note
+// Test: Direction=Random — no two consecutive NoteOns are the same note.
+// Use latch=true to drive many steps (hold-off would stop after one cycle).
 // ---------------------------------------------------------------------------
 static void test_direction_random_no_immediate_repeat() {
     core::ArpParams p;
@@ -228,6 +281,7 @@ static void test_direction_random_no_immediate_repeat() {
     p.velocityMode  = core::ArpVelocityMode::Fixed;
     p.fixedVelocity = 100;
     p.swingPercent  = 50;
+    p.latch         = true;  // latch: loops forever so we can observe many steps
     g_eng->setParams(p);
 
     g_eng->noteOn(60, 100, 0);
@@ -359,8 +413,9 @@ static void test_stop_kills_active_note() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: steps=1 + UpDown — no crash, only note 60 emitted
-// Fix-1 guard: seqLen_==1 → nextSeqIndex returns 0 immediately, no OOB.
+// Test: steps=1 + UpDown — no crash, only note 60 emitted.
+// One-shot: seqLen_==1 → one cycle == one step. Engine goes idle after 1 step.
+// Use latch=true to verify looping and that every step is note 60.
 // ---------------------------------------------------------------------------
 static void test_updown_single_step_no_crash() {
     core::ArpParams p;
@@ -371,6 +426,7 @@ static void test_updown_single_step_no_crash() {
     p.velocityMode  = core::ArpVelocityMode::Fixed;
     p.fixedVelocity = 100;
     p.swingPercent  = 50;
+    p.latch         = true;  // latch: loops forever so we can drive many steps
     g_eng->setParams(p);
 
     g_eng->noteOn(60, 100, 0);
@@ -402,6 +458,7 @@ static void test_downup_single_step_no_crash() {
     p.velocityMode  = core::ArpVelocityMode::Fixed;
     p.fixedVelocity = 100;
     p.swingPercent  = 50;
+    p.latch         = true;  // latch: loops forever so we can drive many steps
     g_eng->setParams(p);
 
     g_eng->noteOn(60, 100, 0);
@@ -422,8 +479,8 @@ static void test_downup_single_step_no_crash() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Direction=DownUp happy-path (steps=3)
-// seq=[60,64,67], starts at top (67), bounce: 67,64,60,64,67
+// Test: Direction=DownUp one-shot (steps=3)
+// seq=[60,64,67], starts at top (67), one cycle=3 steps: 67,64,60 → idle.
 // ---------------------------------------------------------------------------
 static void test_direction_downup() {
     core::ArpParams p;
@@ -434,6 +491,42 @@ static void test_direction_downup() {
     p.velocityMode  = core::ArpVelocityMode::Fixed;
     p.fixedVelocity = 100;
     p.swingPercent  = 50;
+    p.latch         = false;
+    g_eng->setParams(p);
+
+    g_eng->noteOn(60, 100, 0);
+    g_eng->tick(125);
+    g_eng->tick(250);
+    g_eng->tick(375);  // step boundary after cycle → idle
+    g_eng->tick(500);  // no new events
+
+    std::vector<uint8_t> noteOns;
+    for (auto& e : g_out->events) {
+        if (e.isOn) noteOns.push_back(e.note);
+    }
+    // One cycle = 3 steps: 67,64,60 then idle
+    TEST_ASSERT_EQUAL_INT_MESSAGE(3, (int)noteOns.size(),
+        "DownUp one-shot: exactly 3 NoteOns (one cycle)");
+    TEST_ASSERT_EQUAL_INT(67, noteOns[0]);
+    TEST_ASSERT_EQUAL_INT(64, noteOns[1]);
+    TEST_ASSERT_EQUAL_INT(60, noteOns[2]);
+    TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(), "idle after one cycle");
+}
+
+// ---------------------------------------------------------------------------
+// Test: Direction=DownUp latch — verify the full DownUp ping-pong pattern.
+// latch=true so the engine keeps looping; confirms 67,64,60,64,67 sequence.
+// ---------------------------------------------------------------------------
+static void test_direction_downup_latch() {
+    core::ArpParams p;
+    p.steps         = 3;
+    p.rate          = core::ArpRate::Sixteenth;  // 125 ms
+    p.gatePercent   = 80;
+    p.direction     = core::ArpDirection::DownUp;
+    p.velocityMode  = core::ArpVelocityMode::Fixed;
+    p.fixedVelocity = 100;
+    p.swingPercent  = 50;
+    p.latch         = true;
     g_eng->setParams(p);
 
     g_eng->noteOn(60, 100, 0);
@@ -446,7 +539,8 @@ static void test_direction_downup() {
     for (auto& e : g_out->events) {
         if (e.isOn) noteOns.push_back(e.note);
     }
-    TEST_ASSERT_EQUAL_INT(5, (int)noteOns.size());
+    TEST_ASSERT_EQUAL_INT_MESSAGE(5, (int)noteOns.size(),
+        "DownUp latch: 5 NoteOns over ping-pong");
     TEST_ASSERT_EQUAL_INT(67, noteOns[0]);
     TEST_ASSERT_EQUAL_INT(64, noteOns[1]);
     TEST_ASSERT_EQUAL_INT(60, noteOns[2]);
@@ -455,13 +549,18 @@ static void test_direction_downup() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Swing delays odd steps
-// bpm=120, Quarter=500ms/step, swingPercent=75
-// swing offset = (75-50)*500/100 = 125 ms
-// Even step 0 fires at t=0 (no swing).
-// Odd step 1 fires at t=500+125=625 ms (swing delay applied at step 0's nextStepMs_).
-// At t=500: only step 0 (note 60) has been emitted.
-// At t=625: step 1 (note 64) fires.
+// Test: Swing delays odd steps.
+// bpm=120, Quarter=500ms/step, swingPercent=75.
+// swing offset = (75-50)*500/100 = 125 ms.
+//
+// Step 0 fires at t=0 (stepCount_=0, even → no swing).
+// Step 1 fires at t=500 (stepCount_=1, odd → swing on step 2's boundary):
+//   nextStepMs_ for step 2 = 500+500+125 = 1125.
+// Step 2 fires at t=1125 (not 1000).
+//
+// The cycle completes at step 2 (the 3rd step, index 2) when the engine goes idle.
+// We verify: at t=1000 note 67 NOT yet present; at t=1125 note 67 IS present.
+// Use latch=true so the engine keeps looping and we can measure the delay.
 // ---------------------------------------------------------------------------
 static void test_swing_delays_odd_steps() {
     core::ArpParams p;
@@ -472,31 +571,12 @@ static void test_swing_delays_odd_steps() {
     p.velocityMode  = core::ArpVelocityMode::Fixed;
     p.fixedVelocity = 100;
     p.swingPercent  = 75;  // odd-step delay = (75-50)*500/100 = 125 ms
+    p.latch         = true;  // keep looping so we can observe swing
     g_eng->setParams(p);
 
     g_eng->noteOn(60, 100, 0);  // step 0 fires immediately (stepCount_=0 is even)
 
-    // At t=500: step 0's un-swung boundary, but nextStepMs_ was pushed to 625
-    // because stepCount_ was 0 (even? no — swing applies when (stepCount_ & 1)).
-    // stepCount_ is incremented AFTER the swing check inside beginStep().
-    // At step 0: stepCount_=0, (0 & 1)==0 → no swing → nextStepMs_=500.
-    // At step 1 (fires at t=500): stepCount_=1, (1 & 1)==1 → swing applied →
-    //   nextStepMs_ for step 2 = 500+500+125=1125.
-    // So the 2nd NoteOn (note 64) appears at t=500; the 3rd (note 67) at t=1125.
-    // But the task asks: does t=500 NOT have note 64 yet?
-    // Re-check: step 0 fires at t=0 (beginStep called from noteOn at t=0).
-    //   stepCount_ incremented to 1 after. nextStepMs_=0+500=500 (stepCount_was 0, even).
-    // t=500: tick fires beginStep (step 1).
-    //   stepCount_=1, (1&1)==1 → swing: nextStepMs_=500+500+125=1125.
-    //   NoteOn(64) fires at t=500.
-    // So at t=500 note 64 IS present. The swing affects step 2's boundary, not step 1's.
-    //
-    // For the test to check swing delays the odd-indexed step's OWN start,
-    // we need to check step 2 (stepCount_=2, even → no swing on its OWN boundary;
-    // that was set when step 1 ran with swing=125 → step2 fires at 1125 not 1000).
-    // Assert: at t=1000 note 67 has NOT fired; at t=1125 it has.
-
-    g_eng->tick(500);   // step 1 (note 64) fires here; stepCount_ was 1 → swing sets step2 at 1125
+    g_eng->tick(500);   // step 1 (note 64) fires here; stepCount_=1 → swing sets step2 at 1125
 
     // Count NoteOns so far: 2 (notes 60 and 64)
     {
@@ -533,7 +613,7 @@ static std::vector<uint8_t> noteOnSequence() {
     return result;
 }
 
-// Helper: make a standard 3-step Up Quarter params struct.
+// Helper: make a standard 3-step Up Quarter params struct (latch=false).
 static core::ArpParams makeStdParams() {
     core::ArpParams p;
     p.steps         = 3;
@@ -548,64 +628,165 @@ static core::ArpParams makeStdParams() {
 }
 
 // ---------------------------------------------------------------------------
-// Task-5 test: loop while held
-//   noteOn(60) — never release.  Drive 7 steps (t=0,500,...,3000).
-//   C major triad from 60 with steps=3: seq=[60,64,67] (Up).
-//   Expected NoteOn order: 60,64,67,60,64,67,60  (wrap at cycle boundary).
+// TDD (Bug 2): hold OFF = one-shot per note.
+//   noteOn(60) — NEVER call noteOff.  Drive ticks across several step boundaries.
+//   C major triad from 60, steps=3, Up: seq=[60,64,67].
+//   Expected: exactly 3 NoteOns (one cycle: 60,64,67), then idle.
+//   A 4th NoteOn must NEVER appear.
 // ---------------------------------------------------------------------------
-static void test_loop_while_held() {
-    g_eng->setParams(makeStdParams());
+static void test_holdoff_plays_one_cycle_then_idle() {
+    g_eng->setParams(makeStdParams());  // latch=false
 
-    g_eng->noteOn(60, 100, 0);      // t=0: step0=60
+    g_eng->noteOn(60, 100, 0);      // t=0: step0=60; never call noteOff
     g_eng->tick(500);               // t=500: step1=64
-    g_eng->tick(1000);              // t=1000: step2=67  → cycle 1 done, still held → loop
-    g_eng->tick(1500);              // t=1500: step0=60
-    g_eng->tick(2000);              // t=2000: step1=64
-    g_eng->tick(2500);              // t=2500: step2=67  → cycle 2 done, still held → loop
-    g_eng->tick(3000);              // t=3000: step0=60
+    g_eng->tick(1000);              // t=1000: step2=67 → cycle complete → one-shot → idle
 
+    // Engine must be idle after one cycle
+    TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(),
+        "hold-off: engine must be idle after one cycle (no noteOff required)");
+
+    // Exactly 3 NoteOns: 60, 64, 67
     auto seq = noteOnSequence();
-    TEST_ASSERT_EQUAL_INT(7, (int)seq.size());
+    TEST_ASSERT_EQUAL_INT_MESSAGE(3, (int)seq.size(),
+        "hold-off: exactly one cycle (3 NoteOns)");
     TEST_ASSERT_EQUAL_INT(60, seq[0]);
     TEST_ASSERT_EQUAL_INT(64, seq[1]);
     TEST_ASSERT_EQUAL_INT(67, seq[2]);
-    TEST_ASSERT_EQUAL_INT(60, seq[3]);
-    TEST_ASSERT_EQUAL_INT(64, seq[4]);
-    TEST_ASSERT_EQUAL_INT(67, seq[5]);
-    TEST_ASSERT_EQUAL_INT(60, seq[6]);
+
+    // Drive more ticks — no 4th NoteOn must appear
+    g_eng->tick(1500);
+    g_eng->tick(2000);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(3, (int)noteOnSequence().size(),
+        "no 4th NoteOn after idle");
 }
 
 // ---------------------------------------------------------------------------
-// Task-5 test: release finishes current cycle then goes idle
-//   noteOn(60) at t=0; noteOff(60,500) mid-cycle; continue ticking.
-//   The arp must play through step2=67 at t=1000 to complete the cycle,
-//   then at t=1500 it must NOT emit a new NoteOn (idle).
-//   Also a NoteOff for the last sounding note must be emitted after t=1000.
+// TDD (Bug 2): toggling latch ON→OFF while looping finishes current cycle then stops.
+//   latch=true; noteOn(60); drive ≥2 full cycles confirming it loops.
+//   Then setParams(latch=false). Continue ticking.
+//   Within ONE more cycle the engine must go idle.
+// ---------------------------------------------------------------------------
+static void test_holdoff_after_latch_stops() {
+    core::ArpParams p = makeStdParams();
+    p.latch = true;
+    g_eng->setParams(p);
+
+    // Timeline (500ms/step, gatePercent=80, latch=true):
+    //   t=0:    step0=60 fires; nextStepMs_=500
+    //   t=500:  step1=64; nextStepMs_=1000
+    //   t=1000: step2=67 → cycle1 complete → latch loops → nextStepMs_=1500
+    //   t=1500: step0=60 (cycle2); nextStepMs_=2000
+    //   t=2000: step1=64 (cycle2); nextStepMs_=2500
+    //   t=2500: step2=67 → cycle2 complete → latch loops → nextStepMs_=3000
+    //   t=3000: step0=60 (cycle3 starts) — still looping!
+    g_eng->noteOn(60, 100, 0);      // t=0: step0=60 (latch: loops)
+    g_eng->tick(500);               // t=500: step1=64
+    g_eng->tick(1000);              // t=1000: step2=67 → cycle1 done → latch → loop
+    g_eng->tick(1500);              // t=1500: step0=60 (cycle2)
+    g_eng->tick(2000);              // t=2000: step1=64 (cycle2)
+    g_eng->tick(2500);              // t=2500: step2=67 (cycle2) → cycle2 done → latch → loop
+    g_eng->tick(3000);              // t=3000: step0=60 (cycle3 starts) — 7th NoteOn
+
+    // Confirm it's still looping after 2+ full cycles (at least 7 NoteOns)
+    {
+        auto seq = noteOnSequence();
+        TEST_ASSERT_TRUE_MESSAGE((int)seq.size() >= 7,
+            "latch: must still be looping after 2 cycles (>=7 NoteOns)");
+    }
+    TEST_ASSERT_TRUE_MESSAGE(g_eng->isPlaying(),
+        "latch: still playing after 2 cycles");
+
+    // Now toggle hold off
+    p.latch = false;
+    g_eng->setParams(p);
+
+    // Drive the remaining steps of cycle3 plus the cycle boundary.
+    // cycle3 started at t=3000 (step0=60 already fired). Steps 1 and 2 at t=3500, t=4000.
+    int nAfterToggle = (int)noteOnSequence().size();
+    g_eng->tick(3500);              // step1=64 of cycle3
+    g_eng->tick(4000);              // step2=67 of cycle3 → cycle3 boundary: latch=false → idle
+
+    // After the cycle boundary the engine must be idle
+    TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(),
+        "after latch→off, engine must be idle within one more cycle");
+
+    // No NoteOns of any note must appear after idle
+    int nTotal = (int)noteOnSequence().size();
+    g_eng->tick(4500);
+    g_eng->tick(5000);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(nTotal, (int)noteOnSequence().size(),
+        "no new NoteOns after engine goes idle");
+
+    // And we must have emitted some steps after the toggle (the remaining cycle)
+    TEST_ASSERT_TRUE_MESSAGE(nTotal > nAfterToggle,
+        "at least some steps must fire in the final cycle after toggle");
+}
+
+// ---------------------------------------------------------------------------
+// Task-5 test: RENAMED — one-shot model (hold off plays ONE cycle then idles).
+//   noteOn(60) — never call noteOff.  Drive across two cycles.
+//   C major triad from 60 with steps=3: seq=[60,64,67] (Up).
+//   Expected: exactly 3 NoteOns (one cycle), then idle.
+// ---------------------------------------------------------------------------
+static void test_loop_while_held() {
+    // RENAMED BEHAVIOUR: "loop while held" is gone; hold-off = one-shot.
+    // Kept as test_loop_while_held to preserve the RUN_TEST name for
+    // continuity; the test now encodes the one-shot contract.
+    g_eng->setParams(makeStdParams());
+
+    g_eng->noteOn(60, 100, 0);      // t=0: step0=60; never release
+    g_eng->tick(500);               // t=500: step1=64
+    g_eng->tick(1000);              // t=1000: step2=67 → cycle complete → one-shot → idle
+
+    auto seq = noteOnSequence();
+    // One cycle: 3 NoteOns, then idle.
+    TEST_ASSERT_EQUAL_INT_MESSAGE(3, (int)seq.size(),
+        "hold-off one-shot: exactly 3 NoteOns (60,64,67), no loop");
+    TEST_ASSERT_EQUAL_INT(60, seq[0]);
+    TEST_ASSERT_EQUAL_INT(64, seq[1]);
+    TEST_ASSERT_EQUAL_INT(67, seq[2]);
+
+    // Drive past where old looping would have resumed — confirm idle
+    g_eng->tick(1500);
+    g_eng->tick(2000);
+    g_eng->tick(2500);
+    g_eng->tick(3000);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(3, (int)noteOnSequence().size(),
+        "no additional NoteOns after cycle completes in one-shot mode");
+    TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(),
+        "engine must be idle after the one cycle");
+}
+
+// ---------------------------------------------------------------------------
+// Task-5 test: one cycle then idle (previously "release finishes cycle").
+//   noteOn(60) at t=0; noteOff is now a no-op, but the engine still plays
+//   exactly ONE cycle (60,64,67) and then goes idle.
+//   Calling noteOff mid-cycle must not change the outcome.
 // ---------------------------------------------------------------------------
 static void test_release_finishes_cycle_then_idle() {
     g_eng->setParams(makeStdParams());
 
     g_eng->noteOn(60, 100, 0);          // step0=60 at t=0
     g_eng->tick(500);                   // step1=64 at t=500
-    g_eng->noteOff(60, 500);            // released after step1 — cycle not done yet
-    g_eng->tick(1000);                  // step2=67 at t=1000 → cycle complete
+    g_eng->noteOff(60, 500);            // no-op under new model
+    g_eng->tick(1000);                  // step2=67 at t=1000 → cycle complete → idle
 
-    // 67 must have been emitted after the noteOff
+    // 67 must have been emitted (cycle always completes)
     {
         auto seq = noteOnSequence();
         bool has67 = false;
         for (auto n : seq) if (n == 67) { has67 = true; break; }
-        TEST_ASSERT_TRUE_MESSAGE(has67, "step2=67 must still play after noteOff");
+        TEST_ASSERT_TRUE_MESSAGE(has67, "step2=67 must still play (one-shot, noteOff is no-op)");
     }
 
     // Tick past gate NoteOff for 67, then the next step boundary
     g_eng->tick(1400);  // gate NoteOff for 67 fires here (80%*500=400ms after t=1000 → t=1400)
-    g_eng->tick(1500);  // next step boundary — should NOT produce a new NoteOn
+    g_eng->tick(1500);  // next step boundary — must NOT produce a new NoteOn
 
     {
         auto seq = noteOnSequence();
         // Only 3 NoteOns: 60, 64, 67
-        TEST_ASSERT_EQUAL_INT_MESSAGE(3, (int)seq.size(), "no 4th NoteOn after cycle complete + release");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(3, (int)seq.size(), "no 4th NoteOn after cycle complete");
     }
 
     // Engine must be idle (not playing)
@@ -621,7 +802,7 @@ static void test_release_finishes_cycle_then_idle() {
 
 // ---------------------------------------------------------------------------
 // Task-5 test: FIFO two staccato notes
-//   noteOn(60) then noteOff(60) immediately (staccato, before anything plays).
+//   noteOn(60) then noteOff(60) immediately (staccato).
 //   noteOn(67) then noteOff(67) immediately.
 //   Active is 60 → plays one full cycle (60,64,67), then dequeues.
 //   67 becomes active → plays its triad.
@@ -632,23 +813,23 @@ static void test_fifo_two_staccato_notes() {
     g_eng->setParams(makeStdParams());
 
     g_eng->noteOn(60, 100, 0);
-    g_eng->noteOff(60, 0);      // staccato — already !held when active
+    g_eng->noteOff(60, 0);      // staccato (no-op under new model; one-shot still works)
     g_eng->noteOn(67, 100, 0);  // appended to FIFO while 60 is active
-    g_eng->noteOff(67, 0);      // staccato too
+    g_eng->noteOff(67, 0);      // staccato (no-op)
 
     // Drive 60's cycle: steps at t=500 and t=1000
     g_eng->tick(500);   // step1=64
     g_eng->tick(1000);  // step2=67 → 60's cycle complete → dequeue 60, promote 67
 
-    // Drive 67's cycle: at t=1500 the new active note's first loop step
+    // Drive 67's cycle: at t=1000 the new active note's first loop step
     // Wait — when 67 becomes active it fires its step0 immediately at t=1000 (same tick).
     // Then step1 at t=1500, step2 at t=2000.
     g_eng->tick(1500);  // 67's step1=71
-    g_eng->tick(2000);  // 67's step2=74 → cycle complete, !held → dequeue → idle
+    g_eng->tick(2000);  // 67's step2=74 → cycle complete → one-shot → idle
 
     auto seq = noteOnSequence();
-    // Expect at least 6: 60,64,67,67,71,74
-    TEST_ASSERT_TRUE_MESSAGE((int)seq.size() >= 6, "expected >=6 NoteOns");
+    // Expect exactly 6: 60,64,67,67,71,74
+    TEST_ASSERT_EQUAL_INT_MESSAGE(6, (int)seq.size(), "expected exactly 6 NoteOns");
     TEST_ASSERT_EQUAL_INT(60, seq[0]);
     TEST_ASSERT_EQUAL_INT(64, seq[1]);
     TEST_ASSERT_EQUAL_INT(67, seq[2]);
@@ -658,51 +839,48 @@ static void test_fifo_two_staccato_notes() {
 }
 
 // ---------------------------------------------------------------------------
-// Task-5 test: held note, then queue another, release first → switch at boundary
-//   noteOn(60) held; let it complete one cycle; noteOn(67) while 60 held.
-//   60 keeps looping. Then noteOff(60); after the CURRENT cycle of 60 completes,
-//   67 becomes active.  Assert 67's triad appears only after a 60-cycle boundary
-//   following the release.
+// Task-5 test: FIFO ordering with a queued note.
+//   noteOn(60) held; let it complete one cycle; noteOn(67) while 60 playing.
+//   Under one-shot model: 60 plays ONE cycle (60,64,67) then dequeues.
+//   67 becomes active immediately at t=1000 (same-tick promotion).
+//   67's C major triad (steps=3, Up): 67,71,74.
 //
 //   Timeline (500ms/step, steps=3):
 //     t=0:    noteOn(60)  → 60 fires
 //     t=500:  tick        → 64 fires
-//     t=1000: tick        → 67 fires  (60's cycle 1 complete, still held → loop)
-//     t=1000: noteOn(67)  → queued
-//     t=1500: tick        → 60 fires  (60's cycle 2, step0)
-//     t=1500: noteOff(60) → released mid-cycle2
-//     t=2000: tick        → 64 fires  (60's cycle 2, step1)
-//     t=2500: tick        → 67 fires  (60's cycle 2, step2 → cycle complete → dequeue)
-//     t=2500: 67 becomes active, fires its step0 (=67)
-//     t=3000: tick        → 71
-//     t=3500: tick        → 74
+//     t=1000: tick        → 67 fires  (60's cycle 1 complete → one-shot → dequeue → promote 67)
+//     t=1000: noteOn(67) queued just before or after – arrives in FIFO tail
+//             Actually: we queue 67 at t=1000, after 60's cycle completes (same tick).
+//             Let's queue 67 just before t=1000 tick to be in FIFO.
+//             If we call noteOn(67,1000) before tick(1000), it's in the FIFO when 60 dequeues.
+//     t=1000: 67 fires (step0 = 67's triad root)
+//     t=1500: 71
+//     t=2000: 74 → cycle complete → one-shot → idle
+//
+//   Expected seq: 60,64,67,67,71,74
 // ---------------------------------------------------------------------------
 static void test_held_then_queue_switch() {
     g_eng->setParams(makeStdParams());
 
-    g_eng->noteOn(60, 100, 0);      // t=0
+    g_eng->noteOn(60, 100, 0);      // t=0: 60 fires, 60 is active
     g_eng->tick(500);               // t=500: 64
-    g_eng->tick(1000);              // t=1000: 67 — cycle1 done, still held
-    g_eng->noteOn(67, 100, 1000);   // queue 67 while 60 is active
-    g_eng->tick(1500);              // t=1500: 60 (cycle2 start)
-    g_eng->noteOff(60, 1500);       // release 60 mid cycle2
-    g_eng->tick(2000);              // t=2000: 64
-    g_eng->tick(2500);              // t=2500: 67 (cycle2 complete → dequeue → 67 fires)
-    g_eng->tick(3000);              // t=3000: 71
-    g_eng->tick(3500);              // t=3500: 74
+    g_eng->noteOn(67, 100, 500);    // queue 67 in FIFO while 60 is still in cycle1
+    g_eng->tick(1000);              // t=1000: 67 (step2 of 60's cycle1 = 67)
+                                    //         cycle1 complete → one-shot → dequeue 60
+                                    //         67 in FIFO → promote 67, fires step0=67 same tick
+    g_eng->tick(1500);              // t=1500: 71 (67's step1)
+    g_eng->tick(2000);              // t=2000: 74 (67's step2) → cycle complete → idle
 
     auto seq = noteOnSequence();
-    // Expected: 60,64,67, 60,64,67, 67,71,74
-    //   (60's cycle1, 60's cycle2, then 67's cycle)
-    TEST_ASSERT_TRUE_MESSAGE((int)seq.size() >= 9, "expected >=9 NoteOns");
-    // 60 must not appear after position 5 (index 5 = last step of 60's cycle2)
-    for (int i = 6; i < (int)seq.size(); ++i) {
-        TEST_ASSERT_NOT_EQUAL_MESSAGE(60, seq[i], "60 must not play after it was dequeued");
-    }
-    // 67,71,74 must appear after 60 is done
-    TEST_ASSERT_EQUAL_INT(67, seq[6]);
-    TEST_ASSERT_EQUAL_INT(71, seq[7]);
-    TEST_ASSERT_EQUAL_INT(74, seq[8]);
+    // Expected: 60,64,67, 67,71,74
+    TEST_ASSERT_EQUAL_INT_MESSAGE(6, (int)seq.size(), "expected exactly 6 NoteOns");
+    TEST_ASSERT_EQUAL_INT(60, seq[0]);
+    TEST_ASSERT_EQUAL_INT(64, seq[1]);
+    TEST_ASSERT_EQUAL_INT(67, seq[2]);  // 60's cycle step2
+    TEST_ASSERT_EQUAL_INT(67, seq[3]);  // 67's step0 (same-tick promotion)
+    TEST_ASSERT_EQUAL_INT(71, seq[4]);
+    TEST_ASSERT_EQUAL_INT(74, seq[5]);
+    TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(), "idle after 67's cycle completes");
 }
 
 // ---------------------------------------------------------------------------
@@ -732,7 +910,7 @@ static void test_latch_replaces_at_boundary() {
     g_eng->noteOn(60, 100, 0);
     g_eng->tick(500);
     g_eng->tick(1000);             // cycle1 complete
-    g_eng->noteOff(60, 1000);      // latch: ignore
+    g_eng->noteOff(60, 1000);      // latch: ignore (no-op)
     g_eng->noteOn(67, 100, 1000);  // pending replacement
     g_eng->tick(1500);             // 60 cycle2 step0
     g_eng->tick(2000);             // 60 cycle2 step1
@@ -756,7 +934,7 @@ static void test_latch_replaces_at_boundary() {
 }
 
 // ---------------------------------------------------------------------------
-// Task-5 test: stop() clears queue and silences everything
+// Task-5 test: stop() clears queue and silences everything.
 //   Queue two staccato notes (60, 67). After stop():
 //     - isPlaying() == false
 //     - A NoteOff is emitted for any sounding note
@@ -766,9 +944,9 @@ static void test_stop_clears_queue() {
     g_eng->setParams(makeStdParams());
 
     g_eng->noteOn(60, 100, 0);   // active
-    g_eng->noteOff(60, 0);       // staccato
+    g_eng->noteOff(60, 0);       // no-op (one-shot: hold state irrelevant)
     g_eng->noteOn(67, 100, 0);   // queued
-    g_eng->noteOff(67, 0);       // staccato
+    g_eng->noteOff(67, 0);       // no-op
 
     // 60 is playing step0 right now
     TEST_ASSERT_TRUE(g_eng->isPlaying());
@@ -796,22 +974,15 @@ static void test_stop_clears_queue() {
 // ---------------------------------------------------------------------------
 // Test: steps=1, three staccato notes pressed+released before any tick.
 //
-// With seqLen_==1 every step is a cycle boundary.  The cycle boundary check
-// runs at the END of beginStep (after the NoteOn is already emitted).  At t=0
-// the first note (60) is still held when the check runs, so it loops.  After
-// noteOff(60), at t=500 the second cycle of 60 fires its step (NoteOn(60)
-// again), THEN the cycle-boundary check sees !held and dequeues 60.  The
-// same-tick promotion chain then fires 62 and 64 in the same tick.
+// With one-shot model and seqLen_==1:
+//   Each cycle = 1 step → immediate dequeue after each step.
+//   noteOn(60)  → step0 fires (NoteOn 60), cycle complete → dequeue 60.
+//   62 is in FIFO → same-tick promotion: step0 fires (NoteOn 62), cycle complete → dequeue 62.
+//   64 is in FIFO → same-tick promotion: step0 fires (NoteOn 64), cycle complete → dequeue 64.
+//   Queue empty → idle.
 //
-// Actual NoteOn sequence (documented real behaviour):
-//   t=0:   NoteOn(60)  — 60's first cycle; still held at boundary → loops
-//   t=500: NoteOn(60)  — 60's second cycle; !held at boundary → dequeue
-//          NoteOn(62)  — same-tick promotion (62 !held → dequeue immediately)
-//          NoteOn(64)  — same-tick promotion (64 !held → dequeue → idle)
-// Total NoteOns = 4.
-//
-// The key invariant: NoteOn count == NoteOff count at the end (no stuck note).
-// This exercises the steps==1 same-tick promotion chain (depth up to kQueueCap).
+// Total NoteOns = 3 (one per note, all at t=0 via same-tick promotion chain).
+// NoteOn count == NoteOff count (no stuck note).
 // ---------------------------------------------------------------------------
 static void test_steps1_many_staccato_no_stuck_note() {
     core::ArpParams p;
@@ -825,39 +996,36 @@ static void test_steps1_many_staccato_no_stuck_note() {
     p.latch         = false;
     g_eng->setParams(p);
 
-    // Press + release three notes staccato before any tick.
-    g_eng->noteOn (60, 100, 0);  // starts immediately; 60 is still held at the cycle
-                                  // boundary check → loops into the next cycle
-    g_eng->noteOff(60, 0);       // 60 now !held; next boundary will dequeue it
-    g_eng->noteOn (62, 100, 0);  // appended to queue (held=true)
-    g_eng->noteOff(62, 0);       // 62 now !held
-    g_eng->noteOn (64, 100, 0);  // appended to queue (held=true)
-    g_eng->noteOff(64, 0);       // 64 now !held
+    // With one-shot model and steps=1 (seqLen_=1):
+    //   noteOn(60,0) → active=false → starts: fires 60, cycle=1 step → qPop → idle.
+    //   noteOff(60,0) → no-op.
+    //   noteOn(62,0) → active=false → starts: fires 62, cycle complete → qPop → idle.
+    //   noteOff(62,0) → no-op.
+    //   noteOn(64,0) → active=false → starts: fires 64, cycle complete → qPop → idle.
+    //   noteOff(64,0) → no-op.
+    // ALL THREE fire at t=0 immediately (one-shot, each note starts and completes independently).
 
-    // At this point exactly one NoteOn has been emitted (60 at t=0).
-    {
-        int ons = 0;
-        for (auto& e : g_out->events) { if (e.isOn) ++ons; }
-        TEST_ASSERT_EQUAL_INT_MESSAGE(1, ons, "only note 60 should have fired at t=0");
-    }
+    g_eng->noteOn (60, 100, 0);  // fires 60 at t=0, one-shot → idle immediately
+    g_eng->noteOff(60, 0);       // no-op
+    g_eng->noteOn (62, 100, 0);  // fires 62 at t=0, one-shot → idle immediately
+    g_eng->noteOff(62, 0);       // no-op
+    g_eng->noteOn (64, 100, 0);  // fires 64 at t=0, one-shot → idle immediately
+    g_eng->noteOff(64, 0);       // no-op
 
-    // t=500: 60's second cycle fires, then same-tick promotion chain: 62, 64.
-    g_eng->tick(500);
     {
         std::vector<uint8_t> noteOns;
         for (auto& e : g_out->events) {
             if (e.isOn) noteOns.push_back(e.note);
         }
-        // 4 NoteOns: 60(t=0), 60(t=500 second cycle), 62(t=500 promoted), 64(t=500 promoted).
-        TEST_ASSERT_EQUAL_INT_MESSAGE(4, (int)noteOns.size(),
-            "expected 4 NoteOns: 60 twice (loop + dequeue cycle), then 62 and 64 via same-tick promotion");
+        // 3 NoteOns: 60, 62, 64 — all at t=0 (each one-shot with steps=1).
+        TEST_ASSERT_EQUAL_INT_MESSAGE(3, (int)noteOns.size(),
+            "expected 3 NoteOns: 60, 62, 64 (each one-shot with steps=1)");
         TEST_ASSERT_EQUAL_INT(60, noteOns[0]);
-        TEST_ASSERT_EQUAL_INT(60, noteOns[1]);  // 60's second cycle before dequeue
-        TEST_ASSERT_EQUAL_INT(62, noteOns[2]);  // same-tick promoted
-        TEST_ASSERT_EQUAL_INT(64, noteOns[3]);  // same-tick promoted
+        TEST_ASSERT_EQUAL_INT(62, noteOns[1]);
+        TEST_ASSERT_EQUAL_INT(64, noteOns[2]);
     }
 
-    // Engine must be idle after the promotion chain exhausted the queue.
+    // Engine must be idle after all notes complete.
     TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(),
         "engine must be idle after all staccato notes complete");
 
@@ -1098,6 +1266,7 @@ int main() {
     RUN_TEST(test_gate_50_percent);
     RUN_TEST(test_direction_down);
     RUN_TEST(test_direction_updown);
+    RUN_TEST(test_direction_updown_latch);
     RUN_TEST(test_direction_random_no_immediate_repeat);
     RUN_TEST(test_velocity_fixed);
     RUN_TEST(test_velocity_follow_input);
@@ -1106,8 +1275,12 @@ int main() {
     RUN_TEST(test_updown_single_step_no_crash);
     RUN_TEST(test_downup_single_step_no_crash);
     RUN_TEST(test_direction_downup);
+    RUN_TEST(test_direction_downup_latch);
     RUN_TEST(test_swing_delays_odd_steps);
-    // Task-5: FIFO queue + loop-while-held + latch + transport
+    // Bug 2: TDD — new one-shot model tests (must FAIL before implementation)
+    RUN_TEST(test_holdoff_plays_one_cycle_then_idle);
+    RUN_TEST(test_holdoff_after_latch_stops);
+    // Task-5: FIFO queue + one-shot + latch
     RUN_TEST(test_loop_while_held);
     RUN_TEST(test_release_finishes_cycle_then_idle);
     RUN_TEST(test_fifo_two_staccato_notes);
