@@ -15,6 +15,7 @@
 #undef round
 
 #include "core/app/AppShell.h"
+#include "core/modes/ArpMode.h"
 #include "core/modes/BpmMode.h"
 #include "core/modes/DebugMode.h"
 #include "core/modes/MonitoringMode.h"
@@ -116,10 +117,11 @@ static TeensyEncoder   enc5Knob(kPinEnc5Dt, kPinEnc5Clk);
 // pin HIGH when latched closed). Matches the latch1Button default.
 static TeensyButton    latch2Button(kPinLatch2);
 static TeensyButton    latch3Button(kPinLatch3);
-static core::AppShell      app;
+static core::AppShell       app;
 static core::MonitoringMode monitoringMode;
 static core::DebugMode      debugMode;
 static core::BpmMode        bpmMode(app);
+static core::ArpMode        arpMode(app);
 
 void setup() {
     display.begin();
@@ -133,7 +135,9 @@ void setup() {
     latch2Button.begin();
     latch3Button.begin();
     app.setMidiOutput(&midiOut);
+    arpMode.setMidiOutput(&midiOut);
     app.addMode(&monitoringMode);
+    app.addMode(&arpMode);
     app.addMode(&bpmMode);
     app.addMode(&debugMode);
     app.setBpm(120);
