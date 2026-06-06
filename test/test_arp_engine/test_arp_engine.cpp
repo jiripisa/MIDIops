@@ -359,6 +359,170 @@ static void test_stop_kills_active_note() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: steps=1 + UpDown — no crash, only note 60 emitted
+// Fix-1 guard: seqLen_==1 → nextSeqIndex returns 0 immediately, no OOB.
+// ---------------------------------------------------------------------------
+static void test_updown_single_step_no_crash() {
+    core::ArpParams p;
+    p.steps         = 1;
+    p.rate          = core::ArpRate::Quarter;  // 500 ms/step
+    p.gatePercent   = 80;
+    p.direction     = core::ArpDirection::UpDown;
+    p.velocityMode  = core::ArpVelocityMode::Fixed;
+    p.fixedVelocity = 100;
+    p.swingPercent  = 50;
+    g_eng->setParams(p);
+
+    g_eng->noteOn(60, 100, 0);
+    g_eng->tick(500);
+    g_eng->tick(1000);
+    g_eng->tick(1500);
+
+    // Every NoteOn must be note 60 (the only step in the sequence)
+    int countOn = 0;
+    for (auto& e : g_out->events) {
+        if (e.isOn) {
+            TEST_ASSERT_EQUAL_INT(60, e.note);
+            ++countOn;
+        }
+    }
+    // 4 steps fired (t=0, 500, 1000, 1500)
+    TEST_ASSERT_EQUAL_INT(4, countOn);
+}
+
+// ---------------------------------------------------------------------------
+// Test: steps=1 + DownUp — no crash, only note 60 emitted
+// ---------------------------------------------------------------------------
+static void test_downup_single_step_no_crash() {
+    core::ArpParams p;
+    p.steps         = 1;
+    p.rate          = core::ArpRate::Quarter;  // 500 ms/step
+    p.gatePercent   = 80;
+    p.direction     = core::ArpDirection::DownUp;
+    p.velocityMode  = core::ArpVelocityMode::Fixed;
+    p.fixedVelocity = 100;
+    p.swingPercent  = 50;
+    g_eng->setParams(p);
+
+    g_eng->noteOn(60, 100, 0);
+    g_eng->tick(500);
+    g_eng->tick(1000);
+    g_eng->tick(1500);
+
+    // Every NoteOn must be note 60 (the only step in the sequence)
+    int countOn = 0;
+    for (auto& e : g_out->events) {
+        if (e.isOn) {
+            TEST_ASSERT_EQUAL_INT(60, e.note);
+            ++countOn;
+        }
+    }
+    // 4 steps fired (t=0, 500, 1000, 1500)
+    TEST_ASSERT_EQUAL_INT(4, countOn);
+}
+
+// ---------------------------------------------------------------------------
+// Test: Direction=DownUp happy-path (steps=3)
+// seq=[60,64,67], starts at top (67), bounce: 67,64,60,64,67
+// ---------------------------------------------------------------------------
+static void test_direction_downup() {
+    core::ArpParams p;
+    p.steps         = 3;
+    p.rate          = core::ArpRate::Sixteenth;  // 125 ms
+    p.gatePercent   = 80;
+    p.direction     = core::ArpDirection::DownUp;
+    p.velocityMode  = core::ArpVelocityMode::Fixed;
+    p.fixedVelocity = 100;
+    p.swingPercent  = 50;
+    g_eng->setParams(p);
+
+    g_eng->noteOn(60, 100, 0);
+    g_eng->tick(125);
+    g_eng->tick(250);
+    g_eng->tick(375);
+    g_eng->tick(500);
+
+    std::vector<uint8_t> noteOns;
+    for (auto& e : g_out->events) {
+        if (e.isOn) noteOns.push_back(e.note);
+    }
+    TEST_ASSERT_EQUAL_INT(5, (int)noteOns.size());
+    TEST_ASSERT_EQUAL_INT(67, noteOns[0]);
+    TEST_ASSERT_EQUAL_INT(64, noteOns[1]);
+    TEST_ASSERT_EQUAL_INT(60, noteOns[2]);
+    TEST_ASSERT_EQUAL_INT(64, noteOns[3]);
+    TEST_ASSERT_EQUAL_INT(67, noteOns[4]);
+}
+
+// ---------------------------------------------------------------------------
+// Test: Swing delays odd steps
+// bpm=120, Quarter=500ms/step, swingPercent=75
+// swing offset = (75-50)*500/100 = 125 ms
+// Even step 0 fires at t=0 (no swing).
+// Odd step 1 fires at t=500+125=625 ms (swing delay applied at step 0's nextStepMs_).
+// At t=500: only step 0 (note 60) has been emitted.
+// At t=625: step 1 (note 64) fires.
+// ---------------------------------------------------------------------------
+static void test_swing_delays_odd_steps() {
+    core::ArpParams p;
+    p.steps         = 3;
+    p.rate          = core::ArpRate::Quarter;  // 500 ms/step
+    p.gatePercent   = 50;
+    p.direction     = core::ArpDirection::Up;
+    p.velocityMode  = core::ArpVelocityMode::Fixed;
+    p.fixedVelocity = 100;
+    p.swingPercent  = 75;  // odd-step delay = (75-50)*500/100 = 125 ms
+    g_eng->setParams(p);
+
+    g_eng->noteOn(60, 100, 0);  // step 0 fires immediately (stepCount_=0 is even)
+
+    // At t=500: step 0's un-swung boundary, but nextStepMs_ was pushed to 625
+    // because stepCount_ was 0 (even? no — swing applies when (stepCount_ & 1)).
+    // stepCount_ is incremented AFTER the swing check inside beginStep().
+    // At step 0: stepCount_=0, (0 & 1)==0 → no swing → nextStepMs_=500.
+    // At step 1 (fires at t=500): stepCount_=1, (1 & 1)==1 → swing applied →
+    //   nextStepMs_ for step 2 = 500+500+125=1125.
+    // So the 2nd NoteOn (note 64) appears at t=500; the 3rd (note 67) at t=1125.
+    // But the task asks: does t=500 NOT have note 64 yet?
+    // Re-check: step 0 fires at t=0 (beginStep called from noteOn at t=0).
+    //   stepCount_ incremented to 1 after. nextStepMs_=0+500=500 (stepCount_was 0, even).
+    // t=500: tick fires beginStep (step 1).
+    //   stepCount_=1, (1&1)==1 → swing: nextStepMs_=500+500+125=1125.
+    //   NoteOn(64) fires at t=500.
+    // So at t=500 note 64 IS present. The swing affects step 2's boundary, not step 1's.
+    //
+    // For the test to check swing delays the odd-indexed step's OWN start,
+    // we need to check step 2 (stepCount_=2, even → no swing on its OWN boundary;
+    // that was set when step 1 ran with swing=125 → step2 fires at 1125 not 1000).
+    // Assert: at t=1000 note 67 has NOT fired; at t=1125 it has.
+
+    g_eng->tick(500);   // step 1 (note 64) fires here; stepCount_ was 1 → swing sets step2 at 1125
+
+    // Count NoteOns so far: 2 (notes 60 and 64)
+    {
+        int countOn = 0;
+        for (auto& e : g_out->events) { if (e.isOn) ++countOn; }
+        TEST_ASSERT_EQUAL_INT(2, countOn);
+    }
+
+    // t=1000: un-swung boundary for step 2, but swing pushed it to 1125
+    g_eng->tick(1000);
+    {
+        bool has67 = false;
+        for (auto& e : g_out->events) { if (e.isOn && e.note == 67) has67 = true; }
+        TEST_ASSERT_FALSE(has67);  // note 67 should not have fired yet
+    }
+
+    // t=1125: swing boundary — note 67 must now be present
+    g_eng->tick(1125);
+    {
+        bool has67 = false;
+        for (auto& e : g_out->events) { if (e.isOn && e.note == 67) has67 = true; }
+        TEST_ASSERT_TRUE(has67);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 int main() {
@@ -372,5 +536,9 @@ int main() {
     RUN_TEST(test_velocity_follow_input);
     RUN_TEST(test_velocity_accent);
     RUN_TEST(test_stop_kills_active_note);
+    RUN_TEST(test_updown_single_step_no_crash);
+    RUN_TEST(test_downup_single_step_no_crash);
+    RUN_TEST(test_direction_downup);
+    RUN_TEST(test_swing_delays_odd_steps);
     return UNITY_END();
 }

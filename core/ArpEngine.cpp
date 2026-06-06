@@ -1,6 +1,5 @@
 #include "core/ArpEngine.h"
 
-#include <algorithm>
 #include <cstdint>
 
 #include "core/ArpGenerator.h"
@@ -147,6 +146,7 @@ int ArpEngine::nextSeqIndex() {
             return (seqPos_ - 1 + seqLen_) % seqLen_;
 
         case ArpDirection::UpDown: {
+            if (seqLen_ <= 1) return 0;
             // At top: flip to descending (don't repeat top endpoint)
             if (seqPos_ == seqLen_ - 1 && udDir_ == +1) {
                 udDir_ = -1;
@@ -159,6 +159,7 @@ int ArpEngine::nextSeqIndex() {
         }
 
         case ArpDirection::DownUp: {
+            if (seqLen_ <= 1) return 0;
             // At bottom: flip to ascending
             if (seqPos_ == 0 && udDir_ == -1) {
                 udDir_ = +1;

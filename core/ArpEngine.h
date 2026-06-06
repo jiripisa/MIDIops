@@ -47,7 +47,7 @@ private:
     uint8_t  seq_[16] = {};
     int      seqLen_ = 0;
     int      seqPos_ = 0;          // index into seq_ for the current step
-    int      stepCount_ = 0;       // steps emitted since (re)start, for direction walk
+    int      stepCount_ = 0;       // emitted-step counter, for swing odd-step detection
     int8_t   udDir_ = +1;          // for UpDown/DownUp traversal
     uint32_t nextStepMs_ = 0;
     bool     noteSounding_ = false;
