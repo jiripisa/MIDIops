@@ -1,5 +1,6 @@
 #include <unity.h>
 
+#include "core/Scale.h"
 #include "core/app/AppShell.h"
 #include "core/modes/BpmMode.h"
 #include "core/modes/DebugMode.h"
@@ -204,6 +205,18 @@ static void test_bpm_clamps() {
     TEST_ASSERT_EQUAL_INT(30, shell.bpm());
 }
 
+static void test_shell_scale_defaults_cmajor_and_sets() {
+    core::AppShell shell;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Scale::Type::Major),
+                          static_cast<int>(shell.scale().type()));
+    TEST_ASSERT_EQUAL_INT(0, shell.scale().root());
+    shell.setScaleRoot(7);
+    shell.setScaleType(core::Scale::Type::Minor);
+    TEST_ASSERT_EQUAL_INT(7, shell.scale().root());
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Scale::Type::Minor),
+                          static_cast<int>(shell.scale().type()));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_fake_mode_screen_dispatch);
@@ -221,5 +234,6 @@ int main() {
     RUN_TEST(test_debug_mode_counts_raw_input);
     RUN_TEST(test_bpm_mode_enc1_adjusts_tempo);
     RUN_TEST(test_bpm_clamps);
+    RUN_TEST(test_shell_scale_defaults_cmajor_and_sets);
     return UNITY_END();
 }

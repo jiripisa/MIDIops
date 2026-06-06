@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "core/Scale.h"
 #include "core/app/AppServices.h"
 #include "core/app/Mode.h"
 
@@ -35,6 +36,9 @@ public:
     uint16_t bpm() const override { return bpm_; }
     void     setBpm(uint16_t bpm) override;
     Transport transport() const override { return transport_; }
+    const Scale& scale() const override { return scale_; }
+    void setScaleType(Scale::Type t) override { scale_.setType(t); }
+    void setScaleRoot(uint8_t pc) override { scale_.setRoot(pc); }
 
     // Inspectors for tests.
     int activeModeIndex() const { return activeMode_; }
@@ -56,6 +60,7 @@ private:
 
     MidiOutput*    out_ = nullptr;
     uint16_t       bpm_ = 120;
+    Scale          scale_{Scale::Type::Major, 0};
     // transportState_ is the authoritative playback state (used from the
     // transport task on); transport_ holds the last command issued.
     TransportState transportState_ = TransportState::Stopped;
