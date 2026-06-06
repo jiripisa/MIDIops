@@ -202,8 +202,10 @@ void ArpEngine::beginStep(uint32_t nowMs) {
     }
 
     // --- 6. Cycle-boundary: decide whether to loop, dequeue, or replace ---
-    // This executes immediately (same tick) when a cycle ends, so the next
-    // note can start without waiting for the next scheduled step boundary.
+    // At the boundary we only PREPARE the next sequence and return; the next
+    // scheduled tick (nextStepMs_ was already set above for the last old note)
+    // will call beginStep and emit the new sequence's step 0.  This ensures
+    // the previous cycle's last note keeps its full step duration with no overlap.
     if (cycleComplete) {
         if (!params_.latch) {
             // Hold off = one-shot: each note plays exactly one cycle, then advance.
@@ -214,11 +216,9 @@ void ArpEngine::beginStep(uint32_t nowMs) {
                 active_ = false;
                 return;
             }
-            // Promote new head immediately (same tick): re-init and fire step0.
-            // Tail-recursive same-tick promotion; depth ≤ 1 for steps>1,
-            // ≤ kQueueCap (16) when steps==1 — bounded and safe on the target's stack.
+            // Prepare new sequence; step 0 will fire at the next scheduled tick
+            // (nextStepMs_ was set when the last old note was emitted above).
             initSeqFromHead();
-            beginStep(nowMs);
             return;
         } else {
             // Latch mode
@@ -229,10 +229,9 @@ void ArpEngine::beginStep(uint32_t nowMs) {
                 qHead_  = 0;
                 queue_[0] = { latchPendingNote_, latchPendingVel_ };
                 qCount_   = 1;
+                // Prepare new sequence; step 0 will fire at the next scheduled tick
+                // (nextStepMs_ was set when the last old note was emitted above).
                 initSeqFromHead();
-                // Tail-recursive same-tick promotion; depth ≤ 1 for steps>1,
-                // ≤ kQueueCap (16) when steps==1 — bounded and safe on the target's stack.
-                beginStep(nowMs);
                 return;
             }
             // else: no pending → loop

@@ -808,6 +808,15 @@ static void test_release_finishes_cycle_then_idle() {
 //   67 becomes active → plays its triad.
 //   C major from 67 with steps=3: 67,71,74.
 //   Expected NoteOn prefix: 60,64,67,67,71,74.
+//
+//   Timeline (500ms/step):
+//     t=0:    noteOn(60) → 60 fires; noteOn(67) queued
+//     t=500:  64 fires (60's step1)
+//     t=1000: 67 fires (60's step2); cycle complete → qPop 60, initSeqFromHead(67), RETURN
+//             (67's step0 is NOT emitted yet — it fires at the next scheduled boundary)
+//     t=1500: 67 fires (67's step0 at the next scheduled boundary)
+//     t=2000: 71 fires (67's step1)
+//     t=2500: 74 fires (67's step2) → cycle complete → idle
 // ---------------------------------------------------------------------------
 static void test_fifo_two_staccato_notes() {
     g_eng->setParams(makeStdParams());
@@ -818,14 +827,11 @@ static void test_fifo_two_staccato_notes() {
     g_eng->noteOff(67, 0);      // staccato (no-op)
 
     // Drive 60's cycle: steps at t=500 and t=1000
-    g_eng->tick(500);   // step1=64
-    g_eng->tick(1000);  // step2=67 → 60's cycle complete → dequeue 60, promote 67
-
-    // Drive 67's cycle: at t=1000 the new active note's first loop step
-    // Wait — when 67 becomes active it fires its step0 immediately at t=1000 (same tick).
-    // Then step1 at t=1500, step2 at t=2000.
-    g_eng->tick(1500);  // 67's step1=71
-    g_eng->tick(2000);  // 67's step2=74 → cycle complete → one-shot → idle
+    g_eng->tick(500);   // 60's step1=64
+    g_eng->tick(1000);  // 60's step2=67; cycle complete → qPop 60, prepare 67 (no emit yet)
+    g_eng->tick(1500);  // 67's step0=67 fires at the next scheduled boundary
+    g_eng->tick(2000);  // 67's step1=71
+    g_eng->tick(2500);  // 67's step2=74 → cycle complete → one-shot → idle
 
     auto seq = noteOnSequence();
     // Expect exactly 6: 60,64,67,67,71,74
@@ -842,20 +848,18 @@ static void test_fifo_two_staccato_notes() {
 // Task-5 test: FIFO ordering with a queued note.
 //   noteOn(60) held; let it complete one cycle; noteOn(67) while 60 playing.
 //   Under one-shot model: 60 plays ONE cycle (60,64,67) then dequeues.
-//   67 becomes active immediately at t=1000 (same-tick promotion).
+//   67 becomes active at the NEXT step boundary after 60's cycle completes.
 //   67's C major triad (steps=3, Up): 67,71,74.
 //
 //   Timeline (500ms/step, steps=3):
 //     t=0:    noteOn(60)  → 60 fires
 //     t=500:  tick        → 64 fires
-//     t=1000: tick        → 67 fires  (60's cycle 1 complete → one-shot → dequeue → promote 67)
-//     t=1000: noteOn(67) queued just before or after – arrives in FIFO tail
-//             Actually: we queue 67 at t=1000, after 60's cycle completes (same tick).
-//             Let's queue 67 just before t=1000 tick to be in FIFO.
-//             If we call noteOn(67,1000) before tick(1000), it's in the FIFO when 60 dequeues.
-//     t=1000: 67 fires (step0 = 67's triad root)
-//     t=1500: 71
-//     t=2000: 74 → cycle complete → one-shot → idle
+//     t=500:  noteOn(67)  → queued in FIFO
+//     t=1000: tick        → 67 fires (60's step2); cycle complete → qPop 60,
+//                           initSeqFromHead(67), RETURN (67's step0 NOT yet emitted)
+//     t=1500: tick        → 67's step0=67 fires at the next scheduled boundary
+//     t=2000: tick        → 71 (67's step1)
+//     t=2500: tick        → 74 (67's step2) → cycle complete → one-shot → idle
 //
 //   Expected seq: 60,64,67,67,71,74
 // ---------------------------------------------------------------------------
@@ -867,9 +871,11 @@ static void test_held_then_queue_switch() {
     g_eng->noteOn(67, 100, 500);    // queue 67 in FIFO while 60 is still in cycle1
     g_eng->tick(1000);              // t=1000: 67 (step2 of 60's cycle1 = 67)
                                     //         cycle1 complete → one-shot → dequeue 60
-                                    //         67 in FIFO → promote 67, fires step0=67 same tick
-    g_eng->tick(1500);              // t=1500: 71 (67's step1)
-    g_eng->tick(2000);              // t=2000: 74 (67's step2) → cycle complete → idle
+                                    //         67 in FIFO → initSeqFromHead(67), RETURN
+                                    //         (67's step0 fires at the next boundary)
+    g_eng->tick(1500);              // t=1500: 67's step0=67 fires
+    g_eng->tick(2000);              // t=2000: 71 (67's step1)
+    g_eng->tick(2500);              // t=2500: 74 (67's step2) → cycle complete → idle
 
     auto seq = noteOnSequence();
     // Expected: 60,64,67, 67,71,74
@@ -877,7 +883,7 @@ static void test_held_then_queue_switch() {
     TEST_ASSERT_EQUAL_INT(60, seq[0]);
     TEST_ASSERT_EQUAL_INT(64, seq[1]);
     TEST_ASSERT_EQUAL_INT(67, seq[2]);  // 60's cycle step2
-    TEST_ASSERT_EQUAL_INT(67, seq[3]);  // 67's step0 (same-tick promotion)
+    TEST_ASSERT_EQUAL_INT(67, seq[3]);  // 67's step0 (fires one step after 60's last note)
     TEST_ASSERT_EQUAL_INT(71, seq[4]);
     TEST_ASSERT_EQUAL_INT(74, seq[5]);
     TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(), "idle after 67's cycle completes");
@@ -887,20 +893,22 @@ static void test_held_then_queue_switch() {
 // Task-5 test: latch replaces at cycle boundary
 //   latch=true. noteOn(60); noteOff(60) → latch ignores it, 60 keeps looping.
 //   noteOn(67) → queued as pending replacement.
-//   At next cycle boundary after noteOn(67), 67 becomes active; 60 stops.
-//   Assert: 67's triad appears at a cycle boundary, and 60 does not play after.
+//   At next cycle boundary after noteOn(67), 67 is installed and its step0
+//   fires at the NEXT scheduled tick (not the same tick as the boundary).
+//   Assert: 67's triad appears one step after the boundary, and 60 does not play after.
 //
 //   Timeline (500ms/step, steps=3):
 //     t=0:    noteOn(60) → 60 fires (latch mode)
 //     t=500:  tick       → 64
-//     t=1000: tick       → 67 (60's cycle1 complete, latch→keep looping 60)
+//     t=1000: tick       → 67 (60's cycle1 complete, latch → keep looping 60)
 //     t=1000: noteOff(60) → latch ignores
 //     t=1000: noteOn(67) → pending replacement
 //     t=1500: tick       → 60 fires (cycle2, step0)
 //     t=2000: tick       → 64
-//     t=2500: tick       → 67 (cycle2 complete → replace → 67 becomes active, fires step0=67)
-//     t=3000: tick       → 71
-//     t=3500: tick       → 74
+//     t=2500: tick       → 67 (cycle2 step2, boundary → install 67, RETURN, no emit yet)
+//     t=3000: tick       → 67's step0=67 fires at the next scheduled boundary
+//     t=3500: tick       → 71 (67's step1)
+//     t=4000: tick       → 74 (67's step2)
 // ---------------------------------------------------------------------------
 static void test_latch_replaces_at_boundary() {
     core::ArpParams p = makeStdParams();
@@ -914,13 +922,14 @@ static void test_latch_replaces_at_boundary() {
     g_eng->noteOn(67, 100, 1000);  // pending replacement
     g_eng->tick(1500);             // 60 cycle2 step0
     g_eng->tick(2000);             // 60 cycle2 step1
-    g_eng->tick(2500);             // 60 cycle2 step2 → boundary → replace with 67
-    g_eng->tick(3000);             // 67 step1
-    g_eng->tick(3500);             // 67 step2
+    g_eng->tick(2500);             // 60 cycle2 step2 → boundary → install 67, RETURN (no emit yet)
+    g_eng->tick(3000);             // 67's step0=67 fires at the next scheduled boundary
+    g_eng->tick(3500);             // 67's step1=71
+    g_eng->tick(4000);             // 67's step2=74
 
     auto seq = noteOnSequence();
     // 60 plays: cycle1 (60,64,67) + cycle2 (60,64,67) = 6 times
-    // then 67 plays: 67,71,74
+    // then 67 plays: 67,71,74  (starting one step after the boundary)
     TEST_ASSERT_TRUE_MESSAGE((int)seq.size() >= 9, "expected >=9 NoteOns");
 
     // After position 5 (0-indexed), 60 must not appear
@@ -1059,10 +1068,10 @@ static void test_steps1_many_staccato_no_stuck_note() {
 //   t=200:  noteOn(63)  → latch pending = 63 (quantizes to 64, triad 64,67,71)
 //   t=200:  noteOn(69)  → overwrites pending: latch pending = 69 (latest wins)
 //   t=500:  step1=64 of 60's triad fires
-//   t=1000: step2=67 of 60's triad fires; cycle boundary → replace with 69
-//           69 fires step0 immediately (same tick)
-//   t=1500: 69's step1 = 72
-//   t=2000: 69's step2 = 76
+//   t=1000: step2=67 of 60's triad fires; cycle boundary → install 69, RETURN (no emit yet)
+//   t=1500: 69's step0=69 fires at the next scheduled boundary
+//   t=2000: 69's step1=72
+//   t=2500: 69's step2=76
 //
 // Assert: after the boundary 69's triad (69,72,76) plays; 64 (which would be
 // the first note of 63's triad) must not appear AFTER the cycle boundary.
@@ -1080,18 +1089,18 @@ static void test_latch_latest_wins() {
     p.latch         = true;
     g_eng->setParams(p);
 
-    // Remember how many NoteOns have been emitted at the cycle boundary so
-    // we can distinguish pre- and post-boundary notes.
     g_eng->noteOn(60, 100, 0);    // starts; 60 fires immediately
     g_eng->tick(500);             // step1=64 of 60's triad
     // Before cycle boundary: store two pending replacements; last one wins.
     g_eng->noteOn(63, 100, 500);  // first pending (would quantize to 64)
     g_eng->noteOn(69, 100, 500);  // overwrites pending — 69 is the winner
-    g_eng->tick(1000);            // step2=67; cycle boundary → replace with 69
-    // t=1000: 69's step0 fires immediately (same tick as boundary).
-    int boundaryIdx = (int)g_out->events.size();  // index right after boundary tick
-    g_eng->tick(1500);            // 69's step1=72
-    g_eng->tick(2000);            // 69's step2=76
+    g_eng->tick(1000);            // step2=67; cycle boundary → install 69, RETURN (no emit yet)
+    // t=1000: boundary tick done; 69's step0 is NOT emitted yet.
+    // Capture the event list size here — everything after this must be 69's sequence.
+    int boundaryIdx = (int)g_out->events.size();
+    g_eng->tick(1500);            // 69's step0=69 fires at the next scheduled boundary
+    g_eng->tick(2000);            // 69's step1=72
+    g_eng->tick(2500);            // 69's step2=76
 
     auto seq = noteOnSequence();
 
@@ -1258,6 +1267,127 @@ static void test_mute_suppresses_noteon_keeps_off_and_echo() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: promotion starts at the NEXT step boundary, not the same tick.
+//
+// bpm=120, Quarter=500ms/step, steps=3, latch=false (one-shot FIFO).
+// Sequence A (root=60, C major Up): 60, 64, 67
+// Sequence B (root=67, C major Up): 67, 71, 74 — queued while A is active.
+//
+// Timeline:
+//   t=0:    noteOn(60)  → A fires step0=60
+//   t=0:    noteOn(67)  → appended to FIFO (B queued)
+//   t=500:  tick        → A step1=64
+//   t=1000: tick        → A step2=67; cycle complete → one-shot → qPop 60,
+//                          initSeqFromHead (B), RETURN — do NOT emit yet.
+//           Only 3 NoteOns at this point: A's 60, 64, 67.
+//   t=1500: tick fires at nextStepMs_ (set during A's step2) → B step0=67 emits.
+//           Total NoteOns = 4 now.
+// ---------------------------------------------------------------------------
+static void test_promotion_starts_next_boundary_not_same_tick() {
+    core::ArpEngine eng;
+    FakeMidiOutput out;
+    core::Scale sc(core::Scale::Type::Major, 0);  // C major
+    core::ArpParams p;
+    p.steps         = 3;
+    p.rate          = core::ArpRate::Quarter;   // 500 ms/step at 120 BPM
+    p.gatePercent   = 80;
+    p.direction     = core::ArpDirection::Up;
+    p.velocityMode  = core::ArpVelocityMode::Fixed;
+    p.fixedVelocity = 100;
+    p.swingPercent  = 50;
+    p.latch         = false;
+    eng.setOutput(&out);
+    eng.setScale(&sc);
+    eng.setBpm(120);
+    eng.setParams(p);
+
+    eng.noteOn(60, 100, 0);   // sequence A = 60,64,67
+    eng.noteOn(67, 100, 0);   // sequence B queued (one-shot FIFO)
+
+    eng.tick(500);   // A step1 = 64
+    eng.tick(1000);  // A step2 = 67; cycle complete; B must NOT emit yet
+
+    auto countNoteOns = [&]() {
+        int n = 0;
+        for (auto& e : out.events) { if (e.isOn) ++n; }
+        return n;
+    };
+
+    // At t=1000: only A's three notes (60, 64, 67) have sounded — no B yet.
+    TEST_ASSERT_EQUAL_INT_MESSAGE(3, countNoteOns(),
+        "at t=1000 (A's cycle boundary): only A's 3 NoteOns must exist, B must not emit yet");
+
+    eng.tick(1500);  // now B's step0 (67) plays at the next scheduled boundary
+
+    // At t=1500: B's first note added — total = 4 NoteOns.
+    TEST_ASSERT_EQUAL_INT_MESSAGE(4, countNoteOns(),
+        "at t=1500: B's first note must play exactly one step after A's last note");
+}
+
+// ---------------------------------------------------------------------------
+// Test: latch pending replacement starts at the NEXT step boundary.
+//
+// bpm=120, Quarter=500ms/step, steps=3, latch=true.
+// A (root=60): loops. After cycle1 boundary (t=1000), noteOn(67) sets pending.
+// Cycle2 runs (60,64,67 at t=1000,1500,2000). At t=2500 (cycle2 boundary):
+//   → install 67 as new sequence, initSeqFromHead, RETURN — do NOT emit yet.
+// At t=3000: 67's step0 fires.
+// ---------------------------------------------------------------------------
+static void test_latch_replacement_starts_next_boundary_not_same_tick() {
+    core::ArpEngine eng;
+    FakeMidiOutput out;
+    core::Scale sc(core::Scale::Type::Major, 0);
+    core::ArpParams p;
+    p.steps         = 3;
+    p.rate          = core::ArpRate::Quarter;
+    p.gatePercent   = 80;
+    p.direction     = core::ArpDirection::Up;
+    p.velocityMode  = core::ArpVelocityMode::Fixed;
+    p.fixedVelocity = 100;
+    p.swingPercent  = 50;
+    p.latch         = true;
+    eng.setOutput(&out);
+    eng.setScale(&sc);
+    eng.setBpm(120);
+    eng.setParams(p);
+
+    eng.noteOn(60, 100, 0);   // A starts; 60 fires
+    eng.tick(500);             // A step1=64
+    eng.tick(1000);            // A step2=67; cycle1 boundary → latch loops
+
+    eng.noteOn(67, 100, 1000); // pending replacement = 67
+
+    eng.tick(1500);            // A cycle2 step0=60
+    eng.tick(2000);            // A cycle2 step1=64
+    eng.tick(2500);            // A cycle2 step2=67; boundary → install 67, RETURN (no emit)
+
+    auto countNoteOns = [&]() {
+        int n = 0;
+        for (auto& e : out.events) { if (e.isOn) ++n; }
+        return n;
+    };
+
+    // At t=2500: A has played 6 notes (cycle1 + cycle2), 67 not yet emitted for B.
+    int nAt2500 = countNoteOns();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(6, nAt2500,
+        "at t=2500 (latch replace boundary): only A's 6 NoteOns, B must not emit yet");
+
+    eng.tick(3000);  // B step0=67 fires at next boundary
+
+    int nAt3000 = countNoteOns();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(7, nAt3000,
+        "at t=3000: B's first note (67) fires exactly one step after A's last note");
+
+    // Collect the note sequence
+    std::vector<uint8_t> noteOns;
+    for (auto& e : out.events) { if (e.isOn) noteOns.push_back(e.note); }
+
+    // The 7th NoteOn (index 6) must be 67 (B's root)
+    TEST_ASSERT_EQUAL_INT_MESSAGE(67, noteOns[6],
+        "B's first note must be 67 (root of C major from 67)");
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 int main() {
@@ -1292,5 +1422,8 @@ int main() {
     RUN_TEST(test_latch_latest_wins);
     RUN_TEST(test_queue_full_no_crash);
     RUN_TEST(test_mute_suppresses_noteon_keeps_off_and_echo);
+    // Timing bug fix: promotion/replacement must start at the next step boundary
+    RUN_TEST(test_promotion_starts_next_boundary_not_same_tick);
+    RUN_TEST(test_latch_replacement_starts_next_boundary_not_same_tick);
     return UNITY_END();
 }
