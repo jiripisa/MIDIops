@@ -794,6 +794,211 @@ static void test_stop_clears_queue() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: steps=1, three staccato notes pressed+released before any tick.
+//
+// With seqLen_==1 every step is a cycle boundary.  The cycle boundary check
+// runs at the END of beginStep (after the NoteOn is already emitted).  At t=0
+// the first note (60) is still held when the check runs, so it loops.  After
+// noteOff(60), at t=500 the second cycle of 60 fires its step (NoteOn(60)
+// again), THEN the cycle-boundary check sees !held and dequeues 60.  The
+// same-tick promotion chain then fires 62 and 64 in the same tick.
+//
+// Actual NoteOn sequence (documented real behaviour):
+//   t=0:   NoteOn(60)  — 60's first cycle; still held at boundary → loops
+//   t=500: NoteOn(60)  — 60's second cycle; !held at boundary → dequeue
+//          NoteOn(62)  — same-tick promotion (62 !held → dequeue immediately)
+//          NoteOn(64)  — same-tick promotion (64 !held → dequeue → idle)
+// Total NoteOns = 4.
+//
+// The key invariant: NoteOn count == NoteOff count at the end (no stuck note).
+// This exercises the steps==1 same-tick promotion chain (depth up to kQueueCap).
+// ---------------------------------------------------------------------------
+static void test_steps1_many_staccato_no_stuck_note() {
+    core::ArpParams p;
+    p.steps         = 1;
+    p.rate          = core::ArpRate::Quarter;  // 500 ms/step at 120 BPM
+    p.gatePercent   = 80;
+    p.direction     = core::ArpDirection::Up;
+    p.velocityMode  = core::ArpVelocityMode::Fixed;
+    p.fixedVelocity = 100;
+    p.swingPercent  = 50;
+    p.latch         = false;
+    g_eng->setParams(p);
+
+    // Press + release three notes staccato before any tick.
+    g_eng->noteOn (60, 100, 0);  // starts immediately; 60 is still held at the cycle
+                                  // boundary check → loops into the next cycle
+    g_eng->noteOff(60, 0);       // 60 now !held; next boundary will dequeue it
+    g_eng->noteOn (62, 100, 0);  // appended to queue (held=true)
+    g_eng->noteOff(62, 0);       // 62 now !held
+    g_eng->noteOn (64, 100, 0);  // appended to queue (held=true)
+    g_eng->noteOff(64, 0);       // 64 now !held
+
+    // At this point exactly one NoteOn has been emitted (60 at t=0).
+    {
+        int ons = 0;
+        for (auto& e : g_out->events) { if (e.isOn) ++ons; }
+        TEST_ASSERT_EQUAL_INT_MESSAGE(1, ons, "only note 60 should have fired at t=0");
+    }
+
+    // t=500: 60's second cycle fires, then same-tick promotion chain: 62, 64.
+    g_eng->tick(500);
+    {
+        std::vector<uint8_t> noteOns;
+        for (auto& e : g_out->events) {
+            if (e.isOn) noteOns.push_back(e.note);
+        }
+        // 4 NoteOns: 60(t=0), 60(t=500 second cycle), 62(t=500 promoted), 64(t=500 promoted).
+        TEST_ASSERT_EQUAL_INT_MESSAGE(4, (int)noteOns.size(),
+            "expected 4 NoteOns: 60 twice (loop + dequeue cycle), then 62 and 64 via same-tick promotion");
+        TEST_ASSERT_EQUAL_INT(60, noteOns[0]);
+        TEST_ASSERT_EQUAL_INT(60, noteOns[1]);  // 60's second cycle before dequeue
+        TEST_ASSERT_EQUAL_INT(62, noteOns[2]);  // same-tick promoted
+        TEST_ASSERT_EQUAL_INT(64, noteOns[3]);  // same-tick promoted
+    }
+
+    // Engine must be idle after the promotion chain exhausted the queue.
+    TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(),
+        "engine must be idle after all staccato notes complete");
+
+    // Drive ticks to flush any deferred gate NoteOff (gate = 80% of 500 ms = 400 ms).
+    g_eng->tick(900);
+    g_eng->tick(1000);
+
+    // NoteOn and NoteOff counts must be balanced (no stuck note).
+    int ons = 0, offs = 0;
+    for (auto& e : g_out->events) {
+        if (e.isOn) ++ons; else ++offs;
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ons, offs,
+        "NoteOn count must equal NoteOff count (no stuck note)");
+}
+
+// ---------------------------------------------------------------------------
+// Test: latch mode — when multiple noteOns arrive while active, the LAST one
+// wins at the next cycle boundary (not the first one stored).
+//
+// We choose root notes so that 64's triad does NOT overlap with 60's or 67's
+// triad.  Root 63 (Eb → quantizes to 64 in C major) would cause confusion, so
+// we use 63 as the "loser" candidate (latch stores it then overwrites it) and
+// 69 (A → quantizes to 69 in C major) as the "winner".
+//
+//   60's C major triad (steps=3, Up):  60, 64, 67
+//   69's C major triad (steps=3, Up):  69, 72, 76
+//
+// Timeline (steps=3, Quarter=500ms/step):
+//   t=0:    noteOn(60)  → active, 60 fires
+//   t=200:  noteOn(63)  → latch pending = 63 (quantizes to 64, triad 64,67,71)
+//   t=200:  noteOn(69)  → overwrites pending: latch pending = 69 (latest wins)
+//   t=500:  step1=64 of 60's triad fires
+//   t=1000: step2=67 of 60's triad fires; cycle boundary → replace with 69
+//           69 fires step0 immediately (same tick)
+//   t=1500: 69's step1 = 72
+//   t=2000: 69's step2 = 76
+//
+// Assert: after the boundary 69's triad (69,72,76) plays; 64 (which would be
+// the first note of 63's triad) must not appear AFTER the cycle boundary.
+// (64 legally appears BEFORE the boundary as a step in 60's C major triad.)
+// ---------------------------------------------------------------------------
+static void test_latch_latest_wins() {
+    core::ArpParams p;
+    p.steps         = 3;
+    p.rate          = core::ArpRate::Quarter;  // 500 ms/step at 120 BPM
+    p.gatePercent   = 80;
+    p.direction     = core::ArpDirection::Up;
+    p.velocityMode  = core::ArpVelocityMode::Fixed;
+    p.fixedVelocity = 100;
+    p.swingPercent  = 50;
+    p.latch         = true;
+    g_eng->setParams(p);
+
+    // Remember how many NoteOns have been emitted at the cycle boundary so
+    // we can distinguish pre- and post-boundary notes.
+    g_eng->noteOn(60, 100, 0);    // starts; 60 fires immediately
+    g_eng->tick(500);             // step1=64 of 60's triad
+    // Before cycle boundary: store two pending replacements; last one wins.
+    g_eng->noteOn(63, 100, 500);  // first pending (would quantize to 64)
+    g_eng->noteOn(69, 100, 500);  // overwrites pending — 69 is the winner
+    g_eng->tick(1000);            // step2=67; cycle boundary → replace with 69
+    // t=1000: 69's step0 fires immediately (same tick as boundary).
+    int boundaryIdx = (int)g_out->events.size();  // index right after boundary tick
+    g_eng->tick(1500);            // 69's step1=72
+    g_eng->tick(2000);            // 69's step2=76
+
+    auto seq = noteOnSequence();
+
+    // 69's triad (69, 72, 76) must be present overall.
+    bool has69 = false, has72 = false, has76 = false;
+    for (auto n : seq) {
+        if (n == 69) has69 = true;
+        if (n == 72) has72 = true;
+        if (n == 76) has76 = true;
+    }
+    TEST_ASSERT_TRUE_MESSAGE(has69, "69 must appear after latch replacement");
+    TEST_ASSERT_TRUE_MESSAGE(has72, "72 must appear in 69's triad");
+    TEST_ASSERT_TRUE_MESSAGE(has76, "76 must appear in 69's triad");
+
+    // After the boundary, the active arpeggio is 69's triad.
+    // The first note of 63's triad (if 63 had won) would be 64; confirm 64
+    // does NOT appear after the cycle boundary (it appeared before, as part of
+    // 60's triad, which is correct and expected).
+    for (int i = boundaryIdx; i < (int)g_out->events.size(); ++i) {
+        if (g_out->events[i].isOn) {
+            TEST_ASSERT_NOT_EQUAL_MESSAGE(64, g_out->events[i].note,
+                "64 must not appear after cycle boundary — 69 overwrote the 63 pending slot");
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Test: push more notes than kQueueCap (16) — no crash, no stuck note.
+//
+// Notes beyond capacity are silently dropped by qPush.  We push 20 staccato
+// notes (noteOn + immediate noteOff each), drive many ticks, and assert:
+//   1. No crash.
+//   2. NoteOn count == NoteOff count at the end (no stuck note).
+// We do not assert which notes get dropped — that is an implementation detail.
+// ---------------------------------------------------------------------------
+static void test_queue_full_no_crash() {
+    core::ArpParams p;
+    p.steps         = 3;
+    p.rate          = core::ArpRate::Quarter;  // 500 ms/step at 120 BPM
+    p.gatePercent   = 80;
+    p.direction     = core::ArpDirection::Up;
+    p.velocityMode  = core::ArpVelocityMode::Fixed;
+    p.fixedVelocity = 100;
+    p.swingPercent  = 50;
+    p.latch         = false;
+    g_eng->setParams(p);
+
+    // Push 20 staccato notes (kQueueCap=16; the extra 4 are silently dropped).
+    // Use MIDI notes 48..67 — all diatonic or chromatically quantizable in C major.
+    for (int i = 0; i < 20; ++i) {
+        uint8_t n = static_cast<uint8_t>(48 + i);
+        g_eng->noteOn (n, 100, 0);
+        g_eng->noteOff(n, 0);
+    }
+
+    // Drive enough ticks for all 16 accepted notes to play through their 3-step cycles.
+    // Worst case: 16 notes × 3 steps × 500 ms = 24 000 ms.
+    for (int t = 500; t <= 25000; t += 500) {
+        g_eng->tick(static_cast<uint32_t>(t));
+    }
+
+    // Engine must be idle (all cycles complete).
+    TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(),
+        "engine must be idle after all queued notes are exhausted");
+
+    // NoteOn and NoteOff counts must be equal (no stuck note).
+    int ons = 0, offs = 0;
+    for (auto& e : g_out->events) {
+        if (e.isOn) ++ons; else ++offs;
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ons, offs,
+        "NoteOn count must equal NoteOff count (no stuck note after overflow)");
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 int main() {
@@ -818,5 +1023,9 @@ int main() {
     RUN_TEST(test_held_then_queue_switch);
     RUN_TEST(test_latch_replaces_at_boundary);
     RUN_TEST(test_stop_clears_queue);
+    // Queue edge cases + recursion-depth coverage
+    RUN_TEST(test_steps1_many_staccato_no_stuck_note);
+    RUN_TEST(test_latch_latest_wins);
+    RUN_TEST(test_queue_full_no_crash);
     return UNITY_END();
 }

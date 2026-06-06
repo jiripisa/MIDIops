@@ -156,7 +156,7 @@ void ArpEngine::initSeqFromHead() {
     uint8_t note = queue_[qHead_].note;
     rootVel_  = queue_[qHead_].velocity;
     seqLen_   = ArpGenerator::build(note, *scale_, params_, seq_, 16);
-    if (seqLen_ <= 0) { seqLen_ = 0; return; }
+    if (seqLen_ <= 0) { seqLen_ = 0; return; }  // caller's beginStep guard sets active_=false
 
     stepCount_        = 0;
     activeCycleSteps_ = 0;
@@ -234,8 +234,10 @@ void ArpEngine::beginStep(uint32_t nowMs) {
                     return;
                 }
                 // Promote new head immediately (same tick): re-init and fire step0.
+                // Tail-recursive same-tick promotion; depth ≤ 1 for steps>1,
+                // ≤ kQueueCap (16) when steps==1 — bounded and safe on the target's stack.
                 initSeqFromHead();
-                beginStep(nowMs);  // tail-recursive depth = 1
+                beginStep(nowMs);
                 return;
             }
             // else: still held → loop (seqPos_ already wraps via nextSeqIndex)
@@ -249,7 +251,9 @@ void ArpEngine::beginStep(uint32_t nowMs) {
                 queue_[0] = { latchPendingNote_, latchPendingVel_, true };
                 qCount_   = 1;
                 initSeqFromHead();
-                beginStep(nowMs);  // tail-recursive depth = 1
+                // Tail-recursive same-tick promotion; depth ≤ 1 for steps>1,
+                // ≤ kQueueCap (16) when steps==1 — bounded and safe on the target's stack.
+                beginStep(nowMs);
                 return;
             }
             // else: no pending → loop

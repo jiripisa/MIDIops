@@ -85,7 +85,9 @@ private:
     //   2. Emit the current step NoteOn, schedule gate NoteOff + next step time.
     //   3. Advance seqPos_, increment activeCycleSteps_.
     //   4. If cycle complete: immediately dequeue / replace / loop (calls itself
-    //      once recursively for the new head note — depth ≤ 1).
+    //      recursively for the new head note — tail-recursive same-tick promotion;
+    //      depth ≤ 1 for steps>1, ≤ kQueueCap (16) when steps==1 — bounded and
+    //      safe on the target's stack).
     void     beginStep(uint32_t nowMs);
 
     int      nextSeqIndex();              // advance seqPos_ per direction
