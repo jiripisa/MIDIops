@@ -144,10 +144,12 @@ void AppShell::tick(uint32_t nowMs) {
 void AppShell::drawTopBar(Display& d) const {
     d.fillRect(0, 0, d.width(), 10, color::DarkGray);
     if (modeCount_ == 0) return;
-    char line[48];
+    char line[56];
     const char* mode   = modes_[activeMode_]->name();
     const char* screen = modes_[activeMode_]->screen(screenIndex_).name();
-    std::snprintf(line, sizeof(line), "%s  -  %s", mode, screen);
+    const int   count  = modes_[activeMode_]->screenCount();
+    std::snprintf(line, sizeof(line), "%s  -  %s (%d/%d)",
+                  mode, screen, screenIndex_ + 1, count);
     d.drawText(2, 2, line, color::White, color::DarkGray, 1);
 }
 
