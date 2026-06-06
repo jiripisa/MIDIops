@@ -53,6 +53,30 @@ static E cycleEnum(E current, int delta) {
     return static_cast<E>(v);
 }
 
+// 2x2 parameter grid geometry (below the shell's 10px top bar).
+namespace {
+constexpr int kGridTop = 12;
+constexpr int kCellW   = 160;
+constexpr int kCellH   = (240 - kGridTop) / 2;   // 114
+}
+
+// Draws one grid cell: parameter name in small text, value in large text
+// below it. col/row are 0..1 (col 0 = left, row 0 = top).
+static void drawParamCell(Display& d, int col, int row,
+                          const char* name, const char* value) {
+    const int x = col * kCellW;
+    const int y = kGridTop + row * kCellH;
+    constexpr int pad = 8;
+    d.drawText(x + pad, y + pad,      name,  core::color::Gray,  core::color::Black, 1);
+    d.drawText(x + pad, y + pad + 18, value, core::color::White, core::color::Black, 3);
+}
+
+// Thin dividers separating the four cells.
+static void drawParamGridDividers(Display& d) {
+    d.fillRect(kCellW, kGridTop, 1, 240 - kGridTop, core::color::DarkGray);   // vertical
+    d.fillRect(0, kGridTop + kCellH, 320, 1, core::color::DarkGray);          // horizontal
+}
+
 // ---------------------------------------------------------------------------
 // ArpMode
 // ---------------------------------------------------------------------------
@@ -147,23 +171,15 @@ void ArpMode::ParamScreenA::onEncoder(int index, int delta) {
 
 void ArpMode::ParamScreenA::render(Display& d) const {
     const ArpParams& p = mode_.params_;
-    d.clear(core::color::Black);
+    char steps[8], gate[8];
+    snprintf(steps, sizeof(steps), "%d",   static_cast<int>(p.steps));
+    snprintf(gate,  sizeof(gate),  "%d%%", static_cast<int>(p.gatePercent));
 
-    char buf[32];
-    const int x = 10;
-    const int lineH = 24;
-
-    snprintf(buf, sizeof(buf), "Steps: %d", static_cast<int>(p.steps));
-    d.drawText(x, lineH * 0, buf, core::color::White, core::color::Black, 2);
-
-    snprintf(buf, sizeof(buf), "Rate: %s", rateName(p.rate));
-    d.drawText(x, lineH * 1, buf, core::color::White, core::color::Black, 2);
-
-    snprintf(buf, sizeof(buf), "Gate: %d%%", static_cast<int>(p.gatePercent));
-    d.drawText(x, lineH * 2, buf, core::color::White, core::color::Black, 2);
-
-    snprintf(buf, sizeof(buf), "Dir: %s", dirName(p.direction));
-    d.drawText(x, lineH * 3, buf, core::color::White, core::color::Black, 2);
+    drawParamGridDividers(d);
+    drawParamCell(d, 0, 0, "STEPS", steps);              // Enc1
+    drawParamCell(d, 1, 0, "RATE",  rateName(p.rate));   // Enc2
+    drawParamCell(d, 0, 1, "GATE",  gate);               // Enc3
+    drawParamCell(d, 1, 1, "DIR",   dirName(p.direction)); // Enc4
 }
 
 // ---------------------------------------------------------------------------
@@ -200,23 +216,15 @@ void ArpMode::ParamScreenB::onEncoder(int index, int delta) {
 
 void ArpMode::ParamScreenB::render(Display& d) const {
     const ArpParams& p = mode_.params_;
-    d.clear(core::color::Black);
+    char oct[8], swing[8];
+    snprintf(oct,   sizeof(oct),   "%+d", static_cast<int>(p.octave));
+    snprintf(swing, sizeof(swing), "%d",  static_cast<int>(p.swingPercent));
 
-    char buf[32];
-    const int x = 10;
-    const int lineH = 24;
-
-    snprintf(buf, sizeof(buf), "Oct: %+d", static_cast<int>(p.octave));
-    d.drawText(x, lineH * 0, buf, core::color::White, core::color::Black, 2);
-
-    snprintf(buf, sizeof(buf), "Swing: %d", static_cast<int>(p.swingPercent));
-    d.drawText(x, lineH * 1, buf, core::color::White, core::color::Black, 2);
-
-    snprintf(buf, sizeof(buf), "Vel: %s", velModeName(p.velocityMode));
-    d.drawText(x, lineH * 2, buf, core::color::White, core::color::Black, 2);
-
-    snprintf(buf, sizeof(buf), "Latch: %s", p.latch ? "On" : "Off");
-    d.drawText(x, lineH * 3, buf, core::color::White, core::color::Black, 2);
+    drawParamGridDividers(d);
+    drawParamCell(d, 0, 0, "OCT",   oct);                       // Enc1
+    drawParamCell(d, 1, 0, "SWING", swing);                     // Enc2
+    drawParamCell(d, 0, 1, "VEL",   velModeName(p.velocityMode)); // Enc3
+    drawParamCell(d, 1, 1, "LATCH", p.latch ? "On" : "Off");    // Enc4
 }
 
 // ---------------------------------------------------------------------------
