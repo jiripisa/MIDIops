@@ -48,6 +48,7 @@ public:
     virtual void onMidiIn(const MidiMessage& msg) { (void)msg; }
     virtual void onTransport(Transport t) { (void)t; }
     virtual void onRawInput(const RawInput& in) { (void)in; }
+    virtual bool capturesTransport() const { return false; }
     virtual void update(uint32_t nowMs) { (void)nowMs; }
 };
 

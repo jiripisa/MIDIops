@@ -19,6 +19,7 @@
 
 #include "core/MidiMessage.h"
 #include "core/app/AppShell.h"
+#include "core/modes/ArpMode.h"
 #include "core/modes/BpmMode.h"
 #include "core/modes/DebugMode.h"
 #include "core/modes/MonitoringMode.h"
@@ -102,15 +103,18 @@ int main(int /*argc*/, char* /*argv*/[]) {
     SdlDisplay   display(kLogicalW, kLogicalH, kScale, "MIDIops simulator");
     RtMidiInput  midiIn("MIDIops");
     RtMidiOutput midiOut("MIDIops Clock");
-    core::AppShell      app;
+    core::AppShell       app;
     core::MonitoringMode monitoringMode;
     core::DebugMode      debugMode;
     core::BpmMode        bpmMode(app);
+    core::ArpMode        arpMode(app);
 
     midiIn.begin();
     midiOut.begin();
     app.setMidiOutput(&midiOut);
+    arpMode.setMidiOutput(&midiOut);
     app.addMode(&monitoringMode);
+    app.addMode(&arpMode);
     app.addMode(&bpmMode);
     app.addMode(&debugMode);
     app.setBpm(120);
@@ -118,6 +122,8 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
     std::fprintf(stderr,
                  "MIDIops simulator running.\n"
+                 "  Modes: 1=Monitoring  2=Arp (arpeggiates held/injected notes)\n"
+                 "         3=BPM         4=Debug\n"
                  "  Boots into Monitoring (worms) view — MIDI in drives the worms.\n"
                  "  z x c v b n m   inject Note On/Off (white keys C4..B4)\n"
                  "  Shift + 1..9    set the test injection channel (default 1)\n"
@@ -237,12 +243,19 @@ int main(int /*argc*/, char* /*argv*/[]) {
             app.onMidiIn(msg);
         }
 
-        // Re-render every frame so worms scroll smoothly even when no new
-        // MIDI is arriving.
+        // Tick the engine every loop iteration (~1 ms granularity) so that
+        // arp step timing is accurate and not limited to 16 ms.
         app.tick(SDL_GetTicks());
-        app.render(display);
 
-        SDL_Delay(16);  // ~60 Hz pacing
+        // Throttle rendering to ~60 Hz (16 ms) to keep CPU usage reasonable.
+        static Uint32 lastRender = 0;
+        Uint32 now = SDL_GetTicks();
+        if (now - lastRender >= 16) {
+            app.render(display);
+            lastRender = now;
+        }
+
+        SDL_Delay(1);  // ~1 ms granularity for engine timing
     }
 
     SDL_Quit();

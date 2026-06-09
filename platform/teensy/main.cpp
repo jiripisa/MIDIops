@@ -15,6 +15,7 @@
 #undef round
 
 #include "core/app/AppShell.h"
+#include "core/modes/ArpMode.h"
 #include "core/modes/BpmMode.h"
 #include "core/modes/DebugMode.h"
 #include "core/modes/MonitoringMode.h"
@@ -116,10 +117,11 @@ static TeensyEncoder   enc5Knob(kPinEnc5Dt, kPinEnc5Clk);
 // pin HIGH when latched closed). Matches the latch1Button default.
 static TeensyButton    latch2Button(kPinLatch2);
 static TeensyButton    latch3Button(kPinLatch3);
-static core::AppShell      app;
+static core::AppShell       app;
 static core::MonitoringMode monitoringMode;
 static core::DebugMode      debugMode;
 static core::BpmMode        bpmMode(app);
+static core::ArpMode        arpMode(app);
 
 void setup() {
     display.begin();
@@ -133,7 +135,9 @@ void setup() {
     latch2Button.begin();
     latch3Button.begin();
     app.setMidiOutput(&midiOut);
+    arpMode.setMidiOutput(&midiOut);
     app.addMode(&monitoringMode);
+    app.addMode(&arpMode);
     app.addMode(&bpmMode);
     app.addMode(&debugMode);
     app.setBpm(120);
@@ -157,15 +161,20 @@ void loop() {
 
     // Encoder switches — edge-detect here, pass press events to shell.
     static bool sw1Last = false; const bool sw1 = enc1Switch.pollOn();
-    if (sw1 && !sw1Last) app.onEncoderSw(1); sw1Last = sw1;
+    if (sw1 && !sw1Last) app.onEncoderSw(1);
+    sw1Last = sw1;
     static bool sw2Last = false; const bool sw2 = enc2Switch.pollOn();
-    if (sw2 && !sw2Last) app.onEncoderSw(2); sw2Last = sw2;
+    if (sw2 && !sw2Last) app.onEncoderSw(2);
+    sw2Last = sw2;
     static bool sw3Last = false; const bool sw3 = enc3Switch.pollOn();
-    if (sw3 && !sw3Last) app.onEncoderSw(3); sw3Last = sw3;
+    if (sw3 && !sw3Last) app.onEncoderSw(3);
+    sw3Last = sw3;
     static bool sw4Last = false; const bool sw4 = enc4Switch.pollOn();
-    if (sw4 && !sw4Last) app.onEncoderSw(4); sw4Last = sw4;
+    if (sw4 && !sw4Last) app.onEncoderSw(4);
+    sw4Last = sw4;
     static bool sw5Last = false; const bool sw5 = enc5Switch.pollOn();
-    if (sw5 && !sw5Last) app.onEncoderSw(5); sw5Last = sw5;
+    if (sw5 && !sw5Last) app.onEncoderSw(5);
+    sw5Last = sw5;
 
     core::MidiMessage msg;
     while (midiIn.poll(msg)) {

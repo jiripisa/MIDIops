@@ -23,7 +23,8 @@ private:
         void onEncoder(int index, int delta) override {
             if (index == 1) {
                 int v = static_cast<int>(svc_.bpm()) + delta;
-                if (v < 30) v = 30; if (v > 300) v = 300;
+                if (v < 30)  v = 30;
+                if (v > 300) v = 300;
                 svc_.setBpm(static_cast<uint16_t>(v));
             }
         }

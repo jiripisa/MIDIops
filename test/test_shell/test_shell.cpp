@@ -1,5 +1,6 @@
 #include <unity.h>
 
+#include "core/Scale.h"
 #include "core/app/AppShell.h"
 #include "core/modes/BpmMode.h"
 #include "core/modes/DebugMode.h"
@@ -145,6 +146,50 @@ static void test_latch2_stop_latch3_reset() {
     TEST_ASSERT_EQUAL_INT(2, out.stops);     // stop + reset both send 0xFC
 }
 
+// ---------------------------------------------------------------------------
+// test_capturing_mode_skips_global_transport
+//   A mode with capturesTransport_=true must NOT trigger global transport
+//   (i.e., no MIDI Start sent), but MUST still receive the raw latch event.
+// ---------------------------------------------------------------------------
+static void test_capturing_mode_skips_global_transport() {
+    core::AppShell shell;
+    FakeMidiOutput out;
+    FakeMode fm("arp", 1);
+    fm.capturesTransport_ = true;
+
+    shell.setMidiOutput(&out);
+    shell.addMode(&fm);
+    shell.begin();
+
+    // Latch 1 rising edge: in non-capturing mode this would send MIDI Start.
+    // In capturing mode, shell skips global transport but mode still sees the raw event.
+    shell.onLatch(1, true);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, out.starts,
+        "capturing mode: no MIDI Start should be sent by the shell");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, fm.rawCount,
+        "capturing mode: mode must still receive the raw latch event");
+}
+
+// ---------------------------------------------------------------------------
+// test_non_capturing_mode_sends_global_transport (regression guard)
+//   Confirm existing behaviour: a non-capturing mode still triggers MIDI Start.
+// ---------------------------------------------------------------------------
+static void test_non_capturing_mode_sends_global_transport() {
+    core::AppShell shell;
+    FakeMidiOutput out;
+    FakeMode fm("mon", 1);
+    // capturesTransport_ defaults to false
+
+    shell.setMidiOutput(&out);
+    shell.addMode(&fm);
+    shell.begin();
+
+    shell.onLatch(1, true);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, out.starts,
+        "non-capturing mode: MIDI Start must be sent");
+}
+
 static void test_render_draws_top_bar_with_mode_and_screen() {
     core::AppShell shell;
     FakeMode a("mon", 2);
@@ -204,6 +249,18 @@ static void test_bpm_clamps() {
     TEST_ASSERT_EQUAL_INT(30, shell.bpm());
 }
 
+static void test_shell_scale_defaults_cmajor_and_sets() {
+    core::AppShell shell;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Scale::Type::Major),
+                          static_cast<int>(shell.scale().type()));
+    TEST_ASSERT_EQUAL_INT(0, shell.scale().root());
+    shell.setScaleRoot(7);
+    shell.setScaleType(core::Scale::Type::Minor);
+    TEST_ASSERT_EQUAL_INT(7, shell.scale().root());
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Scale::Type::Minor),
+                          static_cast<int>(shell.scale().type()));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_fake_mode_screen_dispatch);
@@ -216,10 +273,13 @@ int main() {
     RUN_TEST(test_overlay_rotation_resets_timeout);
     RUN_TEST(test_latch1_toggles_play_pause_and_sends_realtime);
     RUN_TEST(test_latch2_stop_latch3_reset);
+    RUN_TEST(test_capturing_mode_skips_global_transport);
+    RUN_TEST(test_non_capturing_mode_sends_global_transport);
     RUN_TEST(test_render_draws_top_bar_with_mode_and_screen);
     RUN_TEST(test_render_overlay_lists_modes);
     RUN_TEST(test_debug_mode_counts_raw_input);
     RUN_TEST(test_bpm_mode_enc1_adjusts_tempo);
     RUN_TEST(test_bpm_clamps);
+    RUN_TEST(test_shell_scale_defaults_cmajor_and_sets);
     return UNITY_END();
 }
