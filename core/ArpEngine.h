@@ -123,6 +123,12 @@ private:
     //   became active.  Resets to 0 at each cycle boundary (and on promotion)
     //   to prevent integer overflow over long sessions.
     int  activeCycleSteps_ = 0;
+
+    // Deferred cycle-boundary flag: set when a cycle completes inside beginStep
+    // and cleared at the START of the next beginStep call.  Keeps active_==true
+    // through the last note's gate so a late noteOn simply appends to the queue
+    // instead of incorrectly starting a fresh sequence and cutting the last note.
+    bool cyclePending_ = false;
 };
 
 } // namespace core

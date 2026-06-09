@@ -48,6 +48,7 @@ void ArpEngine::noteOn(uint8_t note, uint8_t velocity, uint32_t nowMs) {
             qCount_ = 0;
             qHead_  = 0;
             latchHasPending_ = false;
+            cyclePending_    = false;
             qPush(note, velocity);
             initSeqFromHead();
             active_ = true;
@@ -65,6 +66,7 @@ void ArpEngine::noteOn(uint8_t note, uint8_t velocity, uint32_t nowMs) {
     if (!active_) {
         qCount_ = 0;
         qHead_  = 0;
+        cyclePending_ = false;
         qPush(note, velocity);
         initSeqFromHead();
         active_ = true;
@@ -104,11 +106,13 @@ void ArpEngine::stop() {
     qHead_            = 0;
     latchHasPending_  = false;
     activeCycleSteps_ = 0;
+    cyclePending_     = false;
 }
 
 void ArpEngine::reset() {
     stepCount_        = 0;
     activeCycleSteps_ = 0;
+    cyclePending_     = false;
     udDir_ = +1;
     if (params_.direction == ArpDirection::Down) {
         seqPos_ = seqLen_ - 1;
@@ -156,86 +160,57 @@ void ArpEngine::initSeqFromHead() {
 
 
 void ArpEngine::beginStep(uint32_t nowMs) {
-    // --- 1. Kill any previous sounding note ---
-    if (noteSounding_) {
-        emit(false, soundingNote_, 0);
-        noteSounding_ = false;
+    // --- 1. Kill the previous sounding note (its step has ended). ---
+    if (noteSounding_) { emit(false, soundingNote_, 0); noteSounding_ = false; }
+
+    // --- 2. If the previous step completed a cycle, resolve the boundary now —
+    //        AFTER the last note has had its full step slot. ---
+    if (cyclePending_) {
+        cyclePending_ = false;
+        if (!params_.latch) {
+            qPop();                                         // remove the finished note
+            if (qCount_ == 0) { active_ = false; return; } // queue empty → idle
+            initSeqFromHead();                              // next queued note → step 0
+        } else if (latchHasPending_) {
+            latchHasPending_ = false;
+            qCount_ = 0; qHead_ = 0;
+            queue_[0] = { latchPendingNote_, latchPendingVel_ };
+            qCount_   = 1;
+            initSeqFromHead();
+        }
+        // latch with no pending → loop: seqPos_ already wrapped; fall through.
     }
 
-    // --- 2. Guard ---
-    if (seqLen_ <= 0 || qCount_ == 0) {
-        active_ = false;
-        return;
-    }
+    // --- 3. Guard. ---
+    if (seqLen_ <= 0 || qCount_ == 0) { active_ = false; return; }
 
-    // --- 3. Emit current step ---
+    // --- 4. Emit current step. ---
     uint8_t note = seq_[seqPos_];
     uint8_t vel  = velocityForStep(seqPos_);
-
     emit(true, note, vel);
-    soundingNote_  = note;
-    noteSounding_  = true;
+    soundingNote_ = note;
+    noteSounding_ = true;
 
     uint32_t stepMs = msPerStep();
     noteOffMs_  = nowMs + stepMs * params_.gatePercent / 100u;
     nextStepMs_ = nowMs + stepMs;
 
-    // Swing: on odd steps shift the next-step boundary forward
+    // Swing: on odd steps shift the next-step boundary forward.
     if (params_.swingPercent != 50 && (stepCount_ & 1)) {
         int swing = (static_cast<int>(params_.swingPercent) - 50)
                     * static_cast<int>(stepMs) / 100;
         nextStepMs_ = static_cast<uint32_t>(static_cast<int>(nextStepMs_) + swing);
     }
-
     ++stepCount_;
 
-    // --- 4. Advance seqPos_ to the NEXT step ---
+    // --- 5. Advance seqPos_ for the next step. ---
     seqPos_ = nextSeqIndex();
 
-    // --- 5. Track cycle completion ---
-    // A cycle is seqLen_ steps from when this note became active.
+    // --- 6. Track cycle completion — DEFER the boundary action to the next step. ---
     ++activeCycleSteps_;
-    bool cycleComplete = (activeCycleSteps_ % seqLen_ == 0);
-    if (cycleComplete) {
-        // Reset counter to prevent integer overflow over long sessions.
+    if (activeCycleSteps_ % seqLen_ == 0) {
         activeCycleSteps_ = 0;
-    }
-
-    // --- 6. Cycle-boundary: decide whether to loop, dequeue, or replace ---
-    // At the boundary we only PREPARE the next sequence and return; the next
-    // scheduled tick (nextStepMs_ was already set above for the last old note)
-    // will call beginStep and emit the new sequence's step 0.  This ensures
-    // the previous cycle's last note keeps its full step duration with no overlap.
-    if (cycleComplete) {
-        if (!params_.latch) {
-            // Hold off = one-shot: each note plays exactly one cycle, then advance.
-            qPop();
-            if (qCount_ == 0) {
-                // Queue empty → go idle after the last note's gate expires.
-                // noteSounding_ will be cleared in tick(); active_ → false.
-                active_ = false;
-                return;
-            }
-            // Prepare new sequence; step 0 will fire at the next scheduled tick
-            // (nextStepMs_ was set when the last old note was emitted above).
-            initSeqFromHead();
-            return;
-        } else {
-            // Latch mode
-            if (latchHasPending_) {
-                latchHasPending_ = false;
-                // Install pending note as the new (only) queue entry
-                qCount_ = 0;
-                qHead_  = 0;
-                queue_[0] = { latchPendingNote_, latchPendingVel_ };
-                qCount_   = 1;
-                // Prepare new sequence; step 0 will fire at the next scheduled tick
-                // (nextStepMs_ was set when the last old note was emitted above).
-                initSeqFromHead();
-                return;
-            }
-            // else: no pending → loop
-        }
+        cyclePending_ = true;
     }
 }
 

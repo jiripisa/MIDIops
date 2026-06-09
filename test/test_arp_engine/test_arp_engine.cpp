@@ -639,11 +639,7 @@ static void test_holdoff_plays_one_cycle_then_idle() {
 
     g_eng->noteOn(60, 100, 0);      // t=0: step0=60; never call noteOff
     g_eng->tick(500);               // t=500: step1=64
-    g_eng->tick(1000);              // t=1000: step2=67 → cycle complete → one-shot → idle
-
-    // Engine must be idle after one cycle
-    TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(),
-        "hold-off: engine must be idle after one cycle (no noteOff required)");
+    g_eng->tick(1000);              // t=1000: step2=67 → cycle complete → cyclePending_=true
 
     // Exactly 3 NoteOns: 60, 64, 67
     auto seq = noteOnSequence();
@@ -653,11 +649,16 @@ static void test_holdoff_plays_one_cycle_then_idle() {
     TEST_ASSERT_EQUAL_INT(64, seq[1]);
     TEST_ASSERT_EQUAL_INT(67, seq[2]);
 
-    // Drive more ticks — no 4th NoteOn must appear
+    // Drive to the next step boundary — cyclePending_ resolves, queue empty → idle.
+    // No 4th NoteOn must appear.
     g_eng->tick(1500);
     g_eng->tick(2000);
     TEST_ASSERT_EQUAL_INT_MESSAGE(3, (int)noteOnSequence().size(),
         "no 4th NoteOn after idle");
+
+    // Engine must be idle after the boundary at t=1500 resolved the cycle.
+    TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(),
+        "hold-off: engine must be idle after the next boundary resolves the cycle");
 }
 
 // ---------------------------------------------------------------------------
@@ -704,15 +705,18 @@ static void test_holdoff_after_latch_stops() {
     // cycle3 started at t=3000 (step0=60 already fired). Steps 1 and 2 at t=3500, t=4000.
     int nAfterToggle = (int)noteOnSequence().size();
     g_eng->tick(3500);              // step1=64 of cycle3
-    g_eng->tick(4000);              // step2=67 of cycle3 → cycle3 boundary: latch=false → idle
+    g_eng->tick(4000);              // step2=67 of cycle3 → cyclePending_=true (latch=false path)
 
-    // After the cycle boundary the engine must be idle
-    TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(),
-        "after latch→off, engine must be idle within one more cycle");
-
-    // No NoteOns of any note must appear after idle
+    // cyclePending_ defers the idle; engine still reports playing until the next boundary.
+    // Drive to t=4500 — beginStep resolves cyclePending_, queue empty → idle (no new NoteOn).
     int nTotal = (int)noteOnSequence().size();
     g_eng->tick(4500);
+
+    // After the next boundary the engine must be idle
+    TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(),
+        "after latch→off, engine must be idle at the boundary after the last step");
+
+    // No new NoteOns must have appeared between t=4000 and t=4500 (boundary just resolved)
     g_eng->tick(5000);
     TEST_ASSERT_EQUAL_INT_MESSAGE(nTotal, (int)noteOnSequence().size(),
         "no new NoteOns after engine goes idle");
@@ -870,12 +874,12 @@ static void test_held_then_queue_switch() {
     g_eng->tick(500);               // t=500: 64
     g_eng->noteOn(67, 100, 500);    // queue 67 in FIFO while 60 is still in cycle1
     g_eng->tick(1000);              // t=1000: 67 (step2 of 60's cycle1 = 67)
-                                    //         cycle1 complete → one-shot → dequeue 60
-                                    //         67 in FIFO → initSeqFromHead(67), RETURN
+                                    //         cycle1 complete → cyclePending_=true (deferred)
                                     //         (67's step0 fires at the next boundary)
-    g_eng->tick(1500);              // t=1500: 67's step0=67 fires
+    g_eng->tick(1500);              // t=1500: cyclePending_ resolved → promote 67;
+                                    //         67's step0=67 fires
     g_eng->tick(2000);              // t=2000: 71 (67's step1)
-    g_eng->tick(2500);              // t=2500: 74 (67's step2) → cycle complete → idle
+    g_eng->tick(2500);              // t=2500: 74 (67's step2) → cyclePending_=true
 
     auto seq = noteOnSequence();
     // Expected: 60,64,67, 67,71,74
@@ -886,6 +890,12 @@ static void test_held_then_queue_switch() {
     TEST_ASSERT_EQUAL_INT(67, seq[3]);  // 67's step0 (fires one step after 60's last note)
     TEST_ASSERT_EQUAL_INT(71, seq[4]);
     TEST_ASSERT_EQUAL_INT(74, seq[5]);
+
+    // Drive to the next boundary (t=3000) — cyclePending_ resolves, queue empty → idle.
+    // No 7th NoteOn must appear.
+    g_eng->tick(3000);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(6, (int)noteOnSequence().size(),
+        "no 7th NoteOn; engine resolves to idle at t=3000 boundary");
     TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(), "idle after 67's cycle completes");
 }
 
@@ -1005,30 +1015,51 @@ static void test_steps1_many_staccato_no_stuck_note() {
     p.latch         = false;
     g_eng->setParams(p);
 
-    // With one-shot model and steps=1 (seqLen_=1):
-    //   noteOn(60,0) → active=false → starts: fires 60, cycle=1 step → qPop → idle.
+    // With one-shot model, steps=1 (seqLen_=1), and the decide-at-start fix:
+    //   noteOn(60,0) → active=false → starts fresh: fires 60, cyclePending_=true,
+    //                                               active_ stays true.
     //   noteOff(60,0) → no-op.
-    //   noteOn(62,0) → active=false → starts: fires 62, cycle complete → qPop → idle.
+    //   noteOn(62,0) → active=true → appended to FIFO (not a fresh start).
     //   noteOff(62,0) → no-op.
-    //   noteOn(64,0) → active=false → starts: fires 64, cycle complete → qPop → idle.
+    //   noteOn(64,0) → active=true → appended to FIFO.
     //   noteOff(64,0) → no-op.
-    // ALL THREE fire at t=0 immediately (one-shot, each note starts and completes independently).
+    //   tick(500):  beginStep resolves cyclePending_ → qPop(60), initSeqFromHead(62)
+    //               → fires 62, cyclePending_=true.
+    //   tick(1000): beginStep resolves cyclePending_ → qPop(62), initSeqFromHead(64)
+    //               → fires 64, cyclePending_=true.
+    //   tick(1500): beginStep resolves cyclePending_ → qPop(64), qCount_=0 → idle.
+    // Total: 3 NoteOns in order 60 (t=0), 62 (t=500), 64 (t=1000).
 
-    g_eng->noteOn (60, 100, 0);  // fires 60 at t=0, one-shot → idle immediately
+    g_eng->noteOn (60, 100, 0);  // fires 60 at t=0; cyclePending_=true, active stays true
     g_eng->noteOff(60, 0);       // no-op
-    g_eng->noteOn (62, 100, 0);  // fires 62 at t=0, one-shot → idle immediately
+    g_eng->noteOn (62, 100, 0);  // active=true → queued in FIFO
     g_eng->noteOff(62, 0);       // no-op
-    g_eng->noteOn (64, 100, 0);  // fires 64 at t=0, one-shot → idle immediately
+    g_eng->noteOn (64, 100, 0);  // active=true → queued in FIFO
     g_eng->noteOff(64, 0);       // no-op
+
+    // At t=0: only 60 has fired (62 and 64 are in the FIFO, not yet promoted).
+    {
+        std::vector<uint8_t> noteOns;
+        for (auto& e : g_out->events) {
+            if (e.isOn) noteOns.push_back(e.note);
+        }
+        TEST_ASSERT_EQUAL_INT_MESSAGE(1, (int)noteOns.size(),
+            "at t=0: only note 60 has fired");
+        TEST_ASSERT_EQUAL_INT(60, noteOns[0]);
+    }
+
+    // Drive to t=500: 62 fires; t=1000: 64 fires; t=1500: boundary resolves → idle.
+    g_eng->tick(500);   // 62 fires
+    g_eng->tick(1000);  // 64 fires
+    g_eng->tick(1500);  // cyclePending_ of 64 resolves → queue empty → idle
 
     {
         std::vector<uint8_t> noteOns;
         for (auto& e : g_out->events) {
             if (e.isOn) noteOns.push_back(e.note);
         }
-        // 3 NoteOns: 60, 62, 64 — all at t=0 (each one-shot with steps=1).
         TEST_ASSERT_EQUAL_INT_MESSAGE(3, (int)noteOns.size(),
-            "expected 3 NoteOns: 60, 62, 64 (each one-shot with steps=1)");
+            "expected 3 NoteOns total: 60 (t=0), 62 (t=500), 64 (t=1000)");
         TEST_ASSERT_EQUAL_INT(60, noteOns[0]);
         TEST_ASSERT_EQUAL_INT(62, noteOns[1]);
         TEST_ASSERT_EQUAL_INT(64, noteOns[2]);
@@ -1036,11 +1067,11 @@ static void test_steps1_many_staccato_no_stuck_note() {
 
     // Engine must be idle after all notes complete.
     TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(),
-        "engine must be idle after all staccato notes complete");
+        "engine must be idle after all queued notes are exhausted");
 
     // Drive ticks to flush any deferred gate NoteOff (gate = 80% of 500 ms = 400 ms).
-    g_eng->tick(900);
-    g_eng->tick(1000);
+    g_eng->tick(1900);
+    g_eng->tick(2000);
 
     // NoteOn and NoteOff counts must be balanced (no stuck note).
     int ons = 0, offs = 0;
@@ -1388,6 +1419,95 @@ static void test_latch_replacement_starts_next_boundary_not_same_tick() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: keyboard note arriving during the last step must not cut that note.
+//
+// bpm=120, Quarter=500ms/step, gatePercent=80, steps=3, latch=false.
+// Sequence for root=60 (C major Up): 60, 64, 67.
+// Gate = 80% × 500 = 400 ms.
+//
+// Timeline:
+//   t=0:    noteOn(60) → step0=60 fires (NoteOn), gate off at t=400
+//   t=500:  tick       → step1=64 fires
+//   t=1000: tick       → step2=67 fires (LAST note, gate off at t=1400)
+//   t=1100: noteOn(72) during the last step's gate window (67 still sounding)
+//
+// BUG (current code): active_ is set to false immediately when 67 is emitted
+//   because the cycle is complete; noteOn(72) sees active_=false, starts fresh,
+//   and kills 67 early (emits NoteOff(67) at t=1100).
+//
+// FIX: active_ stays true until the next step boundary; noteOn(72) simply
+//   appends to the FIFO. At t=1500 (next boundary) beginStep resolves the
+//   boundary, 67's gate fires normally at t=1400, and 72's step0 fires at t=1500.
+//
+// Assertions:
+//   At t=1100: exactly 3 NoteOns emitted so far (60,64,67 — no 4th yet).
+//              No NoteOff for 67 yet (gate ends at 1400, not 1100).
+//   At t=1500: 4th NoteOn emitted (72's step0).
+//              The 4th NoteOn must be for note 72.
+// ---------------------------------------------------------------------------
+static void test_keyboard_note_during_last_step_not_cut() {
+    core::ArpEngine eng;
+    FakeMidiOutput out;
+    core::Scale sc(core::Scale::Type::Major, 0);  // C major
+    core::ArpParams p;
+    p.steps         = 3;
+    p.rate          = core::ArpRate::Quarter;   // 500 ms/step at 120 BPM
+    p.gatePercent   = 80;                        // gate NoteOff = 400 ms into the step
+    p.direction     = core::ArpDirection::Up;
+    p.velocityMode  = core::ArpVelocityMode::Fixed;
+    p.fixedVelocity = 100;
+    p.swingPercent  = 50;
+    p.latch         = false;
+    eng.setOutput(&out);
+    eng.setScale(&sc);
+    eng.setBpm(120);
+    eng.setParams(p);
+
+    eng.noteOn(60, 100, 0);    // sequence: 60, 64, 67
+    eng.tick(500);              // step1 = 64
+    eng.tick(1000);             // step2 = 67 (LAST note of cycle); gate off at t=1400
+
+    // New keyboard note arrives while 67 is still sounding (t=1100 < t=1400).
+    eng.noteOn(72, 100, 1100);
+
+    // Helper lambdas to inspect events.
+    auto countNoteOns = [&]() {
+        int n = 0;
+        for (auto& e : out.events) { if (e.isOn) ++n; }
+        return n;
+    };
+    auto hasNoteOff = [&](uint8_t note) {
+        for (auto& e : out.events) { if (!e.isOn && e.note == note) return true; }
+        return false;
+    };
+    auto lastNoteOnNote = [&]() -> uint8_t {
+        uint8_t last = 0;
+        for (auto& e : out.events) { if (e.isOn) last = e.note; }
+        return last;
+    };
+
+    // At t=1100: exactly 3 NoteOns (60, 64, 67); 72 must not have started yet.
+    TEST_ASSERT_EQUAL_INT_MESSAGE(3, countNoteOns(),
+        "at t=1100: only 3 NoteOns (60,64,67); 72 must not start mid-step");
+
+    // 67 must NOT have been cut: no NoteOff for 67 yet (gate ends at t=1400).
+    TEST_ASSERT_FALSE_MESSAGE(hasNoteOff(67),
+        "at t=1100: NoteOff for 67 must not be emitted yet (gate ends at t=1400)");
+
+    // Drive to t=1500 (next step boundary); 67's gate fires at t=1400, then
+    // the boundary at t=1500 resolves and 72's step0 fires.
+    eng.tick(1500);
+
+    // Now there must be 4 NoteOns total.
+    TEST_ASSERT_EQUAL_INT_MESSAGE(4, countNoteOns(),
+        "at t=1500: 4th NoteOn (72's step0) must have fired at the next boundary");
+
+    // The 4th NoteOn must be note 72.
+    TEST_ASSERT_EQUAL_INT_MESSAGE(72, lastNoteOnNote(),
+        "the 4th NoteOn must be note 72 (start of 72's arpeggio)");
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 int main() {
@@ -1425,5 +1545,7 @@ int main() {
     // Timing bug fix: promotion/replacement must start at the next step boundary
     RUN_TEST(test_promotion_starts_next_boundary_not_same_tick);
     RUN_TEST(test_latch_replacement_starts_next_boundary_not_same_tick);
+    // Cycle-boundary fix: late noteOn must not cut the last sounding note
+    RUN_TEST(test_keyboard_note_during_last_step_not_cut);
     return UNITY_END();
 }
