@@ -133,10 +133,13 @@ void ArpMode::update(uint32_t nowMs) {
 void ArpMode::echoThunk(void* user, bool isOn,
                         uint8_t channel, uint8_t note, uint8_t /*velocity*/) {
     auto* self = static_cast<ArpMode*>(user);
+    // Visualise the arp's OUTGOING notes like incoming notes in Monitoring —
+    // filled worms in the output channel's colour (channel 1 = green) — rather
+    // than the gray ghost-outline used for engine/output worms.
     if (isOn)
-        self->model_.onEngineNoteOn(channel, note);
+        self->model_.onNoteOn(channel, note);
     else
-        self->model_.onEngineNoteOff(channel, note);
+        self->model_.onNoteOff(channel, note);
 }
 
 // ---------------------------------------------------------------------------
