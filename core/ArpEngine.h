@@ -81,14 +81,16 @@ private:
     // head WITHOUT emitting any notes.  Call beginStep() afterwards.
     void     initSeqFromHead();
 
-    // Core step-emission:
+    // Core step-emission (decide-at-start: the previous cycle's boundary is
+    // resolved here, at the next step, so the last note keeps its full slot):
     //   1. Kill any prev sounding note (NoteOff).
-    //   2. Emit the current step NoteOn, schedule gate NoteOff + next step time.
-    //   3. Advance seqPos_, increment activeCycleSteps_.
-    //   4. If cycle complete: immediately dequeue / replace / loop (calls itself
-    //      recursively for the new head note — tail-recursive same-tick promotion;
-    //      depth ≤ 1 for steps>1, ≤ kQueueCap (16) when steps==1 — bounded and
-    //      safe on the target's stack).
+    //   2. If cyclePending_: resolve the boundary (dequeue / latch-replace /
+    //      loop), then return if going idle or continue to emit the promoted note.
+    //   3. Guard: go idle if seqLen_ <= 0 or qCount_ == 0.
+    //   4. Emit the current step NoteOn, schedule gate NoteOff + next step time.
+    //   5. Advance seqPos_, increment activeCycleSteps_.
+    //   6. If a cycle just completed, set cyclePending_ (boundary deferred to the
+    //      next call). No recursion.
     void     beginStep(uint32_t nowMs);
 
     int      nextSeqIndex();              // advance seqPos_ per direction

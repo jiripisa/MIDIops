@@ -993,15 +993,11 @@ static void test_stop_clears_queue() {
 // ---------------------------------------------------------------------------
 // Test: steps=1, three staccato notes pressed+released before any tick.
 //
-// With one-shot model and seqLen_==1:
-//   Each cycle = 1 step → immediate dequeue after each step.
-//   noteOn(60)  → step0 fires (NoteOn 60), cycle complete → dequeue 60.
-//   62 is in FIFO → same-tick promotion: step0 fires (NoteOn 62), cycle complete → dequeue 62.
-//   64 is in FIFO → same-tick promotion: step0 fires (NoteOn 64), cycle complete → dequeue 64.
-//   Queue empty → idle.
-//
-// Total NoteOns = 3 (one per note, all at t=0 via same-tick promotion chain).
-// NoteOn count == NoteOff count (no stuck note).
+// With the one-shot + decide-at-start model and seqLen_==1: the first note
+// fires immediately, the rest append to the FIFO and each is promoted at the
+// next step boundary (one per step) — NOT same-tick.
+//   60 at t=0, 62 at t=500, 64 at t=1000, then idle.
+// Total NoteOns = 3, NoteOn count == NoteOff count (no stuck note).
 // ---------------------------------------------------------------------------
 static void test_steps1_many_staccato_no_stuck_note() {
     core::ArpParams p;
