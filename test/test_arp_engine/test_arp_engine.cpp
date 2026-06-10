@@ -1,7 +1,9 @@
 // Tests for core::ArpEngine — clock-driven step scheduler.
 //
-// bpm=120, Quarter=24 ticks → msPerStep = 24*60000/(120*24) = 500 ms
-// bpm=120, Sixteenth=6 ticks → msPerStep = 6*60000/(120*24) = 125 ms
+// The engine is tick-driven (24 PPQN MIDI clock): one step lasts
+// arpRateTicks(rate) clock ticks. Quarter=24 ticks, Sixteenth=6 ticks.
+// Drive the engine with clocks(eng, n) to advance n clock ticks; one full
+// step advance = clocks(eng, arpRateTicks(rate)).
 //
 // UpDown ping-pong (endpoints NOT doubled):
 //   seq=[60,64,67] → 60,64,67,64,60,64,67,...
@@ -55,6 +57,11 @@ static std::vector<FakeMidiOutput::Ev> noteEventsFrom(int from) {
         g_out->events.begin() + from, g_out->events.end());
 }
 
+// Drive the engine forward by n MIDI clock ticks.
+static void clocks(core::ArpEngine& e, int n) {
+    for (int i = 0; i < n; ++i) e.onClockTick();
+}
+
 // ---------------------------------------------------------------------------
 // Test: stepping/Up direction — immediate noteOn, correct timing, ONE cycle
 // ---------------------------------------------------------------------------
@@ -69,20 +76,22 @@ static void test_stepping_up_sequence() {
     p.swingPercent  = 50;                         // no swing
     g_eng->setParams(p);
 
-    // noteOn at t=0 → immediate NoteOn(ch1, 60, 100)
-    g_eng->noteOn(60, 100, 0);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24 ticks/step
+
+    // noteOn → immediate NoteOn(ch1, 60, 100)
+    g_eng->noteOn(60, 100);
     TEST_ASSERT_EQUAL_INT(1, (int)g_out->events.size());
     TEST_ASSERT_TRUE(g_out->events[0].isOn);
     TEST_ASSERT_EQUAL_INT(1,   g_out->events[0].channel);
     TEST_ASSERT_EQUAL_INT(60,  g_out->events[0].note);
     TEST_ASSERT_EQUAL_INT(100, g_out->events[0].vel);
 
-    // t=499 → no new events
-    g_eng->tick(499);
+    // One tick short of a full step → no new step (gate=100% so no early NoteOff)
+    clocks(*g_eng, kStep - 1);
     TEST_ASSERT_EQUAL_INT(1, (int)g_out->events.size());
 
-    // t=500 → NoteOff(60) + NoteOn(64)
-    g_eng->tick(500);
+    // Step boundary → NoteOff(60) + NoteOn(64)
+    clocks(*g_eng, 1);
     {
         auto ev = noteEventsFrom(1);
         // At minimum: NoteOff(60) then NoteOn(64)
@@ -97,8 +106,8 @@ static void test_stepping_up_sequence() {
         TEST_ASSERT_TRUE(off60idx < on64idx);  // NoteOff before NoteOn
     }
 
-    // t=1000 → NoteOff(64) + NoteOn(67)
-    g_eng->tick(1000);
+    // Next step → NoteOff(64) + NoteOn(67)
+    clocks(*g_eng, kStep);
     {
         bool found67 = false;
         for (auto& e : g_out->events) {
@@ -107,9 +116,9 @@ static void test_stepping_up_sequence() {
         TEST_ASSERT_TRUE(found67);
     }
 
-    // t=1000: cycle complete (3 steps: 60,64,67) → one-shot model → engine goes idle.
-    // t=1500 → NO new NoteOn (the engine is idle after one cycle).
-    g_eng->tick(1500);
+    // Cycle complete (3 steps: 60,64,67) → one-shot model → engine goes idle.
+    // Next step boundary → NO new NoteOn (the engine is idle after one cycle).
+    clocks(*g_eng, kStep);
     {
         // Exactly one NoteOn for note 60 (the first step), no wrap-around.
         int count60 = 0;
@@ -130,20 +139,23 @@ static void test_gate_50_percent() {
     core::ArpParams p;
     p.steps         = 3;
     p.rate          = core::ArpRate::Quarter;   // 500 ms
-    p.gatePercent   = 50;                        // NoteOff at 250 ms
+    p.gatePercent   = 50;                        // NoteOff at 50% of the step
     p.direction     = core::ArpDirection::Up;
     p.velocityMode  = core::ArpVelocityMode::Fixed;
     p.fixedVelocity = 100;
     p.swingPercent  = 50;
     g_eng->setParams(p);
 
-    g_eng->noteOn(60, 100, 0);
-    // Immediately: NoteOn(60) at t=0
+    const int kStep = core::arpRateTicks(p.rate);   // Quarter = 24 ticks/step
+    const int kGate = kStep * p.gatePercent / 100;  // 24*50/100 = 12 ticks
+
+    g_eng->noteOn(60, 100);
+    // Immediately: NoteOn(60)
     TEST_ASSERT_EQUAL_INT(1, (int)g_out->events.size());
     TEST_ASSERT_TRUE(g_out->events[0].isOn);
 
-    // t=250 → NoteOff(60) fires (gate=50% of 500ms=250ms), but NO NoteOn yet
-    g_eng->tick(250);
+    // After gate ticks → NoteOff(60) fires (gate=50% of 24 ticks = 12), but NO NoteOn yet
+    clocks(*g_eng, kGate);
     {
         bool hasOff60 = false, hasNewOn = false;
         for (int i = 1; i < (int)g_out->events.size(); ++i) {
@@ -154,8 +166,8 @@ static void test_gate_50_percent() {
         TEST_ASSERT_FALSE(hasNewOn);
     }
 
-    // t=500 → NoteOn(64) starts (step boundary)
-    g_eng->tick(500);
+    // Remaining ticks of the step → NoteOn(64) starts (step boundary)
+    clocks(*g_eng, kStep - kGate);
     {
         bool has64 = false;
         for (auto& e : g_out->events) {
@@ -179,9 +191,11 @@ static void test_direction_down() {
     p.swingPercent  = 50;
     g_eng->setParams(p);
 
-    g_eng->noteOn(60, 100, 0);
-    g_eng->tick(500);
-    g_eng->tick(1000);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
+
+    g_eng->noteOn(60, 100);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
 
     // Collect only NoteOn events in order (one cycle = 3 steps)
     std::vector<uint8_t> noteOns;
@@ -212,11 +226,13 @@ static void test_direction_updown() {
     p.latch         = false;
     g_eng->setParams(p);
 
-    g_eng->noteOn(60, 100, 0);
-    g_eng->tick(125);
-    g_eng->tick(250);
-    g_eng->tick(375);  // step boundary after cycle completes → idle
-    g_eng->tick(500);  // no new events
+    const int kStep = core::arpRateTicks(p.rate);  // Sixteenth = 6
+
+    g_eng->noteOn(60, 100);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);  // step boundary after cycle completes → idle
+    clocks(*g_eng, kStep);  // no new events
 
     std::vector<uint8_t> noteOns;
     for (auto& e : g_out->events) {
@@ -247,12 +263,14 @@ static void test_direction_updown_latch() {
     p.latch         = true;
     g_eng->setParams(p);
 
-    g_eng->noteOn(60, 100, 0);
-    // Drive 4 more steps: t=125,250,375,500
-    g_eng->tick(125);
-    g_eng->tick(250);
-    g_eng->tick(375);
-    g_eng->tick(500);
+    const int kStep = core::arpRateTicks(p.rate);  // Sixteenth = 6
+
+    g_eng->noteOn(60, 100);
+    // Drive 4 more steps
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
 
     // Collect NoteOn notes: should be 60,64,67,64,60
     std::vector<uint8_t> noteOns;
@@ -284,10 +302,12 @@ static void test_direction_random_no_immediate_repeat() {
     p.latch         = true;  // latch: loops forever so we can observe many steps
     g_eng->setParams(p);
 
-    g_eng->noteOn(60, 100, 0);
+    const int kStep = core::arpRateTicks(p.rate);  // Sixteenth = 6
+
+    g_eng->noteOn(60, 100);
     // Drive 29 more steps (total 30)
     for (int i = 1; i <= 29; ++i) {
-        g_eng->tick(static_cast<uint32_t>(i * 125));
+        clocks(*g_eng, kStep);
     }
 
     // Collect NoteOn notes
@@ -319,9 +339,11 @@ static void test_velocity_fixed() {
     p.swingPercent  = 50;
     g_eng->setParams(p);
 
-    g_eng->noteOn(60, 99, 0);  // input vel != fixedVelocity
-    g_eng->tick(125);
-    g_eng->tick(250);
+    const int kStep = core::arpRateTicks(p.rate);  // Sixteenth = 6
+
+    g_eng->noteOn(60, 99);  // input vel != fixedVelocity
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
 
     for (auto& e : g_out->events) {
         if (e.isOn) {
@@ -344,9 +366,11 @@ static void test_velocity_follow_input() {
     p.swingPercent  = 50;
     g_eng->setParams(p);
 
-    g_eng->noteOn(60, 77, 0);  // input velocity = 77
-    g_eng->tick(125);
-    g_eng->tick(250);
+    const int kStep = core::arpRateTicks(p.rate);  // Sixteenth = 6
+
+    g_eng->noteOn(60, 77);  // input velocity = 77
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
 
     for (auto& e : g_out->events) {
         if (e.isOn) {
@@ -369,9 +393,11 @@ static void test_velocity_accent() {
     p.swingPercent  = 50;
     g_eng->setParams(p);
 
-    g_eng->noteOn(60, 100, 0);
-    g_eng->tick(125);
-    g_eng->tick(250);
+    const int kStep = core::arpRateTicks(p.rate);  // Sixteenth = 6
+
+    g_eng->noteOn(60, 100);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
 
     // Collect NoteOn velocities
     std::vector<uint8_t> vels;
@@ -398,7 +424,7 @@ static void test_stop_kills_active_note() {
     p.swingPercent  = 50;
     g_eng->setParams(p);
 
-    g_eng->noteOn(60, 100, 0);
+    g_eng->noteOn(60, 100);
     TEST_ASSERT_TRUE(g_eng->isPlaying());
 
     g_eng->stop();
@@ -429,10 +455,12 @@ static void test_updown_single_step_no_crash() {
     p.latch         = true;  // latch: loops forever so we can drive many steps
     g_eng->setParams(p);
 
-    g_eng->noteOn(60, 100, 0);
-    g_eng->tick(500);
-    g_eng->tick(1000);
-    g_eng->tick(1500);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
+
+    g_eng->noteOn(60, 100);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
 
     // Every NoteOn must be note 60 (the only step in the sequence)
     int countOn = 0;
@@ -442,7 +470,7 @@ static void test_updown_single_step_no_crash() {
             ++countOn;
         }
     }
-    // 4 steps fired (t=0, 500, 1000, 1500)
+    // 4 steps fired (initial + 3 step boundaries)
     TEST_ASSERT_EQUAL_INT(4, countOn);
 }
 
@@ -461,10 +489,12 @@ static void test_downup_single_step_no_crash() {
     p.latch         = true;  // latch: loops forever so we can drive many steps
     g_eng->setParams(p);
 
-    g_eng->noteOn(60, 100, 0);
-    g_eng->tick(500);
-    g_eng->tick(1000);
-    g_eng->tick(1500);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
+
+    g_eng->noteOn(60, 100);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
 
     // Every NoteOn must be note 60 (the only step in the sequence)
     int countOn = 0;
@@ -474,7 +504,7 @@ static void test_downup_single_step_no_crash() {
             ++countOn;
         }
     }
-    // 4 steps fired (t=0, 500, 1000, 1500)
+    // 4 steps fired (initial + 3 step boundaries)
     TEST_ASSERT_EQUAL_INT(4, countOn);
 }
 
@@ -494,11 +524,13 @@ static void test_direction_downup() {
     p.latch         = false;
     g_eng->setParams(p);
 
-    g_eng->noteOn(60, 100, 0);
-    g_eng->tick(125);
-    g_eng->tick(250);
-    g_eng->tick(375);  // step boundary after cycle → idle
-    g_eng->tick(500);  // no new events
+    const int kStep = core::arpRateTicks(p.rate);  // Sixteenth = 6
+
+    g_eng->noteOn(60, 100);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);  // step boundary after cycle → idle
+    clocks(*g_eng, kStep);  // no new events
 
     std::vector<uint8_t> noteOns;
     for (auto& e : g_out->events) {
@@ -529,11 +561,13 @@ static void test_direction_downup_latch() {
     p.latch         = true;
     g_eng->setParams(p);
 
-    g_eng->noteOn(60, 100, 0);
-    g_eng->tick(125);
-    g_eng->tick(250);
-    g_eng->tick(375);
-    g_eng->tick(500);
+    const int kStep = core::arpRateTicks(p.rate);  // Sixteenth = 6
+
+    g_eng->noteOn(60, 100);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
 
     std::vector<uint8_t> noteOns;
     for (auto& e : g_out->events) {
@@ -550,33 +584,36 @@ static void test_direction_downup_latch() {
 
 // ---------------------------------------------------------------------------
 // Test: Swing delays odd steps.
-// bpm=120, Quarter=500ms/step, swingPercent=75.
-// swing offset = (75-50)*500/100 = 125 ms.
+// bpm=120, Quarter=24 ticks/step, swingPercent=75.
+// swing offset = (75-50)*24/100 = 6 ticks.
 //
-// Step 0 fires at t=0 (stepCount_=0, even → no swing).
-// Step 1 fires at t=500 (stepCount_=1, odd → swing on step 2's boundary):
-//   nextStepMs_ for step 2 = 500+500+125 = 1125.
-// Step 2 fires at t=1125 (not 1000).
+// Step 0 fires at tick 0 (stepCount_=0, even → no swing).
+// Step 1 fires at tick 24 (stepCount_=1, odd → swing on step 2's boundary):
+//   step 2's boundary = 24 + (24+6) = 54 ticks.
+// Step 2 fires at tick 54 (not 48).
 //
 // The cycle completes at step 2 (the 3rd step, index 2) when the engine goes idle.
-// We verify: at t=1000 note 67 NOT yet present; at t=1125 note 67 IS present.
+// We verify: at tick 48 note 67 NOT yet present; at tick 54 note 67 IS present.
 // Use latch=true so the engine keeps looping and we can measure the delay.
 // ---------------------------------------------------------------------------
 static void test_swing_delays_odd_steps() {
     core::ArpParams p;
     p.steps         = 3;
-    p.rate          = core::ArpRate::Quarter;  // 500 ms/step
+    p.rate          = core::ArpRate::Quarter;  // 24 ticks/step
     p.gatePercent   = 50;
     p.direction     = core::ArpDirection::Up;
     p.velocityMode  = core::ArpVelocityMode::Fixed;
     p.fixedVelocity = 100;
-    p.swingPercent  = 75;  // odd-step delay = (75-50)*500/100 = 125 ms
+    p.swingPercent  = 75;  // odd-step delay = (75-50)*24/100 = 6 ticks
     p.latch         = true;  // keep looping so we can observe swing
     g_eng->setParams(p);
 
-    g_eng->noteOn(60, 100, 0);  // step 0 fires immediately (stepCount_=0 is even)
+    const int kStep  = core::arpRateTicks(p.rate);                   // 24
+    const int kSwing = (p.swingPercent - 50) * kStep / 100;          // 6
 
-    g_eng->tick(500);   // step 1 (note 64) fires here; stepCount_=1 → swing sets step2 at 1125
+    g_eng->noteOn(60, 100);  // step 0 fires immediately (stepCount_=0 is even)
+
+    clocks(*g_eng, kStep);   // tick 24: step 1 (note 64) fires; stepCount_=1 → swing pushes step2
 
     // Count NoteOns so far: 2 (notes 60 and 64)
     {
@@ -585,16 +622,16 @@ static void test_swing_delays_odd_steps() {
         TEST_ASSERT_EQUAL_INT(2, countOn);
     }
 
-    // t=1000: un-swung boundary for step 2, but swing pushed it to 1125
-    g_eng->tick(1000);
+    // tick 48: un-swung boundary for step 2, but swing pushed it to tick 54
+    clocks(*g_eng, kStep);
     {
         bool has67 = false;
         for (auto& e : g_out->events) { if (e.isOn && e.note == 67) has67 = true; }
         TEST_ASSERT_FALSE(has67);  // note 67 should not have fired yet
     }
 
-    // t=1125: swing boundary — note 67 must now be present
-    g_eng->tick(1125);
+    // tick 54: swing boundary — note 67 must now be present
+    clocks(*g_eng, kSwing);
     {
         bool has67 = false;
         for (auto& e : g_out->events) { if (e.isOn && e.note == 67) has67 = true; }
@@ -635,11 +672,13 @@ static core::ArpParams makeStdParams() {
 //   A 4th NoteOn must NEVER appear.
 // ---------------------------------------------------------------------------
 static void test_holdoff_plays_one_cycle_then_idle() {
-    g_eng->setParams(makeStdParams());  // latch=false
+    core::ArpParams p = makeStdParams();  // latch=false
+    g_eng->setParams(p);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
 
-    g_eng->noteOn(60, 100, 0);      // t=0: step0=60; never call noteOff
-    g_eng->tick(500);               // t=500: step1=64
-    g_eng->tick(1000);              // t=1000: step2=67 → cycle complete → cyclePending_=true
+    g_eng->noteOn(60, 100);         // step0=60; never call noteOff
+    clocks(*g_eng, kStep);          // step1=64
+    clocks(*g_eng, kStep);          // step2=67 → cycle complete → cyclePending_=true
 
     // Exactly 3 NoteOns: 60, 64, 67
     auto seq = noteOnSequence();
@@ -651,8 +690,8 @@ static void test_holdoff_plays_one_cycle_then_idle() {
 
     // Drive to the next step boundary — cyclePending_ resolves, queue empty → idle.
     // No 4th NoteOn must appear.
-    g_eng->tick(1500);
-    g_eng->tick(2000);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
     TEST_ASSERT_EQUAL_INT_MESSAGE(3, (int)noteOnSequence().size(),
         "no 4th NoteOn after idle");
 
@@ -671,22 +710,23 @@ static void test_holdoff_after_latch_stops() {
     core::ArpParams p = makeStdParams();
     p.latch = true;
     g_eng->setParams(p);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
 
-    // Timeline (500ms/step, gatePercent=80, latch=true):
-    //   t=0:    step0=60 fires; nextStepMs_=500
-    //   t=500:  step1=64; nextStepMs_=1000
-    //   t=1000: step2=67 → cycle1 complete → latch loops → nextStepMs_=1500
-    //   t=1500: step0=60 (cycle2); nextStepMs_=2000
-    //   t=2000: step1=64 (cycle2); nextStepMs_=2500
-    //   t=2500: step2=67 → cycle2 complete → latch loops → nextStepMs_=3000
-    //   t=3000: step0=60 (cycle3 starts) — still looping!
-    g_eng->noteOn(60, 100, 0);      // t=0: step0=60 (latch: loops)
-    g_eng->tick(500);               // t=500: step1=64
-    g_eng->tick(1000);              // t=1000: step2=67 → cycle1 done → latch → loop
-    g_eng->tick(1500);              // t=1500: step0=60 (cycle2)
-    g_eng->tick(2000);              // t=2000: step1=64 (cycle2)
-    g_eng->tick(2500);              // t=2500: step2=67 (cycle2) → cycle2 done → latch → loop
-    g_eng->tick(3000);              // t=3000: step0=60 (cycle3 starts) — 7th NoteOn
+    // Timeline (24 ticks/step, gatePercent=80, latch=true):
+    //   step0=60 fires immediately
+    //   +1 step: step1=64
+    //   +1 step: step2=67 → cycle1 complete → latch loops
+    //   +1 step: step0=60 (cycle2)
+    //   +1 step: step1=64 (cycle2)
+    //   +1 step: step2=67 → cycle2 complete → latch loops
+    //   +1 step: step0=60 (cycle3 starts) — still looping!
+    g_eng->noteOn(60, 100);         // step0=60 (latch: loops)
+    clocks(*g_eng, kStep);          // step1=64
+    clocks(*g_eng, kStep);          // step2=67 → cycle1 done → latch → loop
+    clocks(*g_eng, kStep);          // step0=60 (cycle2)
+    clocks(*g_eng, kStep);          // step1=64 (cycle2)
+    clocks(*g_eng, kStep);          // step2=67 (cycle2) → cycle2 done → latch → loop
+    clocks(*g_eng, kStep);          // step0=60 (cycle3 starts) — 7th NoteOn
 
     // Confirm it's still looping after 2+ full cycles (at least 7 NoteOns)
     {
@@ -702,22 +742,22 @@ static void test_holdoff_after_latch_stops() {
     g_eng->setParams(p);
 
     // Drive the remaining steps of cycle3 plus the cycle boundary.
-    // cycle3 started at t=3000 (step0=60 already fired). Steps 1 and 2 at t=3500, t=4000.
+    // cycle3's step0=60 already fired. Steps 1 and 2 follow.
     int nAfterToggle = (int)noteOnSequence().size();
-    g_eng->tick(3500);              // step1=64 of cycle3
-    g_eng->tick(4000);              // step2=67 of cycle3 → cyclePending_=true (latch=false path)
+    clocks(*g_eng, kStep);          // step1=64 of cycle3
+    clocks(*g_eng, kStep);          // step2=67 of cycle3 → cyclePending_=true (latch=false path)
 
     // cyclePending_ defers the idle; engine still reports playing until the next boundary.
-    // Drive to t=4500 — beginStep resolves cyclePending_, queue empty → idle (no new NoteOn).
+    // Drive one more step — beginStep resolves cyclePending_, queue empty → idle (no new NoteOn).
     int nTotal = (int)noteOnSequence().size();
-    g_eng->tick(4500);
+    clocks(*g_eng, kStep);
 
     // After the next boundary the engine must be idle
     TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(),
         "after latch→off, engine must be idle at the boundary after the last step");
 
-    // No new NoteOns must have appeared between t=4000 and t=4500 (boundary just resolved)
-    g_eng->tick(5000);
+    // No new NoteOns must have appeared after the boundary just resolved
+    clocks(*g_eng, kStep);
     TEST_ASSERT_EQUAL_INT_MESSAGE(nTotal, (int)noteOnSequence().size(),
         "no new NoteOns after engine goes idle");
 
@@ -736,11 +776,13 @@ static void test_loop_while_held() {
     // RENAMED BEHAVIOUR: "loop while held" is gone; hold-off = one-shot.
     // Kept as test_loop_while_held to preserve the RUN_TEST name for
     // continuity; the test now encodes the one-shot contract.
-    g_eng->setParams(makeStdParams());
+    core::ArpParams p = makeStdParams();
+    g_eng->setParams(p);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
 
-    g_eng->noteOn(60, 100, 0);      // t=0: step0=60; never release
-    g_eng->tick(500);               // t=500: step1=64
-    g_eng->tick(1000);              // t=1000: step2=67 → cycle complete → one-shot → idle
+    g_eng->noteOn(60, 100);         // step0=60; never release
+    clocks(*g_eng, kStep);          // step1=64
+    clocks(*g_eng, kStep);          // step2=67 → cycle complete → one-shot → idle
 
     auto seq = noteOnSequence();
     // One cycle: 3 NoteOns, then idle.
@@ -751,10 +793,10 @@ static void test_loop_while_held() {
     TEST_ASSERT_EQUAL_INT(67, seq[2]);
 
     // Drive past where old looping would have resumed — confirm idle
-    g_eng->tick(1500);
-    g_eng->tick(2000);
-    g_eng->tick(2500);
-    g_eng->tick(3000);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
     TEST_ASSERT_EQUAL_INT_MESSAGE(3, (int)noteOnSequence().size(),
         "no additional NoteOns after cycle completes in one-shot mode");
     TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(),
@@ -768,12 +810,15 @@ static void test_loop_while_held() {
 //   Calling noteOff mid-cycle must not change the outcome.
 // ---------------------------------------------------------------------------
 static void test_release_finishes_cycle_then_idle() {
-    g_eng->setParams(makeStdParams());
+    core::ArpParams p = makeStdParams();
+    g_eng->setParams(p);
+    const int kStep = core::arpRateTicks(p.rate);          // Quarter = 24
+    const int kGate = kStep * p.gatePercent / 100;         // 24*80/100 = 19
 
-    g_eng->noteOn(60, 100, 0);          // step0=60 at t=0
-    g_eng->tick(500);                   // step1=64 at t=500
-    g_eng->noteOff(60, 500);            // no-op under new model
-    g_eng->tick(1000);                  // step2=67 at t=1000 → cycle complete → idle
+    g_eng->noteOn(60, 100);             // step0=60
+    clocks(*g_eng, kStep);              // step1=64
+    g_eng->noteOff(60);                 // no-op under new model
+    clocks(*g_eng, kStep);              // step2=67 → cycle complete → idle
 
     // 67 must have been emitted (cycle always completes)
     {
@@ -784,8 +829,8 @@ static void test_release_finishes_cycle_then_idle() {
     }
 
     // Tick past gate NoteOff for 67, then the next step boundary
-    g_eng->tick(1400);  // gate NoteOff for 67 fires here (80%*500=400ms after t=1000 → t=1400)
-    g_eng->tick(1500);  // next step boundary — must NOT produce a new NoteOn
+    clocks(*g_eng, kGate);              // gate NoteOff for 67 fires here (80% of the step)
+    clocks(*g_eng, kStep - kGate);      // next step boundary — must NOT produce a new NoteOn
 
     {
         auto seq = noteOnSequence();
@@ -823,19 +868,21 @@ static void test_release_finishes_cycle_then_idle() {
 //     t=2500: 74 fires (67's step2) → cycle complete → idle
 // ---------------------------------------------------------------------------
 static void test_fifo_two_staccato_notes() {
-    g_eng->setParams(makeStdParams());
+    core::ArpParams p = makeStdParams();
+    g_eng->setParams(p);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
 
-    g_eng->noteOn(60, 100, 0);
-    g_eng->noteOff(60, 0);      // staccato (no-op under new model; one-shot still works)
-    g_eng->noteOn(67, 100, 0);  // appended to FIFO while 60 is active
-    g_eng->noteOff(67, 0);      // staccato (no-op)
+    g_eng->noteOn(60, 100);
+    g_eng->noteOff(60);      // staccato (no-op under new model; one-shot still works)
+    g_eng->noteOn(67, 100);  // appended to FIFO while 60 is active
+    g_eng->noteOff(67);      // staccato (no-op)
 
-    // Drive 60's cycle: steps at t=500 and t=1000
-    g_eng->tick(500);   // 60's step1=64
-    g_eng->tick(1000);  // 60's step2=67; cycle complete → qPop 60, prepare 67 (no emit yet)
-    g_eng->tick(1500);  // 67's step0=67 fires at the next scheduled boundary
-    g_eng->tick(2000);  // 67's step1=71
-    g_eng->tick(2500);  // 67's step2=74 → cycle complete → one-shot → idle
+    // Drive 60's cycle: two step boundaries
+    clocks(*g_eng, kStep);  // 60's step1=64
+    clocks(*g_eng, kStep);  // 60's step2=67; cycle complete → qPop 60, prepare 67 (no emit yet)
+    clocks(*g_eng, kStep);  // 67's step0=67 fires at the next scheduled boundary
+    clocks(*g_eng, kStep);  // 67's step1=71
+    clocks(*g_eng, kStep);  // 67's step2=74 → cycle complete → one-shot → idle
 
     auto seq = noteOnSequence();
     // Expect exactly 6: 60,64,67,67,71,74
@@ -868,18 +915,19 @@ static void test_fifo_two_staccato_notes() {
 //   Expected seq: 60,64,67,67,71,74
 // ---------------------------------------------------------------------------
 static void test_held_then_queue_switch() {
-    g_eng->setParams(makeStdParams());
+    core::ArpParams p = makeStdParams();
+    g_eng->setParams(p);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
 
-    g_eng->noteOn(60, 100, 0);      // t=0: 60 fires, 60 is active
-    g_eng->tick(500);               // t=500: 64
-    g_eng->noteOn(67, 100, 500);    // queue 67 in FIFO while 60 is still in cycle1
-    g_eng->tick(1000);              // t=1000: 67 (step2 of 60's cycle1 = 67)
-                                    //         cycle1 complete → cyclePending_=true (deferred)
-                                    //         (67's step0 fires at the next boundary)
-    g_eng->tick(1500);              // t=1500: cyclePending_ resolved → promote 67;
-                                    //         67's step0=67 fires
-    g_eng->tick(2000);              // t=2000: 71 (67's step1)
-    g_eng->tick(2500);              // t=2500: 74 (67's step2) → cyclePending_=true
+    g_eng->noteOn(60, 100);         // 60 fires, 60 is active
+    clocks(*g_eng, kStep);          // 64
+    g_eng->noteOn(67, 100);         // queue 67 in FIFO while 60 is still in cycle1
+    clocks(*g_eng, kStep);          // 67 (step2 of 60's cycle1 = 67)
+                                    //   cycle1 complete → cyclePending_=true (deferred)
+                                    //   (67's step0 fires at the next boundary)
+    clocks(*g_eng, kStep);          // cyclePending_ resolved → promote 67; 67's step0=67 fires
+    clocks(*g_eng, kStep);          // 71 (67's step1)
+    clocks(*g_eng, kStep);          // 74 (67's step2) → cyclePending_=true
 
     auto seq = noteOnSequence();
     // Expected: 60,64,67, 67,71,74
@@ -891,11 +939,11 @@ static void test_held_then_queue_switch() {
     TEST_ASSERT_EQUAL_INT(71, seq[4]);
     TEST_ASSERT_EQUAL_INT(74, seq[5]);
 
-    // Drive to the next boundary (t=3000) — cyclePending_ resolves, queue empty → idle.
+    // Drive to the next boundary — cyclePending_ resolves, queue empty → idle.
     // No 7th NoteOn must appear.
-    g_eng->tick(3000);
+    clocks(*g_eng, kStep);
     TEST_ASSERT_EQUAL_INT_MESSAGE(6, (int)noteOnSequence().size(),
-        "no 7th NoteOn; engine resolves to idle at t=3000 boundary");
+        "no 7th NoteOn; engine resolves to idle at the next boundary");
     TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(), "idle after 67's cycle completes");
 }
 
@@ -924,18 +972,19 @@ static void test_latch_replaces_at_boundary() {
     core::ArpParams p = makeStdParams();
     p.latch = true;
     g_eng->setParams(p);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
 
-    g_eng->noteOn(60, 100, 0);
-    g_eng->tick(500);
-    g_eng->tick(1000);             // cycle1 complete
-    g_eng->noteOff(60, 1000);      // latch: ignore (no-op)
-    g_eng->noteOn(67, 100, 1000);  // pending replacement
-    g_eng->tick(1500);             // 60 cycle2 step0
-    g_eng->tick(2000);             // 60 cycle2 step1
-    g_eng->tick(2500);             // 60 cycle2 step2 → boundary → install 67, RETURN (no emit yet)
-    g_eng->tick(3000);             // 67's step0=67 fires at the next scheduled boundary
-    g_eng->tick(3500);             // 67's step1=71
-    g_eng->tick(4000);             // 67's step2=74
+    g_eng->noteOn(60, 100);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);         // cycle1 complete
+    g_eng->noteOff(60);            // latch: ignore (no-op)
+    g_eng->noteOn(67, 100);        // pending replacement
+    clocks(*g_eng, kStep);         // 60 cycle2 step0
+    clocks(*g_eng, kStep);         // 60 cycle2 step1
+    clocks(*g_eng, kStep);         // 60 cycle2 step2 → boundary → install 67, RETURN (no emit yet)
+    clocks(*g_eng, kStep);         // 67's step0=67 fires at the next scheduled boundary
+    clocks(*g_eng, kStep);         // 67's step1=71
+    clocks(*g_eng, kStep);         // 67's step2=74
 
     auto seq = noteOnSequence();
     // 60 plays: cycle1 (60,64,67) + cycle2 (60,64,67) = 6 times
@@ -960,12 +1009,14 @@ static void test_latch_replaces_at_boundary() {
 //     - Further ticks emit nothing new
 // ---------------------------------------------------------------------------
 static void test_stop_clears_queue() {
-    g_eng->setParams(makeStdParams());
+    core::ArpParams p = makeStdParams();
+    g_eng->setParams(p);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
 
-    g_eng->noteOn(60, 100, 0);   // active
-    g_eng->noteOff(60, 0);       // no-op (one-shot: hold state irrelevant)
-    g_eng->noteOn(67, 100, 0);   // queued
-    g_eng->noteOff(67, 0);       // no-op
+    g_eng->noteOn(60, 100);   // active
+    g_eng->noteOff(60);       // no-op (one-shot: hold state irrelevant)
+    g_eng->noteOn(67, 100);   // queued
+    g_eng->noteOff(67);       // no-op
 
     // 60 is playing step0 right now
     TEST_ASSERT_TRUE(g_eng->isPlaying());
@@ -984,9 +1035,9 @@ static void test_stop_clears_queue() {
 
     // Further ticks must not emit anything
     int eventsAfterStop = (int)g_out->events.size();
-    g_eng->tick(500);
-    g_eng->tick(1000);
-    g_eng->tick(1500);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
     TEST_ASSERT_EQUAL_INT(eventsAfterStop, (int)g_out->events.size());
 }
 
@@ -1010,28 +1061,29 @@ static void test_steps1_many_staccato_no_stuck_note() {
     p.swingPercent  = 50;
     p.latch         = false;
     g_eng->setParams(p);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
 
     // With one-shot model, steps=1 (seqLen_=1), and the decide-at-start fix:
-    //   noteOn(60,0) → active=false → starts fresh: fires 60, cyclePending_=true,
-    //                                               active_ stays true.
-    //   noteOff(60,0) → no-op.
-    //   noteOn(62,0) → active=true → appended to FIFO (not a fresh start).
-    //   noteOff(62,0) → no-op.
-    //   noteOn(64,0) → active=true → appended to FIFO.
-    //   noteOff(64,0) → no-op.
-    //   tick(500):  beginStep resolves cyclePending_ → qPop(60), initSeqFromHead(62)
-    //               → fires 62, cyclePending_=true.
-    //   tick(1000): beginStep resolves cyclePending_ → qPop(62), initSeqFromHead(64)
-    //               → fires 64, cyclePending_=true.
-    //   tick(1500): beginStep resolves cyclePending_ → qPop(64), qCount_=0 → idle.
-    // Total: 3 NoteOns in order 60 (t=0), 62 (t=500), 64 (t=1000).
+    //   noteOn(60) → active=false → starts fresh: fires 60, cyclePending_=true,
+    //                                             active_ stays true.
+    //   noteOff(60) → no-op.
+    //   noteOn(62) → active=true → appended to FIFO (not a fresh start).
+    //   noteOff(62) → no-op.
+    //   noteOn(64) → active=true → appended to FIFO.
+    //   noteOff(64) → no-op.
+    //   step boundary: beginStep resolves cyclePending_ → qPop(60), initSeqFromHead(62)
+    //                  → fires 62, cyclePending_=true.
+    //   step boundary: beginStep resolves cyclePending_ → qPop(62), initSeqFromHead(64)
+    //                  → fires 64, cyclePending_=true.
+    //   step boundary: beginStep resolves cyclePending_ → qPop(64), qCount_=0 → idle.
+    // Total: 3 NoteOns in order 60, 62, 64.
 
-    g_eng->noteOn (60, 100, 0);  // fires 60 at t=0; cyclePending_=true, active stays true
-    g_eng->noteOff(60, 0);       // no-op
-    g_eng->noteOn (62, 100, 0);  // active=true → queued in FIFO
-    g_eng->noteOff(62, 0);       // no-op
-    g_eng->noteOn (64, 100, 0);  // active=true → queued in FIFO
-    g_eng->noteOff(64, 0);       // no-op
+    g_eng->noteOn (60, 100);  // fires 60; cyclePending_=true, active stays true
+    g_eng->noteOff(60);       // no-op
+    g_eng->noteOn (62, 100);  // active=true → queued in FIFO
+    g_eng->noteOff(62);       // no-op
+    g_eng->noteOn (64, 100);  // active=true → queued in FIFO
+    g_eng->noteOff(64);       // no-op
 
     // At t=0: only 60 has fired (62 and 64 are in the FIFO, not yet promoted).
     {
@@ -1040,14 +1092,14 @@ static void test_steps1_many_staccato_no_stuck_note() {
             if (e.isOn) noteOns.push_back(e.note);
         }
         TEST_ASSERT_EQUAL_INT_MESSAGE(1, (int)noteOns.size(),
-            "at t=0: only note 60 has fired");
+            "initially: only note 60 has fired");
         TEST_ASSERT_EQUAL_INT(60, noteOns[0]);
     }
 
-    // Drive to t=500: 62 fires; t=1000: 64 fires; t=1500: boundary resolves → idle.
-    g_eng->tick(500);   // 62 fires
-    g_eng->tick(1000);  // 64 fires
-    g_eng->tick(1500);  // cyclePending_ of 64 resolves → queue empty → idle
+    // Drive 3 step boundaries: 62 fires, 64 fires, then boundary resolves → idle.
+    clocks(*g_eng, kStep);  // 62 fires
+    clocks(*g_eng, kStep);  // 64 fires
+    clocks(*g_eng, kStep);  // cyclePending_ of 64 resolves → queue empty → idle
 
     {
         std::vector<uint8_t> noteOns;
@@ -1055,7 +1107,7 @@ static void test_steps1_many_staccato_no_stuck_note() {
             if (e.isOn) noteOns.push_back(e.note);
         }
         TEST_ASSERT_EQUAL_INT_MESSAGE(3, (int)noteOns.size(),
-            "expected 3 NoteOns total: 60 (t=0), 62 (t=500), 64 (t=1000)");
+            "expected 3 NoteOns total: 60, 62, 64");
         TEST_ASSERT_EQUAL_INT(60, noteOns[0]);
         TEST_ASSERT_EQUAL_INT(62, noteOns[1]);
         TEST_ASSERT_EQUAL_INT(64, noteOns[2]);
@@ -1065,9 +1117,9 @@ static void test_steps1_many_staccato_no_stuck_note() {
     TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(),
         "engine must be idle after all queued notes are exhausted");
 
-    // Drive ticks to flush any deferred gate NoteOff (gate = 80% of 500 ms = 400 ms).
-    g_eng->tick(1900);
-    g_eng->tick(2000);
+    // Drive ticks to flush any deferred gate NoteOff (gate = 80% of the step).
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
 
     // NoteOn and NoteOff counts must be balanced (no stuck note).
     int ons = 0, offs = 0;
@@ -1115,19 +1167,20 @@ static void test_latch_latest_wins() {
     p.swingPercent  = 50;
     p.latch         = true;
     g_eng->setParams(p);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
 
-    g_eng->noteOn(60, 100, 0);    // starts; 60 fires immediately
-    g_eng->tick(500);             // step1=64 of 60's triad
+    g_eng->noteOn(60, 100);    // starts; 60 fires immediately
+    clocks(*g_eng, kStep);     // step1=64 of 60's triad
     // Before cycle boundary: store two pending replacements; last one wins.
-    g_eng->noteOn(63, 100, 500);  // first pending (would quantize to 64)
-    g_eng->noteOn(69, 100, 500);  // overwrites pending — 69 is the winner
-    g_eng->tick(1000);            // step2=67; cycle boundary → install 69, RETURN (no emit yet)
-    // t=1000: boundary tick done; 69's step0 is NOT emitted yet.
+    g_eng->noteOn(63, 100);    // first pending (would quantize to 64)
+    g_eng->noteOn(69, 100);    // overwrites pending — 69 is the winner
+    clocks(*g_eng, kStep);     // step2=67; cycle boundary → install 69, RETURN (no emit yet)
+    // boundary tick done; 69's step0 is NOT emitted yet.
     // Capture the event list size here — everything after this must be 69's sequence.
     int boundaryIdx = (int)g_out->events.size();
-    g_eng->tick(1500);            // 69's step0=69 fires at the next scheduled boundary
-    g_eng->tick(2000);            // 69's step1=72
-    g_eng->tick(2500);            // 69's step2=76
+    clocks(*g_eng, kStep);     // 69's step0=69 fires at the next scheduled boundary
+    clocks(*g_eng, kStep);     // 69's step1=72
+    clocks(*g_eng, kStep);     // 69's step2=76
 
     auto seq = noteOnSequence();
 
@@ -1174,19 +1227,20 @@ static void test_queue_full_no_crash() {
     p.swingPercent  = 50;
     p.latch         = false;
     g_eng->setParams(p);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
 
     // Push 20 staccato notes (kQueueCap=16; the extra 4 are silently dropped).
     // Use MIDI notes 48..67 — all diatonic or chromatically quantizable in C major.
     for (int i = 0; i < 20; ++i) {
         uint8_t n = static_cast<uint8_t>(48 + i);
-        g_eng->noteOn (n, 100, 0);
-        g_eng->noteOff(n, 0);
+        g_eng->noteOn (n, 100);
+        g_eng->noteOff(n);
     }
 
-    // Drive enough ticks for all 16 accepted notes to play through their 3-step cycles.
-    // Worst case: 16 notes × 3 steps × 500 ms = 24 000 ms.
-    for (int t = 500; t <= 25000; t += 500) {
-        g_eng->tick(static_cast<uint32_t>(t));
+    // Drive enough step boundaries for all 16 accepted notes to play through their
+    // 3-step cycles. Worst case: 16 notes × 3 steps = 48 steps; drive 50 to be safe.
+    for (int s = 0; s < 50; ++s) {
+        clocks(*g_eng, kStep);
     }
 
     // Engine must be idle (all cycles complete).
@@ -1239,8 +1293,11 @@ static void test_mute_suppresses_noteon_keeps_off_and_echo() {
     p.latch         = true;                      // latch so it keeps looping
     g_eng->setParams(p);
 
-    // t=0: step0 NoteOn(60) → out + echo
-    g_eng->noteOn(60, 100, 0);
+    const int kStep = core::arpRateTicks(p.rate);          // Quarter = 24
+    const int kGate = kStep * p.gatePercent / 100;         // 24*80/100 = 19
+
+    // step0 NoteOn(60) → out + echo
+    g_eng->noteOn(60, 100);
     TEST_ASSERT_EQUAL_INT(1, (int)g_out->events.size());
     TEST_ASSERT_TRUE(g_out->events[0].isOn);
     TEST_ASSERT_EQUAL_INT(1, g_echoCount);
@@ -1248,8 +1305,8 @@ static void test_mute_suppresses_noteon_keeps_off_and_echo() {
     // Mute on
     g_eng->setMuted(true);
 
-    // t=400: gate NoteOff for step0 fires to out (no stuck note), echo fires too
-    g_eng->tick(400);
+    // gate ticks in: gate NoteOff for step0 fires to out (no stuck note), echo fires too
+    clocks(*g_eng, kGate);
     // There must be a NoteOff for 60 in out
     {
         bool hasOff60 = false;
@@ -1260,9 +1317,9 @@ static void test_mute_suppresses_noteon_keeps_off_and_echo() {
     }
     int echoAfterGate = g_echoCount;  // echo fired for NoteOff
 
-    // t=500: step1 fires — NoteOn must NOT be in out, but echo must fire
+    // step1 boundary fires — NoteOn must NOT be in out, but echo must fire
     int outSizeBefore = (int)g_out->events.size();
-    g_eng->tick(500);
+    clocks(*g_eng, kStep - kGate);
 
     // Count new NoteOn events added after t=500
     int newNoteOns = 0;
@@ -1279,12 +1336,12 @@ static void test_mute_suppresses_noteon_keeps_off_and_echo() {
     // Unmute
     g_eng->setMuted(false);
 
-    // t=900: gate NoteOff fires for the step that ran at t=500
-    g_eng->tick(900);
+    // gate NoteOff fires for the step that ran at the previous boundary
+    clocks(*g_eng, kGate);
 
-    // t=1000: step2 fires — NoteOn MUST now appear in out
+    // step2 boundary fires — NoteOn MUST now appear in out
     int outSizeBefore2 = (int)g_out->events.size();
-    g_eng->tick(1000);
+    clocks(*g_eng, kStep - kGate);
     int newNoteOns2 = 0;
     for (int i = outSizeBefore2; i < (int)g_out->events.size(); ++i) {
         if (g_out->events[i].isOn) ++newNoteOns2;
@@ -1296,18 +1353,18 @@ static void test_mute_suppresses_noteon_keeps_off_and_echo() {
 // ---------------------------------------------------------------------------
 // Test: promotion starts at the NEXT step boundary, not the same tick.
 //
-// bpm=120, Quarter=500ms/step, steps=3, latch=false (one-shot FIFO).
+// bpm=120, Quarter=24 ticks/step, steps=3, latch=false (one-shot FIFO).
 // Sequence A (root=60, C major Up): 60, 64, 67
 // Sequence B (root=67, C major Up): 67, 71, 74 — queued while A is active.
 //
-// Timeline:
-//   t=0:    noteOn(60)  → A fires step0=60
-//   t=0:    noteOn(67)  → appended to FIFO (B queued)
-//   t=500:  tick        → A step1=64
-//   t=1000: tick        → A step2=67; cycle complete → one-shot → qPop 60,
+// Timeline (in step boundaries):
+//   start:   noteOn(60)  → A fires step0=60
+//   start:   noteOn(67)  → appended to FIFO (B queued)
+//   +1 step:             → A step1=64
+//   +1 step:             → A step2=67; cycle complete → one-shot → qPop 60,
 //                          initSeqFromHead (B), RETURN — do NOT emit yet.
 //           Only 3 NoteOns at this point: A's 60, 64, 67.
-//   t=1500: tick fires at nextStepMs_ (set during A's step2) → B step0=67 emits.
+//   +1 step:             → B step0=67 emits at the next scheduled boundary.
 //           Total NoteOns = 4 now.
 // ---------------------------------------------------------------------------
 static void test_promotion_starts_next_boundary_not_same_tick() {
@@ -1327,12 +1384,13 @@ static void test_promotion_starts_next_boundary_not_same_tick() {
     eng.setScale(&sc);
     eng.setBpm(120);
     eng.setParams(p);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
 
-    eng.noteOn(60, 100, 0);   // sequence A = 60,64,67
-    eng.noteOn(67, 100, 0);   // sequence B queued (one-shot FIFO)
+    eng.noteOn(60, 100);   // sequence A = 60,64,67
+    eng.noteOn(67, 100);   // sequence B queued (one-shot FIFO)
 
-    eng.tick(500);   // A step1 = 64
-    eng.tick(1000);  // A step2 = 67; cycle complete; B must NOT emit yet
+    clocks(eng, kStep);    // A step1 = 64
+    clocks(eng, kStep);    // A step2 = 67; cycle complete; B must NOT emit yet
 
     auto countNoteOns = [&]() {
         int n = 0;
@@ -1340,15 +1398,15 @@ static void test_promotion_starts_next_boundary_not_same_tick() {
         return n;
     };
 
-    // At t=1000: only A's three notes (60, 64, 67) have sounded — no B yet.
+    // At A's cycle boundary: only A's three notes (60, 64, 67) have sounded — no B yet.
     TEST_ASSERT_EQUAL_INT_MESSAGE(3, countNoteOns(),
-        "at t=1000 (A's cycle boundary): only A's 3 NoteOns must exist, B must not emit yet");
+        "A's cycle boundary: only A's 3 NoteOns must exist, B must not emit yet");
 
-    eng.tick(1500);  // now B's step0 (67) plays at the next scheduled boundary
+    clocks(eng, kStep);    // now B's step0 (67) plays at the next scheduled boundary
 
-    // At t=1500: B's first note added — total = 4 NoteOns.
+    // B's first note added — total = 4 NoteOns.
     TEST_ASSERT_EQUAL_INT_MESSAGE(4, countNoteOns(),
-        "at t=1500: B's first note must play exactly one step after A's last note");
+        "B's first note must play exactly one step after A's last note");
 }
 
 // ---------------------------------------------------------------------------
@@ -1377,16 +1435,17 @@ static void test_latch_replacement_starts_next_boundary_not_same_tick() {
     eng.setScale(&sc);
     eng.setBpm(120);
     eng.setParams(p);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
 
-    eng.noteOn(60, 100, 0);   // A starts; 60 fires
-    eng.tick(500);             // A step1=64
-    eng.tick(1000);            // A step2=67; cycle1 boundary → latch loops
+    eng.noteOn(60, 100);   // A starts; 60 fires
+    clocks(eng, kStep);    // A step1=64
+    clocks(eng, kStep);    // A step2=67; cycle1 boundary → latch loops
 
-    eng.noteOn(67, 100, 1000); // pending replacement = 67
+    eng.noteOn(67, 100);   // pending replacement = 67
 
-    eng.tick(1500);            // A cycle2 step0=60
-    eng.tick(2000);            // A cycle2 step1=64
-    eng.tick(2500);            // A cycle2 step2=67; boundary → install 67, RETURN (no emit)
+    clocks(eng, kStep);    // A cycle2 step0=60
+    clocks(eng, kStep);    // A cycle2 step1=64
+    clocks(eng, kStep);    // A cycle2 step2=67; boundary → install 67, RETURN (no emit)
 
     auto countNoteOns = [&]() {
         int n = 0;
@@ -1394,16 +1453,16 @@ static void test_latch_replacement_starts_next_boundary_not_same_tick() {
         return n;
     };
 
-    // At t=2500: A has played 6 notes (cycle1 + cycle2), 67 not yet emitted for B.
-    int nAt2500 = countNoteOns();
-    TEST_ASSERT_EQUAL_INT_MESSAGE(6, nAt2500,
-        "at t=2500 (latch replace boundary): only A's 6 NoteOns, B must not emit yet");
+    // At the replace boundary: A has played 6 notes (cycle1 + cycle2), 67 not yet emitted for B.
+    int nAtBoundary = countNoteOns();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(6, nAtBoundary,
+        "latch replace boundary: only A's 6 NoteOns, B must not emit yet");
 
-    eng.tick(3000);  // B step0=67 fires at next boundary
+    clocks(eng, kStep);    // B step0=67 fires at next boundary
 
-    int nAt3000 = countNoteOns();
-    TEST_ASSERT_EQUAL_INT_MESSAGE(7, nAt3000,
-        "at t=3000: B's first note (67) fires exactly one step after A's last note");
+    int nAfterBoundary = countNoteOns();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(7, nAfterBoundary,
+        "B's first note (67) fires exactly one step after A's last note");
 
     // Collect the note sequence
     std::vector<uint8_t> noteOns;
@@ -1417,29 +1476,28 @@ static void test_latch_replacement_starts_next_boundary_not_same_tick() {
 // ---------------------------------------------------------------------------
 // Test: keyboard note arriving during the last step must not cut that note.
 //
-// bpm=120, Quarter=500ms/step, gatePercent=80, steps=3, latch=false.
+// bpm=120, Quarter=24 ticks/step, gatePercent=80, steps=3, latch=false.
 // Sequence for root=60 (C major Up): 60, 64, 67.
-// Gate = 80% × 500 = 400 ms.
+// Gate = 80% × 24 = 19 ticks.
 //
-// Timeline:
-//   t=0:    noteOn(60) → step0=60 fires (NoteOn), gate off at t=400
-//   t=500:  tick       → step1=64 fires
-//   t=1000: tick       → step2=67 fires (LAST note, gate off at t=1400)
-//   t=1100: noteOn(72) during the last step's gate window (67 still sounding)
+// Timeline (in ticks):
+//   tick 0:  noteOn(60) → step0=60 fires (NoteOn), gate off at tick 19
+//   +1 step: step1=64 fires
+//   +1 step: step2=67 fires (LAST note, gate off 19 ticks later)
+//   mid-step (before gate): noteOn(72) while 67 still sounding
 //
-// BUG (current code): active_ is set to false immediately when 67 is emitted
-//   because the cycle is complete; noteOn(72) sees active_=false, starts fresh,
-//   and kills 67 early (emits NoteOff(67) at t=1100).
+// BUG (old code): active_ would be set false immediately when 67 was emitted
+//   because the cycle is complete; noteOn(72) would see active_=false, start
+//   fresh, and kill 67 early.
 //
 // FIX: active_ stays true until the next step boundary; noteOn(72) simply
-//   appends to the FIFO. At t=1500 (next boundary) beginStep resolves the
-//   boundary, 67's gate fires normally at t=1400, and 72's step0 fires at t=1500.
+//   appends to the FIFO. The next boundary resolves it: 67's gate fires
+//   normally, and 72's step0 fires at the boundary.
 //
 // Assertions:
-//   At t=1100: exactly 3 NoteOns emitted so far (60,64,67 — no 4th yet).
-//              No NoteOff for 67 yet (gate ends at 1400, not 1100).
-//   At t=1500: 4th NoteOn emitted (72's step0).
-//              The 4th NoteOn must be for note 72.
+//   Mid last-step: exactly 3 NoteOns so far (60,64,67 — no 4th yet).
+//                  No NoteOff for 67 yet (gate not reached).
+//   At next boundary: 4th NoteOn emitted (72's step0), and it is note 72.
 // ---------------------------------------------------------------------------
 static void test_keyboard_note_during_last_step_not_cut() {
     core::ArpEngine eng;
@@ -1458,13 +1516,18 @@ static void test_keyboard_note_during_last_step_not_cut() {
     eng.setScale(&sc);
     eng.setBpm(120);
     eng.setParams(p);
+    const int kStep = core::arpRateTicks(p.rate);          // Quarter = 24
+    const int kGate = kStep * p.gatePercent / 100;         // 24*80/100 = 19
 
-    eng.noteOn(60, 100, 0);    // sequence: 60, 64, 67
-    eng.tick(500);              // step1 = 64
-    eng.tick(1000);             // step2 = 67 (LAST note of cycle); gate off at t=1400
+    eng.noteOn(60, 100);       // sequence: 60, 64, 67
+    clocks(eng, kStep);        // step1 = 64
+    clocks(eng, kStep);        // step2 = 67 (LAST note of cycle); gate off kGate ticks later
 
-    // New keyboard note arrives while 67 is still sounding (t=1100 < t=1400).
-    eng.noteOn(72, 100, 1100);
+    // Advance a few ticks into the last step, but stay before the gate NoteOff.
+    clocks(eng, kGate - 1);    // still within 67's gate window (67 still sounding)
+
+    // New keyboard note arrives while 67 is still sounding.
+    eng.noteOn(72, 100);
 
     // Helper lambdas to inspect events.
     auto countNoteOns = [&]() {
@@ -1482,21 +1545,21 @@ static void test_keyboard_note_during_last_step_not_cut() {
         return last;
     };
 
-    // At t=1100: exactly 3 NoteOns (60, 64, 67); 72 must not have started yet.
+    // Mid last-step: exactly 3 NoteOns (60, 64, 67); 72 must not have started yet.
     TEST_ASSERT_EQUAL_INT_MESSAGE(3, countNoteOns(),
-        "at t=1100: only 3 NoteOns (60,64,67); 72 must not start mid-step");
+        "mid last-step: only 3 NoteOns (60,64,67); 72 must not start mid-step");
 
-    // 67 must NOT have been cut: no NoteOff for 67 yet (gate ends at t=1400).
+    // 67 must NOT have been cut: no NoteOff for 67 yet (gate not reached).
     TEST_ASSERT_FALSE_MESSAGE(hasNoteOff(67),
-        "at t=1100: NoteOff for 67 must not be emitted yet (gate ends at t=1400)");
+        "mid last-step: NoteOff for 67 must not be emitted yet (gate not reached)");
 
-    // Drive to t=1500 (next step boundary); 67's gate fires at t=1400, then
-    // the boundary at t=1500 resolves and 72's step0 fires.
-    eng.tick(1500);
+    // Drive to the next step boundary; 67's gate fires partway through, then
+    // the boundary resolves and 72's step0 fires.
+    clocks(eng, kStep - (kGate - 1));
 
     // Now there must be 4 NoteOns total.
     TEST_ASSERT_EQUAL_INT_MESSAGE(4, countNoteOns(),
-        "at t=1500: 4th NoteOn (72's step0) must have fired at the next boundary");
+        "next boundary: 4th NoteOn (72's step0) must have fired");
 
     // The 4th NoteOn must be note 72.
     TEST_ASSERT_EQUAL_INT_MESSAGE(72, lastNoteOnNote(),

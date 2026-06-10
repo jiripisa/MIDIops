@@ -45,9 +45,9 @@ public:
     void setMuted(bool m) { muted_ = m; }
     bool muted() const { return muted_; }
 
-    void noteOn(uint8_t note, uint8_t velocity, uint32_t nowMs);
-    void noteOff(uint8_t note, uint32_t nowMs);
-    void tick(uint32_t nowMs);
+    void noteOn(uint8_t note, uint8_t velocity);
+    void noteOff(uint8_t note);
+    void onClockTick();
     void stop();
     void reset();
 
@@ -75,7 +75,11 @@ private:
     // Helpers
     // ---------------------------------------------------------------------------
     void     emit(bool isOn, uint8_t note, uint8_t velocity);
-    uint32_t msPerStep() const;
+
+    // Length in clock ticks of a step whose emitted-step index is stepCount,
+    // including the swing delay on odd steps (mirrors the ms version's odd-step
+    // boundary shift, expressed in ticks). Never negative.
+    int      stepLenTicks(int stepCount) const;
 
     // Set up seq_/seqPos_/udDir_/stepCount_/activeCycleSteps_ from the queue
     // head WITHOUT emitting any notes.  Call beginStep() afterwards.
@@ -91,7 +95,7 @@ private:
     //   5. Advance seqPos_, increment activeCycleSteps_.
     //   6. If a cycle just completed, set cyclePending_ (boundary deferred to the
     //      next call). No recursion.
-    void     beginStep(uint32_t nowMs);
+    void     beginStep();
 
     int      nextSeqIndex();              // advance seqPos_ per direction
     uint8_t  velocityForStep(int seqPos) const;
@@ -114,10 +118,15 @@ private:
     int      seqPos_ = 0;          // index into seq_ for the NEXT step to emit
     int      stepCount_ = 0;       // emitted-step counter, for swing odd-step detection
     int8_t   udDir_ = +1;          // for UpDown/DownUp traversal
-    uint32_t nextStepMs_ = 0;
+
+    // Tick-based step timing (24-PPQN MIDI clock driven).
+    int      stepTicks_    = 0;    // ticks elapsed in the current step
+    int      curStepLen_   = 0;    // length of the current step in ticks (incl. swing)
+    int      gateTicks_    = 0;    // ticks the current note stays on (set at step start)
+    int      noteAge_      = 0;    // ticks since the current note's NoteOn
+
     bool     noteSounding_ = false;
     uint8_t  soundingNote_ = 0;
-    uint32_t noteOffMs_ = 0;
     uint32_t randState_ = 0x12345;
 
     // Per-active-note cycle tracking.

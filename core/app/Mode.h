@@ -46,6 +46,7 @@ public:
     virtual void onEnter() {}
     virtual void onExit() {}
     virtual void onMidiIn(const MidiMessage& msg) { (void)msg; }
+    virtual void onClockTick() {}
     virtual void onTransport(Transport t) { (void)t; }
     virtual void onRawInput(const RawInput& in) { (void)in; }
     virtual bool capturesTransport() const { return false; }

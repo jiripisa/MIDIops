@@ -71,10 +71,10 @@ void ArpMode::onExit() {
 
 void ArpMode::onMidiIn(const MidiMessage& msg) {
     if (msg.type == MidiType::NoteOn && msg.data2 > 0) {
-        engine_.noteOn(msg.data1, msg.data2, lastNowMs_);
+        engine_.noteOn(msg.data1, msg.data2);
     } else if (msg.type == MidiType::NoteOff ||
                (msg.type == MidiType::NoteOn && msg.data2 == 0)) {
-        engine_.noteOff(msg.data1, lastNowMs_);
+        engine_.noteOff(msg.data1);
     }
 }
 
@@ -94,7 +94,8 @@ void ArpMode::update(uint32_t nowMs) {
     engine_.setScale(&svc_.scale());
     engine_.setParams(params_);
     engine_.setOutChannel(svc_.midiOutChannel());
-    engine_.tick(nowMs);
+    // NOTE: the engine is now tick-driven via onClockTick(); MIDI-clock
+    // forwarding is wired up in a later task. (Previously: engine_.tick(nowMs).)
     model_.tick(nowMs);
 }
 
