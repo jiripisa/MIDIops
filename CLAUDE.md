@@ -83,6 +83,19 @@ Likely next steps:
   * **Per-mapping output channel editor** — currently the editor
     knobs only cover type / gate / direction.
 
+## Reference: Berlin School mode
+
+The **Berlin** mode (a generative Berlin-School MIDI sequencer) is built
+from an external spec distilled from 235 "Synth Seeker" video transcripts:
+
+`/Users/jpisa/Development/Claude/synthseeker/berlin-school-theory-and-generator-spec-EN.md`
+
+Part 1 = theory (scales, tension/release, note-phasing, drunkard's walk,
+high/mid/low voices, odd meters); Part 2 = generator spec (data tables,
+parameter ranges/defaults, the "Generate" algorithm, presets, DO/DON'T).
+This document is the source of truth for Berlin mode's generation rules
+and parameters — consult it whenever working on that mode.
+
 ## Conventions
 
 * C++17 throughout. No exceptions in `core/` (RtMidi throws, host code
