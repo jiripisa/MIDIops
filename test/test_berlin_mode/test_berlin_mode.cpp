@@ -29,11 +29,11 @@ static void test_latch1_play_pause_latch2_stop() {
 }
 
 // ---------------------------------------------------------------------------
-// Latch2/Latch3 are edge-detected: a held-ON latch delivered every main-loop
-// frame must NOT re-trigger. We prove this on Latch2 (Stop) by advancing the
-// playhead, then holding Latch2 ON across many frames: the first ON rewinds,
-// and subsequent (still-ON) frames are no-ops — playhead stays at 0 and the
-// engine remains stopped (it does not "play" or re-fire).
+// Latch2/Latch3 are CHANGE-detected: the shell delivers the latch level every
+// main-loop frame, so a held-ON latch must NOT re-trigger per frame. We prove
+// this on Latch2 (Stop) by advancing the playhead, then holding Latch2 ON
+// across many frames: the first ON rewinds, and subsequent (still-ON) frames
+// are no-ops — playhead stays at 0 and the engine remains stopped.
 // ---------------------------------------------------------------------------
 static void test_held_latch_edge_detect() {
     core::AppShell shell;
@@ -143,10 +143,35 @@ static void test_onexit_silences_sounding_note() {
     TEST_ASSERT_GREATER_THAN(noteOffsBefore, noteOffsAfter);
 }
 
+// ---------------------------------------------------------------------------
+// Latch3 (Generate) fires on EACH flip (up or down), so one toggle = one
+// regenerate (the sim/hardware latch toggles, so rising-only would need an
+// off-then-on to re-trigger). generate() rewinds the playhead to 0, so we
+// prove each flip acted by advancing the playhead and checking a flip resets it.
+// ---------------------------------------------------------------------------
+static void test_latch3_generate_on_each_flip() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // play
+
+    for (int i = 0; i < 12; ++i) berlin.onClockTick();              // 8th step → playhead 1
+    TEST_ASSERT_EQUAL_INT(1, berlin.engine().playhead());
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});   // flip ON → generate
+    TEST_ASSERT_EQUAL_INT(0, berlin.engine().playhead());           // rewound
+
+    for (int i = 0; i < 12; ++i) berlin.onClockTick();              // playhead 1 again
+    TEST_ASSERT_EQUAL_INT(1, berlin.engine().playhead());
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});  // flip OFF → also generates
+    TEST_ASSERT_EQUAL_INT(0, berlin.engine().playhead());           // rewound again
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_latch1_play_pause_latch2_stop);
     RUN_TEST(test_held_latch_edge_detect);
+    RUN_TEST(test_latch3_generate_on_each_flip);
     RUN_TEST(test_structure_screen_edits_and_clamps);
     RUN_TEST(test_character_behavior_screens_edit_clamp);
     RUN_TEST(test_onexit_silences_sounding_note);

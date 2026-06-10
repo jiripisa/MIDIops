@@ -38,12 +38,17 @@ void BerlinMode::update(uint32_t /*nowMs*/) {
 void BerlinMode::onRawInput(const RawInput& in) {
     if (in.kind != RawInput::Kind::Latch) return;     // encoders go via Screen
     if (in.index < 1 || in.index > 3) return;
-    const bool rising = in.on && !lastLatch_[in.index];
+    // The shell delivers the latch level every main-loop frame, so we act on a
+    // state CHANGE, not the level. Play/Pause is level-driven (the switch
+    // position is the run state). Stop and Generate are momentary actions on a
+    // latching switch, so they fire on EITHER flip (up or down) — one toggle =
+    // one action, instead of needing an off-then-on to re-trigger.
+    const bool changed = in.on != lastLatch_[in.index];
     lastLatch_[in.index] = in.on;
     switch (in.index) {
         case 1: in.on ? engine_.play() : engine_.pause(); break;  // Play/Pause (level)
-        case 2: if (rising) engine_.stop();               break;  // Stop (edge)
-        case 3: if (rising) engine_.generate();           break;  // Reset/Generate (edge)
+        case 2: if (changed) engine_.stop();              break;  // Stop (any flip)
+        case 3: if (changed) engine_.generate();          break;  // Reset/Generate (any flip)
     }
 }
 
