@@ -80,10 +80,47 @@ static void test_structure_screen_edits_and_clamps() {
     TEST_ASSERT_EQUAL_INT(0, berlin.params().density);
 }
 
+// ---------------------------------------------------------------------------
+// Character + Behavior screen encoder edits + clamping.
+// ---------------------------------------------------------------------------
+static void test_character_behavior_screens_edit_clamp() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    core::Screen& ch = berlin.screen(1);
+    core::Screen& bh = berlin.screen(2);
+
+    // --- CharacterScreen ---
+    // Gate clamps 40..99 (Enc1)
+    for (int i = 0; i < 100; ++i) ch.onEncoder(1, +1);
+    TEST_ASSERT_EQUAL_INT(99, berlin.params().gatePercent);
+    for (int i = 0; i < 100; ++i) ch.onEncoder(1, -1);
+    TEST_ASSERT_EQUAL_INT(40, berlin.params().gatePercent);
+
+    // OctaveRange clamps 1..3 (Enc4)
+    for (int i = 0; i < 10; ++i) ch.onEncoder(4, +1);
+    TEST_ASSERT_EQUAL_INT(3, berlin.params().octaveRange);
+    for (int i = 0; i < 10; ++i) ch.onEncoder(4, -1);
+    TEST_ASSERT_EQUAL_INT(1, berlin.params().octaveRange);
+
+    // --- BehaviorScreen ---
+    // Morph clamps 0..100 (Enc2, step 5)
+    for (int i = 0; i < 40; ++i) bh.onEncoder(2, +1);
+    TEST_ASSERT_EQUAL_INT(100, berlin.params().morph);
+    for (int i = 0; i < 40; ++i) bh.onEncoder(2, -1);
+    TEST_ASSERT_EQUAL_INT(0, berlin.params().morph);
+
+    // EvolveRate clamps 1..8 (Enc3)
+    for (int i = 0; i < 20; ++i) bh.onEncoder(3, +1);
+    TEST_ASSERT_EQUAL_INT(8, berlin.params().evolveRate);
+    for (int i = 0; i < 20; ++i) bh.onEncoder(3, -1);
+    TEST_ASSERT_EQUAL_INT(1, berlin.params().evolveRate);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_latch1_play_pause_latch2_stop);
     RUN_TEST(test_held_latch_edge_detect);
     RUN_TEST(test_structure_screen_edits_and_clamps);
+    RUN_TEST(test_character_behavior_screens_edit_clamp);
     return UNITY_END();
 }

@@ -13,7 +13,11 @@ BerlinMode::BerlinMode(AppServices& svc) : svc_(svc) {
     engine_.setParams(params_);
 }
 
-Screen& BerlinMode::screen(int) { return structureScreen_; }
+Screen& BerlinMode::screen(int i) {
+    if (i == 1) return characterScreen_;
+    if (i == 2) return behaviorScreen_;
+    return structureScreen_;
+}
 
 void BerlinMode::onEnter() {
     scale_ = svc_.scale();
@@ -72,6 +76,68 @@ void BerlinMode::StructureScreen::render(Display& d) const {
     snprintf(buf, sizeof buf, "%d", p.length);      drawParamCell(d, 1, 0, "LENGTH", buf);
     drawParamCell(d, 0, 1, "RESOL", p.resolution == BerlinResolution::Sixteenth ? "16th" : "8th");
     snprintf(buf, sizeof buf, "%d%%", p.density);   drawParamCell(d, 1, 1, "DENSITY", buf);
+}
+
+// ---- Character screen -------------------------------------------------------
+
+// MIDI note → octave label using C-1 = MIDI 0 convention, e.g. 48 → "C3".
+static void octaveLabel(uint8_t note, char* buf, int n) {
+    snprintf(buf, n, "C%d", note / 12 - 1);
+}
+
+void BerlinMode::CharacterScreen::onEncoder(int index, int delta) {
+    BerlinParams& p = mode_.params_;
+    switch (index) {
+        case 1: { int v = p.gatePercent + delta;     if (v < 40) v = 40; if (v > 99) v = 99;
+                  p.gatePercent = static_cast<uint8_t>(v); } break;
+        case 2: { int v = p.tension + delta * 5;     if (v < 0) v = 0;  if (v > 100) v = 100;
+                  p.tension = static_cast<uint8_t>(v); } break;
+        case 3: { int v = p.octaveBase + delta * 12; if (v < 24) v = 24; if (v > 72) v = 72;
+                  p.octaveBase = static_cast<uint8_t>(v); } break;
+        case 4: { int v = p.octaveRange + delta;     if (v < 1) v = 1;  if (v > 3) v = 3;
+                  p.octaveRange = static_cast<uint8_t>(v); } break;
+    }
+}
+
+void BerlinMode::CharacterScreen::render(Display& d) const {
+    const BerlinParams& p = mode_.params_;
+    char buf[12];
+    snprintf(buf, sizeof buf, "%d%%", p.gatePercent);    drawParamCell(d, 0, 0, "GATE", buf);
+    snprintf(buf, sizeof buf, "%d%%", p.tension);        drawParamCell(d, 1, 0, "TENSION", buf);
+    octaveLabel(p.octaveBase, buf, sizeof buf);          drawParamCell(d, 0, 1, "OCT", buf);
+    snprintf(buf, sizeof buf, "%d", p.octaveRange);      drawParamCell(d, 1, 1, "RANGE", buf);
+}
+
+// ---- Behavior screen --------------------------------------------------------
+
+static const char* behaviorName(BerlinBehavior b) {
+    switch (b) {
+        case BerlinBehavior::Locked: return "Lock";
+        case BerlinBehavior::Evolve: return "Evolve";
+        case BerlinBehavior::Live:   return "Live";
+        default:                     return "?";
+    }
+}
+
+void BerlinMode::BehaviorScreen::onEncoder(int index, int delta) {
+    BerlinParams& p = mode_.params_;
+    switch (index) {
+        case 1: p.behavior = cycleEnum(p.behavior, delta); break;
+        case 2: { int v = p.morph + delta * 5;     if (v < 0) v = 0;  if (v > 100) v = 100;
+                  p.morph = static_cast<uint8_t>(v); } break;
+        case 3: { int v = p.evolveRate + delta;    if (v < 1) v = 1;  if (v > 8) v = 8;
+                  p.evolveRate = static_cast<uint8_t>(v); } break;
+        case 4: break;  // unused
+    }
+}
+
+void BerlinMode::BehaviorScreen::render(Display& d) const {
+    const BerlinParams& p = mode_.params_;
+    char buf[12];
+    drawParamCell(d, 0, 0, "BEHAVIOR", behaviorName(p.behavior));
+    snprintf(buf, sizeof buf, "%d%%", p.morph);        drawParamCell(d, 1, 0, "MORPH", buf);
+    snprintf(buf, sizeof buf, "%d", p.evolveRate);     drawParamCell(d, 0, 1, "EVOLVE", buf);
+    drawParamCell(d, 1, 1, "-", "");
 }
 
 } // namespace core

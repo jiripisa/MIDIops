@@ -20,7 +20,7 @@ public:
     explicit BerlinMode(AppServices& svc);
 
     const char* name() const override { return "Berlin"; }
-    int     screenCount() const override { return 1; }   // Task 6 raises this to 3
+    int     screenCount() const override { return 3; }
     Screen& screen(int i) override;
 
     void onEnter() override;
@@ -54,7 +54,29 @@ private:
         BerlinMode& mode_;
     };
 
-    StructureScreen structureScreen_{*this};
+    class CharacterScreen : public Screen {
+    public:
+        explicit CharacterScreen(BerlinMode& m) : mode_(m) {}
+        const char* name() const override { return "character"; }
+        void onEncoder(int index, int delta) override;
+        void render(Display& d) const override;
+    private:
+        BerlinMode& mode_;
+    };
+
+    class BehaviorScreen : public Screen {
+    public:
+        explicit BehaviorScreen(BerlinMode& m) : mode_(m) {}
+        const char* name() const override { return "behavior"; }
+        void onEncoder(int index, int delta) override;
+        void render(Display& d) const override;
+    private:
+        BerlinMode& mode_;
+    };
+
+    StructureScreen  structureScreen_{*this};
+    CharacterScreen  characterScreen_{*this};
+    BehaviorScreen   behaviorScreen_{*this};
 };
 
 } // namespace core
