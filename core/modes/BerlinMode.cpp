@@ -4,7 +4,8 @@
 
 #include "core/Display.h"
 #include "core/MidiOutput.h"
-#include "core/render/ParamGrid.h"   // cycleEnum, drawParamCell
+#include "core/render/BerlinLayout.h" // drawBerlinParamCell, drawBerlinParamDividers, drawBerlinPianoRoll
+#include "core/render/ParamGrid.h"   // cycleEnum
 
 namespace core {
 
@@ -72,10 +73,14 @@ void BerlinMode::StructureScreen::onEncoder(int index, int delta) {
 void BerlinMode::StructureScreen::render(Display& d) const {
     const BerlinParams& p = mode_.params_;
     char buf[12];
-    drawParamCell(d, 0, 0, "ALGO", algoName(p.algorithm));
-    snprintf(buf, sizeof buf, "%d", p.length);      drawParamCell(d, 1, 0, "LENGTH", buf);
-    drawParamCell(d, 0, 1, "RESOL", p.resolution == BerlinResolution::Sixteenth ? "16th" : "8th");
-    snprintf(buf, sizeof buf, "%d%%", p.density);   drawParamCell(d, 1, 1, "DENSITY", buf);
+    drawBerlinParamCell(d, 0, "ALGO",    algoName(p.algorithm));
+    snprintf(buf, sizeof buf, "%d", p.length);
+    drawBerlinParamCell(d, 1, "LENGTH",  buf);
+    drawBerlinParamCell(d, 2, "RESOL",   p.resolution == BerlinResolution::Sixteenth ? "16th" : "8th");
+    snprintf(buf, sizeof buf, "%d%%", p.density);
+    drawBerlinParamCell(d, 3, "DENSITY", buf);
+    drawBerlinParamDividers(d);
+    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(), color::Green);
 }
 
 // ---- Character screen -------------------------------------------------------
@@ -102,10 +107,16 @@ void BerlinMode::CharacterScreen::onEncoder(int index, int delta) {
 void BerlinMode::CharacterScreen::render(Display& d) const {
     const BerlinParams& p = mode_.params_;
     char buf[12];
-    snprintf(buf, sizeof buf, "%d%%", p.gatePercent);    drawParamCell(d, 0, 0, "GATE", buf);
-    snprintf(buf, sizeof buf, "%d%%", p.tension);        drawParamCell(d, 1, 0, "TENSION", buf);
-    octaveLabel(p.octaveBase, buf, sizeof buf);          drawParamCell(d, 0, 1, "OCT", buf);
-    snprintf(buf, sizeof buf, "%d", p.octaveRange);      drawParamCell(d, 1, 1, "RANGE", buf);
+    snprintf(buf, sizeof buf, "%d%%", p.gatePercent);
+    drawBerlinParamCell(d, 0, "GATE",    buf);
+    snprintf(buf, sizeof buf, "%d%%", p.tension);
+    drawBerlinParamCell(d, 1, "TENSION", buf);
+    octaveLabel(p.octaveBase, buf, sizeof buf);
+    drawBerlinParamCell(d, 2, "OCT",     buf);
+    snprintf(buf, sizeof buf, "%d", p.octaveRange);
+    drawBerlinParamCell(d, 3, "RANGE",   buf);
+    drawBerlinParamDividers(d);
+    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(), color::Green);
 }
 
 // ---- Behavior screen --------------------------------------------------------
@@ -134,10 +145,14 @@ void BerlinMode::BehaviorScreen::onEncoder(int index, int delta) {
 void BerlinMode::BehaviorScreen::render(Display& d) const {
     const BerlinParams& p = mode_.params_;
     char buf[12];
-    drawParamCell(d, 0, 0, "BEHAVIOR", behaviorName(p.behavior));
-    snprintf(buf, sizeof buf, "%d%%", p.morph);        drawParamCell(d, 1, 0, "MORPH", buf);
-    snprintf(buf, sizeof buf, "%d", p.evolveRate);     drawParamCell(d, 0, 1, "EVOLVE", buf);
-    drawParamCell(d, 1, 1, "-", "");
+    drawBerlinParamCell(d, 0, "BEHAVIOR", behaviorName(p.behavior));
+    snprintf(buf, sizeof buf, "%d%%", p.morph);
+    drawBerlinParamCell(d, 1, "MORPH",    buf);
+    snprintf(buf, sizeof buf, "%d", p.evolveRate);
+    drawBerlinParamCell(d, 2, "EVOLVE",   buf);
+    drawBerlinParamCell(d, 3, "-",        "");
+    drawBerlinParamDividers(d);
+    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(), color::Green);
 }
 
 } // namespace core
