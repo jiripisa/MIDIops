@@ -54,7 +54,27 @@ void RtMidiInput::rtMidiCallback(double /*timestamp*/,
     if (!self || !bytes || bytes->empty()) return;
 
     const uint8_t status = (*bytes)[0];
-    if (status < 0x80 || status >= 0xF0) return;  // ignore realtime/sysex
+
+    // Deliver realtime clock/transport messages before the channel-voice guard.
+    {
+        core::MidiType rtType = core::MidiType::Unknown;
+        switch (status) {
+            case 0xF8: rtType = core::MidiType::Clock;    break;
+            case 0xFA: rtType = core::MidiType::Start;    break;
+            case 0xFB: rtType = core::MidiType::Continue; break;
+            case 0xFC: rtType = core::MidiType::Stop;     break;
+            default: break;
+        }
+        if (rtType != core::MidiType::Unknown) {
+            core::MidiMessage rtMsg;
+            rtMsg.type = rtType;
+            std::lock_guard<std::mutex> lock(self->mu_);
+            self->queue_.push_back(rtMsg);
+            return;
+        }
+    }
+
+    if (status < 0x80 || status >= 0xF0) return;  // ignore other system/sysex
 
     core::MidiMessage msg;
     msg.channel = static_cast<uint8_t>((status & 0x0F) + 1);

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "core/ClockFollower.h"
 #include "core/Scale.h"
 #include "core/app/AppServices.h"
 #include "core/app/Mode.h"
@@ -44,7 +45,7 @@ public:
     uint8_t  midiInChannel() const override { return midiInChannel_; }
     void     setMidiInChannel(uint8_t ch) override { if (ch <= 16) midiInChannel_ = ch; }
     ClockSource clockSource() const override { return clockSource_; }
-    void     setClockSource(ClockSource s) override { clockSource_ = s; }
+    void     setClockSource(ClockSource s) override;
 
     // Inspectors for tests.
     int activeModeIndex() const { return activeMode_; }
@@ -70,6 +71,7 @@ private:
     uint8_t        midiOutChannel_ = 1;
     uint8_t        midiInChannel_  = 0;     // OMNI
     ClockSource    clockSource_    = ClockSource::Internal;
+    ClockFollower  clockFollower_;
     // transportState_ is the authoritative playback state (used from the
     // transport task on); transport_ holds the last command issued.
     TransportState transportState_ = TransportState::Stopped;

@@ -23,4 +23,9 @@ struct FakeMidiOutput : core::MidiOutput {
     void sendNoteOff(uint8_t channel, uint8_t note) override {
         events.push_back({false, channel, note, 0});
     }
+
+    uint32_t pendingTicks = 0;   // tests set this; consumeClockTicks() drains it
+    int      forwarded    = 0;   // count of forwardClock() calls
+    uint32_t consumeClockTicks() override { uint32_t n = pendingTicks; pendingTicks = 0; return n; }
+    void     forwardClock() override { ++forwarded; }
 };

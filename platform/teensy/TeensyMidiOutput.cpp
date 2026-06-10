@@ -6,8 +6,9 @@
 
 namespace {
 
-IntervalTimer g_clockTimer;
-uint16_t      g_currentBpm = 0;
+IntervalTimer        g_clockTimer;
+uint16_t             g_currentBpm = 0;
+volatile uint32_t    g_clockTicks = 0;
 
 void clockIsr() {
     // Send the clock pulse straight from the ISR, then force-flush the USB
@@ -20,6 +21,7 @@ void clockIsr() {
     // it from an ISR is safe.
     usbMIDI.sendRealTime(usbMIDI.Clock);
     usbMIDI.send_now();
+    ++g_clockTicks;
 }
 
 } // namespace
@@ -64,4 +66,17 @@ void TeensyMidiOutput::sendNoteOn(uint8_t channel, uint8_t note, uint8_t velocit
 void TeensyMidiOutput::sendNoteOff(uint8_t channel, uint8_t note) {
     if (channel < 1 || channel > 16) return;
     usbMIDI.sendNoteOff(note, 0, channel);
+}
+
+uint32_t TeensyMidiOutput::consumeClockTicks() {
+    noInterrupts();
+    uint32_t n = g_clockTicks;
+    g_clockTicks = 0;
+    interrupts();
+    return n;
+}
+
+void TeensyMidiOutput::forwardClock() {
+    usbMIDI.sendRealTime(usbMIDI.Clock);
+    usbMIDI.send_now();
 }

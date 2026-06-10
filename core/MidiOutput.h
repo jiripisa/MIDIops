@@ -34,6 +34,16 @@ public:
     // running-status equivalent of a NoteOff and is permitted.
     virtual void sendNoteOn (uint8_t channel, uint8_t note, uint8_t velocity) = 0;
     virtual void sendNoteOff(uint8_t channel, uint8_t note) = 0;
+
+    // Number of internal clock pulses generated since the last call, then
+    // reset to 0. Lets the main loop drive tick-based engines from the
+    // autonomous clock master without losing pulses. Returns 0 when the
+    // internal clock is stopped (e.g. following an external clock).
+    virtual uint32_t consumeClockTicks() = 0;
+
+    // Send a single MIDI Clock (0xF8) downstream — used to forward an
+    // external clock pulse when following an external source.
+    virtual void forwardClock() = 0;
 };
 
 } // namespace core

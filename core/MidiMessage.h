@@ -14,6 +14,11 @@ enum class MidiType : uint8_t {
     ProgramChange      = 0xC0,
     ChannelAftertouch  = 0xD0,
     PitchBend          = 0xE0,
+    // Realtime (single-byte, no channel, ignored by isChannelVoice())
+    Clock              = 0xF8,
+    Start              = 0xFA,
+    Continue           = 0xFB,
+    Stop               = 0xFC,
 };
 
 struct MidiMessage {

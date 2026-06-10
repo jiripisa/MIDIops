@@ -25,6 +25,10 @@ bool TeensyMidiInput::poll(core::MidiMessage& out) {
         case usbMIDI.ProgramChange:     type = core::MidiType::ProgramChange;     break;
         case usbMIDI.AfterTouchChannel: type = core::MidiType::ChannelAftertouch; break;
         case usbMIDI.PitchBend:         type = core::MidiType::PitchBend;         break;
+        case usbMIDI.Clock:             type = core::MidiType::Clock;             break;
+        case usbMIDI.Start:             type = core::MidiType::Start;             break;
+        case usbMIDI.Continue:          type = core::MidiType::Continue;          break;
+        case usbMIDI.Stop:              type = core::MidiType::Stop;              break;
         default: return false;
     }
 

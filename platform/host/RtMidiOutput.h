@@ -34,6 +34,8 @@ public:
     void sendStop()     override;
     void sendNoteOn (uint8_t channel, uint8_t note, uint8_t velocity) override;
     void sendNoteOff(uint8_t channel, uint8_t note) override;
+    uint32_t consumeClockTicks() override;
+    void     forwardClock() override;
 
 private:
     void sendByte(unsigned char status);
@@ -47,4 +49,5 @@ private:
     std::thread           clockThread_;
     std::atomic<bool>     clockRunning_  {false};
     std::atomic<uint32_t> clockPeriodUs_ {0};
+    std::atomic<uint32_t> clockTicks_    {0};
 };

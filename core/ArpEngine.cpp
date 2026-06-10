@@ -12,10 +12,19 @@ namespace core {
 // Timing
 // ---------------------------------------------------------------------------
 
-uint32_t ArpEngine::msPerStep() const {
-    // ticks * (60000 ms/min) / (bpm * 24 ticks/beat)
-    // Example: Quarter(24 ticks) at 120 BPM → 24*60000/(120*24) = 500 ms
-    return static_cast<uint32_t>(arpRateTicks(params_.rate)) * 60000u / (bpm_ * 24u);
+int ArpEngine::stepLenTicks(int stepCount) const {
+    // Base step length in 24-PPQN clock ticks.
+    int base = arpRateTicks(params_.rate);
+
+    // Swing: lengthen odd steps so the following step lands later.
+    // Mirrors the ms version: odd steps (stepCount odd) get an extra
+    // (swingPercent - 50) * base / 100 ticks. Never negative.
+    if (params_.swingPercent != 50 && (stepCount & 1)) {
+        int swing = (static_cast<int>(params_.swingPercent) - 50) * base / 100;
+        if (swing < 0) swing = 0;
+        base += swing;
+    }
+    return base;
 }
 
 // ---------------------------------------------------------------------------
@@ -39,7 +48,7 @@ void ArpEngine::qPop() {
 // Public interface
 // ---------------------------------------------------------------------------
 
-void ArpEngine::noteOn(uint8_t note, uint8_t velocity, uint32_t nowMs) {
+void ArpEngine::noteOn(uint8_t note, uint8_t velocity) {
     if (!scale_) return;
 
     if (params_.latch) {
@@ -52,7 +61,7 @@ void ArpEngine::noteOn(uint8_t note, uint8_t velocity, uint32_t nowMs) {
             qPush(note, velocity);
             initSeqFromHead();
             active_ = true;
-            beginStep(nowMs);
+            beginStep();
         } else {
             // Active note is looping — store as pending replacement
             latchHasPending_  = true;
@@ -70,29 +79,36 @@ void ArpEngine::noteOn(uint8_t note, uint8_t velocity, uint32_t nowMs) {
         qPush(note, velocity);
         initSeqFromHead();
         active_ = true;
-        beginStep(nowMs);
+        beginStep();
     } else {
         // Append to FIFO — never interrupt the active cycle
         qPush(note, velocity);
     }
 }
 
-void ArpEngine::noteOff(uint8_t /*note*/, uint32_t /*nowMs*/) {
+void ArpEngine::noteOff(uint8_t /*note*/) {
     // One-shot model: noteOff is a no-op in both latch and non-latch modes.
     // Non-latch: each note plays exactly one cycle then auto-advances.
     // Latch: loops forever; replacement is triggered by a new noteOn.
 }
 
-void ArpEngine::tick(uint32_t nowMs) {
-    // Fire NoteOff if gate has elapsed
-    if (noteSounding_ && nowMs >= noteOffMs_) {
-        emit(false, soundingNote_, 0);
-        noteSounding_ = false;
+void ArpEngine::onClockTick() {
+    // Fire the gate NoteOff once the current note has been sounding for its
+    // gate duration (in clock ticks).
+    if (noteSounding_) {
+        ++noteAge_;
+        if (noteAge_ >= gateTicks_) {
+            emit(false, soundingNote_, 0);
+            noteSounding_ = false;
+        }
     }
 
-    // Advance to next step if scheduled
-    if (active_ && nowMs >= nextStepMs_) {
-        beginStep(nowMs);
+    // Advance the step counter; cross the step boundary when the current step
+    // has lasted its full (swing-adjusted) tick length.
+    if (!active_) return;
+    ++stepTicks_;
+    if (stepTicks_ >= curStepLen_) {
+        beginStep();
     }
 }
 
@@ -107,12 +123,17 @@ void ArpEngine::stop() {
     latchHasPending_  = false;
     activeCycleSteps_ = 0;
     cyclePending_     = false;
+    stepTicks_        = 0;
+    curStepLen_       = 0;
+    gateTicks_        = 0;
+    noteAge_          = 0;
 }
 
 void ArpEngine::reset() {
     stepCount_        = 0;
     activeCycleSteps_ = 0;
     cyclePending_     = false;
+    stepTicks_        = 0;
     udDir_ = +1;
     if (params_.direction == ArpDirection::Down) {
         seqPos_ = seqLen_ - 1;
@@ -159,7 +180,7 @@ void ArpEngine::initSeqFromHead() {
 }
 
 
-void ArpEngine::beginStep(uint32_t nowMs) {
+void ArpEngine::beginStep() {
     // --- 1. Kill the previous sounding note (its step has ended). ---
     if (noteSounding_) { emit(false, soundingNote_, 0); noteSounding_ = false; }
 
@@ -191,16 +212,17 @@ void ArpEngine::beginStep(uint32_t nowMs) {
     soundingNote_ = note;
     noteSounding_ = true;
 
-    uint32_t stepMs = msPerStep();
-    noteOffMs_  = nowMs + stepMs * params_.gatePercent / 100u;
-    nextStepMs_ = nowMs + stepMs;
+    // Tick bookkeeping for the new step. Gate is computed from the un-swung
+    // base step length (mirrors the ms version: gate = stepMs * gate% / 100,
+    // where stepMs was the base step length without the swing shift).
+    int stepLen = arpRateTicks(params_.rate);
+    gateTicks_  = stepLen * params_.gatePercent / 100;
+    if (gateTicks_ < 1) gateTicks_ = 1;
+    noteAge_    = 0;
 
-    // Swing: on odd steps shift the next-step boundary forward.
-    if (params_.swingPercent != 50 && (stepCount_ & 1)) {
-        int swing = (static_cast<int>(params_.swingPercent) - 50)
-                    * static_cast<int>(stepMs) / 100;
-        nextStepMs_ = static_cast<uint32_t>(static_cast<int>(nextStepMs_) + swing);
-    }
+    // Length of this step (with swing on odd steps) determines the next boundary.
+    curStepLen_ = stepLenTicks(stepCount_);
+    stepTicks_  = 0;
     ++stepCount_;
 
     // --- 5. Advance seqPos_ for the next step. ---
