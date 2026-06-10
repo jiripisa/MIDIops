@@ -278,6 +278,32 @@ static void test_arp_mode_exit_silences_engine() {
 }
 
 // ---------------------------------------------------------------------------
+// test_arp_uses_settings_out_channel
+//   After shell.setMidiOutChannel(7), emitted NoteOn events should use ch 7.
+// ---------------------------------------------------------------------------
+static void test_arp_uses_settings_out_channel() {
+    core::AppShell shell;
+    core::ArpMode  arp(shell);
+    FakeMidiOutput out;
+    arp.setMidiOutput(&out);
+    shell.addMode(&arp);
+    shell.begin();
+    shell.setMidiOutChannel(7);
+    shell.tick(0);   // update() pushes channel 7 into the engine before noteOn
+    core::MidiMessage on{};
+    on.type    = core::MidiType::NoteOn;
+    on.channel = 1;
+    on.data1   = 60;
+    on.data2   = 100;
+    arp.onMidiIn(on);
+    bool any = false;
+    for (const auto& e : out.events) {
+        if (e.isOn) { TEST_ASSERT_EQUAL_INT(7, e.channel); any = true; }
+    }
+    TEST_ASSERT_TRUE(any);
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 int main() {
@@ -293,5 +319,6 @@ int main() {
     RUN_TEST(test_hold_via_latch1);
     RUN_TEST(test_mute_via_latch2);
     RUN_TEST(test_reset_via_latch3);
+    RUN_TEST(test_arp_uses_settings_out_channel);
     return UNITY_END();
 }

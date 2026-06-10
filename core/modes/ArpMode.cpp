@@ -63,7 +63,6 @@ Screen& ArpMode::screen(int i) {
 
 void ArpMode::onEnter() {
     engine_.setEcho(&ArpMode::echoThunk, this);
-    engine_.setOutChannel(outChannel_);
 }
 
 void ArpMode::onExit() {
@@ -94,6 +93,7 @@ void ArpMode::update(uint32_t nowMs) {
     engine_.setBpm(svc_.bpm());
     engine_.setScale(&svc_.scale());
     engine_.setParams(params_);
+    engine_.setOutChannel(svc_.midiOutChannel());
     engine_.tick(nowMs);
     model_.tick(nowMs);
 }

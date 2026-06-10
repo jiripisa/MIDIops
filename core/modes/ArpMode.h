@@ -52,7 +52,6 @@ private:
     ArpEngine     engine_;
     NoteWormModel model_;
     ArpParams     params_;
-    uint8_t       outChannel_ = 1;
     uint32_t      lastNowMs_  = 0;
 
     // -----------------------------------------------------------------------
