@@ -22,7 +22,7 @@ public:
     explicit BerlinMode(AppServices& svc);
 
     const char* name() const override { return "Berlin"; }
-    int     screenCount() const override { return 3; }
+    int     screenCount() const override { return 4; }
     Screen& screen(int i) override;
 
     void onEnter() override;
@@ -70,6 +70,16 @@ private:
         BerlinMode& mode_;
     };
 
+    class DynamicsScreen : public Screen {
+    public:
+        explicit DynamicsScreen(BerlinMode& m) : mode_(m) {}
+        const char* name() const override { return "dynamics"; }
+        void onEncoder(int index, int delta) override;
+        void render(Display& d) const override;
+    private:
+        BerlinMode& mode_;
+    };
+
     class BehaviorScreen : public Screen {
     public:
         explicit BehaviorScreen(BerlinMode& m) : mode_(m) {}
@@ -82,6 +92,7 @@ private:
 
     StructureScreen  structureScreen_{*this};
     CharacterScreen  characterScreen_{*this};
+    DynamicsScreen   dynamicsScreen_{*this};
     BehaviorScreen   behaviorScreen_{*this};
 };
 

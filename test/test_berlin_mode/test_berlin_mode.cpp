@@ -87,7 +87,7 @@ static void test_character_behavior_screens_edit_clamp() {
     core::AppShell shell;
     core::BerlinMode berlin(shell);
     core::Screen& ch = berlin.screen(1);
-    core::Screen& bh = berlin.screen(2);
+    core::Screen& bh = berlin.screen(3);
 
     // --- CharacterScreen ---
     // Gate clamps 40..99 (Enc1)
@@ -114,6 +114,32 @@ static void test_character_behavior_screens_edit_clamp() {
     TEST_ASSERT_EQUAL_INT(8, berlin.params().evolveRate);
     for (int i = 0; i < 20; ++i) bh.onEncoder(3, -1);
     TEST_ASSERT_EQUAL_INT(1, berlin.params().evolveRate);
+}
+
+// ---------------------------------------------------------------------------
+// Dynamics screen (index 2): velocity/humanize/accent + contextual Enc4.
+// ---------------------------------------------------------------------------
+static void test_dynamics_screen() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    core::Screen& dyn = berlin.screen(2);          // Dynamics now at index 2
+
+    for (int i = 0; i < 200; ++i) dyn.onEncoder(1, +1);
+    TEST_ASSERT_EQUAL_INT(126, berlin.params().velocityBase);
+    for (int i = 0; i < 50; ++i) dyn.onEncoder(3, -1);
+    TEST_ASSERT_EQUAL_INT(0, berlin.params().accent);
+
+    berlin.params().algorithm = core::BerlinAlgorithm::DrunkardWalk;
+    for (int i = 0; i < 20; ++i) dyn.onEncoder(4, +1);
+    TEST_ASSERT_EQUAL_INT(7, berlin.params().scatter);
+    berlin.params().algorithm = core::BerlinAlgorithm::GatePitchPhasing;
+    for (int i = 0; i < 30; ++i) dyn.onEncoder(4, +1);
+    TEST_ASSERT_EQUAL_INT(16, berlin.params().gateLen);
+    berlin.params().algorithm = core::BerlinAlgorithm::DegreeWeighted;
+    uint8_t scBefore = berlin.params().scatter, glBefore = berlin.params().gateLen;
+    for (int i = 0; i < 5; ++i) dyn.onEncoder(4, +1);
+    TEST_ASSERT_EQUAL_UINT8(scBefore, berlin.params().scatter);
+    TEST_ASSERT_EQUAL_UINT8(glBefore, berlin.params().gateLen);
 }
 
 // ---------------------------------------------------------------------------
@@ -202,6 +228,7 @@ int main() {
     RUN_TEST(test_latch3_generate_on_each_flip);
     RUN_TEST(test_structure_screen_edits_and_clamps);
     RUN_TEST(test_character_behavior_screens_edit_clamp);
+    RUN_TEST(test_dynamics_screen);
     RUN_TEST(test_onexit_silences_sounding_note);
     RUN_TEST(test_algorithm_dispatch);
     return UNITY_END();
