@@ -3,6 +3,7 @@
 #include <initializer_list>
 
 #include "core/DrunkardWalkGenerator.h"
+#include "core/DegreeWeightedGenerator.h"
 #include "core/BerlinGen.h"
 #include "core/Scale.h"
 #include "core/BerlinRng.h"
@@ -116,6 +117,41 @@ static void test_degree_weighted_note_in_scale_and_register() {
     }
 }
 
+static void test_degree_generator_in_scale_root_anchored() {
+    core::DegreeWeightedGenerator gen;
+    core::Scale scale(core::Scale::Type::Minor, 3);     // Eb minor (non-C root)
+    core::BerlinParams p = baseParams(); p.density = 100; p.octaveBase = 48; p.octaveRange = 2;
+    core::BerlinSequence seq; core::BerlinRng rng; rng.seed(21);
+    gen.generate(seq, p, scale, rng);
+
+    TEST_ASSERT_EQUAL_INT(16, seq.length());
+    TEST_ASSERT_TRUE(seq.step(0).active);
+    TEST_ASSERT_EQUAL_INT(scale.root(), seq.step(0).note % 12);   // root anchor
+    const int lo = p.octaveBase, hi = p.octaveBase + 12 * p.octaveRange;
+    for (int i = 0; i < seq.length(); ++i)
+        if (seq.step(i).active) {
+            TEST_ASSERT_TRUE(scale.contains(seq.step(i).note));
+            TEST_ASSERT_TRUE(seq.step(i).note >= lo && seq.step(i).note <= hi);
+        }
+}
+
+static void test_degree_generator_density_and_determinism() {
+    core::DegreeWeightedGenerator gen;
+    core::Scale scale(core::Scale::Type::Minor, 0);
+    core::BerlinParams none = baseParams(); none.density = 0;
+    core::BerlinSequence s; core::BerlinRng rng; rng.seed(1); gen.generate(s, none, scale, rng);
+    int active = 0; for (int i = 0; i < s.length(); ++i) if (s.step(i).active) ++active;
+    TEST_ASSERT_EQUAL_INT(1, active);                   // 0% → only the root anchor
+
+    core::BerlinSequence a, b; core::BerlinRng r1, r2; r1.seed(9); r2.seed(9);
+    core::BerlinParams p = baseParams(); p.density = 70;
+    gen.generate(a, p, scale, r1); gen.generate(b, p, scale, r2);
+    for (int i = 0; i < a.length(); ++i) {
+        TEST_ASSERT_EQUAL_INT(a.step(i).active, b.step(i).active);
+        TEST_ASSERT_EQUAL_UINT8(a.step(i).note, b.step(i).note);
+    }
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_walk_starts_on_root_and_stays_in_scale);
@@ -124,5 +160,7 @@ int main() {
     RUN_TEST(test_walk_register_holds_for_all_roots);
     RUN_TEST(test_walk_is_deterministic_for_seed);
     RUN_TEST(test_degree_weighted_note_in_scale_and_register);
+    RUN_TEST(test_degree_generator_in_scale_root_anchored);
+    RUN_TEST(test_degree_generator_density_and_determinism);
     return UNITY_END();
 }
