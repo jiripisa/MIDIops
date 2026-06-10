@@ -32,9 +32,11 @@ void DrunkardWalkGenerator::generate(BerlinSequence& out, const BerlinParams& p,
             int cand = last + delta;
             if (cand < lo) cand = lo;
             if (cand > hi) cand = hi;
-            note = scale.quantize(static_cast<uint8_t>(cand));
-            if (note < lo) note = scale.quantize(static_cast<uint8_t>(lo));
-            if (note > hi) note = scale.quantize(static_cast<uint8_t>(hi));
+            note = scale.quantize(static_cast<uint8_t>(cand < 0 ? 0 : (cand > 127 ? 127 : cand)));
+            // Fold into the register by octaves — preserves the pitch class (still in
+            // scale) while bringing the note inside [lo, hi].
+            while (note > hi) note -= 12;
+            while (note < lo) note += 12;
         }
         last = note;
 

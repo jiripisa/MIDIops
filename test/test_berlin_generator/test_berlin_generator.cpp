@@ -1,5 +1,6 @@
 #include <unity.h>
 #include <cstdlib>
+#include <initializer_list>
 
 #include "core/DrunkardWalkGenerator.h"
 #include "core/Scale.h"
@@ -65,6 +66,25 @@ static void test_walk_respects_scatter_and_register() {
     }
 }
 
+static void test_walk_register_holds_for_all_roots() {
+    core::DrunkardWalkGenerator gen;
+    for (int root = 0; root < 12; ++root) {
+        for (core::Scale::Type t : {core::Scale::Type::Minor, core::Scale::Type::PentaMajor}) {
+            core::Scale scale(t, static_cast<uint8_t>(root));
+            core::BerlinParams p = baseParams(); p.octaveBase = 48; p.octaveRange = 1; p.scatter = 5;
+            const int lo = p.octaveBase, hi = p.octaveBase + 12 * p.octaveRange;
+            core::BerlinSequence seq; core::BerlinRng rng; rng.seed(static_cast<uint32_t>(root * 7 + 3));
+            gen.generate(seq, p, scale, rng);
+            for (int i = 0; i < seq.length(); ++i) {
+                if (!seq.step(i).active) continue;
+                int n = seq.step(i).note;
+                TEST_ASSERT_TRUE(n >= lo && n <= hi);
+                TEST_ASSERT_TRUE(scale.contains(static_cast<uint8_t>(n)));
+            }
+        }
+    }
+}
+
 static void test_walk_is_deterministic_for_seed() {
     core::DrunkardWalkGenerator gen;
     core::Scale scale(core::Scale::Type::Minor, 0);
@@ -83,6 +103,7 @@ int main() {
     RUN_TEST(test_walk_starts_on_root_and_stays_in_scale);
     RUN_TEST(test_density_controls_active_count);
     RUN_TEST(test_walk_respects_scatter_and_register);
+    RUN_TEST(test_walk_register_holds_for_all_roots);
     RUN_TEST(test_walk_is_deterministic_for_seed);
     return UNITY_END();
 }
