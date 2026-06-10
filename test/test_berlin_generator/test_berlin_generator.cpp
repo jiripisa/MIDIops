@@ -4,6 +4,7 @@
 
 #include "core/DrunkardWalkGenerator.h"
 #include "core/DegreeWeightedGenerator.h"
+#include "core/GatePitchPhasingGenerator.h"
 #include "core/BerlinGen.h"
 #include "core/Scale.h"
 #include "core/BerlinRng.h"
@@ -152,6 +153,47 @@ static void test_degree_generator_density_and_determinism() {
     }
 }
 
+static int igcd(int a, int b) { while (b) { int t = a % b; a = b; b = t; } return a; }
+
+static void test_phasing_length_is_capped_lcm() {
+    core::GatePitchPhasingGenerator gen;
+    core::Scale scale(core::Scale::Type::Minor, 0);
+    core::BerlinParams p = baseParams(); p.length = 8; p.gateLen = 6;   // lcm(8,6)=24
+    core::BerlinSequence seq; core::BerlinRng rng; rng.seed(4);
+    gen.generate(seq, p, scale, rng);
+    const int lcm = 8 / igcd(8, 6) * 6;
+    const int expect = lcm < core::BerlinSequence::kMaxSteps ? lcm : core::BerlinSequence::kMaxSteps;
+    TEST_ASSERT_EQUAL_INT(expect, seq.length());        // 24
+}
+
+static void test_phasing_in_scale_and_capped() {
+    core::GatePitchPhasingGenerator gen;
+    core::Scale scale(core::Scale::Type::PentaMinor, 7);
+    core::BerlinParams p = baseParams(); p.length = 16; p.gateLen = 15; p.density = 100;
+    core::BerlinSequence seq; core::BerlinRng rng; rng.seed(8);
+    gen.generate(seq, p, scale, rng);
+    TEST_ASSERT_EQUAL_INT(core::BerlinSequence::kMaxSteps, seq.length());  // lcm(16,15)=240 → capped 32
+    const int lo = p.octaveBase, hi = p.octaveBase + 12 * p.octaveRange;
+    for (int i = 0; i < seq.length(); ++i)
+        if (seq.step(i).active) {
+            TEST_ASSERT_TRUE(scale.contains(seq.step(i).note));
+            TEST_ASSERT_TRUE(seq.step(i).note >= lo && seq.step(i).note <= hi);
+        }
+}
+
+static void test_phasing_repeats_pitch_by_period() {
+    // density 100 → every gate open → every realized step active and
+    // note[i] == pitch[i % P]. Verify the pitch list repeats every P.
+    core::GatePitchPhasingGenerator gen;
+    core::Scale scale(core::Scale::Type::Minor, 0);
+    core::BerlinParams p = baseParams(); p.length = 5; p.gateLen = 8; p.density = 100;
+    core::BerlinSequence seq; core::BerlinRng rng; rng.seed(2);
+    gen.generate(seq, p, scale, rng);
+    const int P = 5;
+    for (int i = P; i < seq.length(); ++i)
+        TEST_ASSERT_EQUAL_UINT8(seq.step(i % P).note, seq.step(i).note);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_walk_starts_on_root_and_stays_in_scale);
@@ -162,5 +204,8 @@ int main() {
     RUN_TEST(test_degree_weighted_note_in_scale_and_register);
     RUN_TEST(test_degree_generator_in_scale_root_anchored);
     RUN_TEST(test_degree_generator_density_and_determinism);
+    RUN_TEST(test_phasing_length_is_capped_lcm);
+    RUN_TEST(test_phasing_in_scale_and_capped);
+    RUN_TEST(test_phasing_repeats_pitch_by_period);
     return UNITY_END();
 }
