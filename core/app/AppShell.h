@@ -39,6 +39,12 @@ public:
     const Scale& scale() const override { return scale_; }
     void setScaleType(Scale::Type t) override { scale_.setType(t); }
     void setScaleRoot(uint8_t pc) override { scale_.setRoot(pc); }
+    uint8_t  midiOutChannel() const override { return midiOutChannel_; }
+    void     setMidiOutChannel(uint8_t ch) override { if (ch >= 1 && ch <= 16) midiOutChannel_ = ch; }
+    uint8_t  midiInChannel() const override { return midiInChannel_; }
+    void     setMidiInChannel(uint8_t ch) override { if (ch <= 16) midiInChannel_ = ch; }
+    ClockSource clockSource() const override { return clockSource_; }
+    void     setClockSource(ClockSource s) override { clockSource_ = s; }
 
     // Inspectors for tests.
     int activeModeIndex() const { return activeMode_; }
@@ -61,6 +67,9 @@ private:
     MidiOutput*    out_ = nullptr;
     uint16_t       bpm_ = 120;
     Scale          scale_{Scale::Type::Major, 0};
+    uint8_t        midiOutChannel_ = 1;
+    uint8_t        midiInChannel_  = 0;     // OMNI
+    ClockSource    clockSource_    = ClockSource::Internal;
     // transportState_ is the authoritative playback state (used from the
     // transport task on); transport_ holds the last command issued.
     TransportState transportState_ = TransportState::Stopped;
