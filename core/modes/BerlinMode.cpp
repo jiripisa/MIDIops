@@ -10,13 +10,23 @@
 namespace core {
 
 BerlinMode::BerlinMode(AppServices& svc) : svc_(svc) {
-    engine_.setGenerator(&walkGen_);
+    applyGenerator();
     engine_.setParams(params_);
+}
+
+void BerlinMode::applyGenerator() {
+    switch (params_.algorithm) {
+        case BerlinAlgorithm::DegreeWeighted:   engine_.setGenerator(&degreeGen_);  break;
+        case BerlinAlgorithm::GatePitchPhasing: engine_.setGenerator(&phasingGen_); break;
+        case BerlinAlgorithm::DrunkardWalk:
+        default:                                engine_.setGenerator(&walkGen_);    break;
+    }
 }
 
 Screen& BerlinMode::screen(int i) {
     if (i == 1) return characterScreen_;
-    if (i == 2) return behaviorScreen_;
+    if (i == 2) return dynamicsScreen_;
+    if (i == 3) return behaviorScreen_;
     return structureScreen_;
 }
 
@@ -25,6 +35,7 @@ void BerlinMode::onEnter() {
     engine_.setScale(&scale_);
     engine_.setParams(params_);
     engine_.setOutChannel(svc_.midiOutChannel());
+    applyGenerator();
     if (!engine_.sequence().step(0).active) engine_.generate();  // ensure something to show/play
 }
 
@@ -32,6 +43,7 @@ void BerlinMode::update(uint32_t /*nowMs*/) {
     scale_ = svc_.scale();
     engine_.setScale(&scale_);
     engine_.setParams(params_);
+    applyGenerator();
     engine_.setOutChannel(svc_.midiOutChannel());
 }
 
@@ -48,7 +60,7 @@ void BerlinMode::onRawInput(const RawInput& in) {
     switch (in.index) {
         case 1: in.on ? engine_.play() : engine_.pause(); break;  // Play/Pause (level)
         case 2: if (changed) engine_.stop();              break;  // Stop (any flip)
-        case 3: if (changed) engine_.generate();          break;  // Reset/Generate (any flip)
+        case 3: if (changed) { engine_.setParams(params_); applyGenerator(); engine_.generate(); } break;  // Reset/Generate (any flip)
     }
 }
 
@@ -85,7 +97,8 @@ void BerlinMode::StructureScreen::render(Display& d) const {
     snprintf(buf, sizeof buf, "%d%%", p.density);
     drawBerlinParamCell(d, 3, "DENSITY", buf);
     drawBerlinParamDividers(d);
-    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(), color::Green);
+    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
+                        mode_.engine().soundingNote(), color::Green);
 }
 
 // ---- Character screen -------------------------------------------------------
@@ -121,7 +134,73 @@ void BerlinMode::CharacterScreen::render(Display& d) const {
     snprintf(buf, sizeof buf, "%d", p.octaveRange);
     drawBerlinParamCell(d, 3, "RANGE",   buf);
     drawBerlinParamDividers(d);
-    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(), color::Green);
+    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
+                        mode_.engine().soundingNote(), color::Green);
+}
+
+// ---- Dynamics screen --------------------------------------------------------
+
+void BerlinMode::DynamicsScreen::onEncoder(int index, int delta) {
+    BerlinParams& p = mode_.params_;
+    switch (index) {
+        case 1: {
+            int v = p.velocityBase + delta;
+            if (v < 1)   v = 1;
+            if (v > 126) v = 126;
+            p.velocityBase = static_cast<uint8_t>(v);
+            break;
+        }
+        case 2: {
+            int v = p.velocityHumanize + delta;
+            if (v < 0)  v = 0;
+            if (v > 30) v = 30;
+            p.velocityHumanize = static_cast<uint8_t>(v);
+            break;
+        }
+        case 3: {
+            int v = p.accent + delta;
+            if (v < 0)  v = 0;
+            if (v > 27) v = 27;
+            p.accent = static_cast<uint8_t>(v);
+            break;
+        }
+        case 4:
+            if (p.algorithm == BerlinAlgorithm::DrunkardWalk) {
+                int v = p.scatter + delta;
+                if (v < 1) v = 1;
+                if (v > 7) v = 7;
+                p.scatter = static_cast<uint8_t>(v);
+            } else if (p.algorithm == BerlinAlgorithm::GatePitchPhasing) {
+                int v = p.gateLen + delta;
+                if (v < 3)  v = 3;
+                if (v > 16) v = 16;
+                p.gateLen = static_cast<uint8_t>(v);
+            }
+            break;
+    }
+}
+
+void BerlinMode::DynamicsScreen::render(Display& d) const {
+    const BerlinParams& p = mode_.params_;
+    char buf[12];
+    snprintf(buf, sizeof buf, "%d", p.velocityBase);
+    drawBerlinParamCell(d, 0, "VEL",   buf);
+    snprintf(buf, sizeof buf, "+-%d", p.velocityHumanize);
+    drawBerlinParamCell(d, 1, "HUMAN", buf);
+    snprintf(buf, sizeof buf, "+%d", p.accent);
+    drawBerlinParamCell(d, 2, "ACCENT", buf);
+    if (p.algorithm == BerlinAlgorithm::DrunkardWalk) {
+        snprintf(buf, sizeof buf, "%d", p.scatter);
+        drawBerlinParamCell(d, 3, "SCATTER", buf);
+    } else if (p.algorithm == BerlinAlgorithm::GatePitchPhasing) {
+        snprintf(buf, sizeof buf, "%d", p.gateLen);
+        drawBerlinParamCell(d, 3, "GATELEN", buf);
+    } else {
+        drawBerlinParamCell(d, 3, "-", "-");
+    }
+    drawBerlinParamDividers(d);
+    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
+                        mode_.engine().soundingNote(), color::Green);
 }
 
 // ---- Behavior screen --------------------------------------------------------
@@ -157,7 +236,8 @@ void BerlinMode::BehaviorScreen::render(Display& d) const {
     drawBerlinParamCell(d, 2, "EVOLVE",   buf);
     drawBerlinParamCell(d, 3, "-",        "");
     drawBerlinParamDividers(d);
-    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(), color::Green);
+    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
+                        mode_.engine().soundingNote(), color::Green);
 }
 
 } // namespace core

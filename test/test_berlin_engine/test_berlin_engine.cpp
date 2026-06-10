@@ -5,6 +5,7 @@
 #include "core/BerlinEngine.h"
 #include "core/DrunkardWalkGenerator.h"
 #include "core/Scale.h"
+#include "core/render/BerlinLayout.h"
 #include "support/FakeMidiOutput.h"
 
 void setUp() {}
@@ -133,6 +134,27 @@ static void test_morph_0_keeps_base_100_replaces() {
     TEST_ASSERT_TRUE(countActiveDiff(base, e.sequence()) > 0);  // morph 100 → differs
 }
 
+static void test_roll_range_min_two_octaves_and_contains_notes() {
+    core::BerlinSequence s; s.clear(); s.setLength(3);
+    s.step(0) = {true, 60, 100, false, 6};   // C4
+    s.step(1) = {true, 64, 100, false, 6};   // E4
+    s.step(2) = {true, 67, 100, false, 6};   // G4
+    int lo = 0, hi = 0;
+    core::berlinRollRange(s, lo, hi);
+    TEST_ASSERT_TRUE(hi - lo >= 23);                 // at least 2 octaves
+    TEST_ASSERT_EQUAL_INT(0, lo % 12);               // snapped to a C
+    TEST_ASSERT_EQUAL_INT(11, hi % 12);              // snapped to a B
+    TEST_ASSERT_TRUE(lo <= 60 && hi >= 67);          // contains all active notes
+
+    // Wide span (>2 octaves) is preserved.
+    core::BerlinSequence w; w.clear(); w.setLength(2);
+    w.step(0) = {true, 36, 100, false, 6};   // C2
+    w.step(1) = {true, 84, 100, false, 6};   // C6
+    core::berlinRollRange(w, lo, hi);
+    TEST_ASSERT_TRUE(lo <= 36 && hi >= 84);
+    TEST_ASSERT_TRUE(hi - lo >= 23);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_resolution_ticks);
@@ -145,5 +167,6 @@ int main() {
     RUN_TEST(test_pause_holds_and_stop_rewinds);
     RUN_TEST(test_generate_fills_via_generator);
     RUN_TEST(test_morph_0_keeps_base_100_replaces);
+    RUN_TEST(test_roll_range_min_two_octaves_and_contains_notes);
     return UNITY_END();
 }

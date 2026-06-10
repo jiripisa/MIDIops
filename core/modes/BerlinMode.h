@@ -4,7 +4,9 @@
 #include "core/app/Mode.h"
 #include "core/BerlinEngine.h"
 #include "core/BerlinTypes.h"
+#include "core/DegreeWeightedGenerator.h"
 #include "core/DrunkardWalkGenerator.h"
+#include "core/GatePitchPhasingGenerator.h"
 #include "core/Scale.h"
 
 namespace core {
@@ -12,7 +14,7 @@ namespace core {
 class MidiOutput;
 
 // BerlinMode — single-voice generative Berlin-School sequencer.
-// Screens (Plan A): Structure / Character / Behavior. Each draws its top
+// Screens: Structure / Character / Dynamics / Behavior. Each draws its top
 // parameter row plus the shared bottom piano-roll (drawn every screen so the
 // visualization persists across screen switches).
 class BerlinMode : public Mode {
@@ -20,7 +22,7 @@ public:
     explicit BerlinMode(AppServices& svc);
 
     const char* name() const override { return "Berlin"; }
-    int     screenCount() const override { return 3; }
+    int     screenCount() const override { return 4; }
     Screen& screen(int i) override;
 
     void onEnter() override;
@@ -38,11 +40,15 @@ public:
 
 private:
     AppServices&          svc_;
-    DrunkardWalkGenerator walkGen_;
+    DrunkardWalkGenerator     walkGen_;
+    DegreeWeightedGenerator   degreeGen_;
+    GatePitchPhasingGenerator phasingGen_;
     BerlinEngine          engine_;
     BerlinParams          params_{};
     Scale                 scale_{};
     bool                  lastLatch_[4] = {false, false, false, false};  // index 1..3 edge-detect
+
+    void applyGenerator();   // point the engine at the generator for params_.algorithm
 
     class StructureScreen : public Screen {
     public:
@@ -64,6 +70,16 @@ private:
         BerlinMode& mode_;
     };
 
+    class DynamicsScreen : public Screen {
+    public:
+        explicit DynamicsScreen(BerlinMode& m) : mode_(m) {}
+        const char* name() const override { return "dynamics"; }
+        void onEncoder(int index, int delta) override;
+        void render(Display& d) const override;
+    private:
+        BerlinMode& mode_;
+    };
+
     class BehaviorScreen : public Screen {
     public:
         explicit BehaviorScreen(BerlinMode& m) : mode_(m) {}
@@ -76,6 +92,7 @@ private:
 
     StructureScreen  structureScreen_{*this};
     CharacterScreen  characterScreen_{*this};
+    DynamicsScreen   dynamicsScreen_{*this};
     BehaviorScreen   behaviorScreen_{*this};
 };
 

@@ -32,8 +32,9 @@ public:
 
     void onClockTick();      // advance one 24-PPQN tick
 
-    bool isPlaying() const { return playing_; }
-    int  playhead()  const { return playhead_; }
+    bool isPlaying()    const { return playing_; }
+    int  playhead()     const { return playhead_; }
+    int  soundingNote() const { return noteSounding_ ? static_cast<int>(soundingNote_) : -1; }
     const BerlinSequence& sequence() const { return seq_; }
     BerlinSequence&       sequenceMut()    { return seq_; }   // tests set steps directly
 

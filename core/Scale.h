@@ -24,6 +24,7 @@ public:
     // degrees may exceed the scale length, wrapping through octaves. degrees=0
     // returns fromNote quantized. Result clamped to 0..127.
     uint8_t degreeNote(uint8_t fromNote, int degrees) const;
+    int degreeCount() const;                     // number of notes in the scale (5..8)
 
 private:
     int intervals(const uint8_t** out) const;   // semitone offsets from root, ascending, within one octave
