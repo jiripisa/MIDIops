@@ -41,7 +41,6 @@ void setUp() {
     g_eng   = new core::ArpEngine();
     g_eng->setOutput(g_out);
     g_eng->setScale(g_scale);
-    g_eng->setBpm(120);
     g_eng->setOutChannel(1);
 }
 
@@ -1382,7 +1381,6 @@ static void test_promotion_starts_next_boundary_not_same_tick() {
     p.latch         = false;
     eng.setOutput(&out);
     eng.setScale(&sc);
-    eng.setBpm(120);
     eng.setParams(p);
     const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
 
@@ -1433,7 +1431,6 @@ static void test_latch_replacement_starts_next_boundary_not_same_tick() {
     p.latch         = true;
     eng.setOutput(&out);
     eng.setScale(&sc);
-    eng.setBpm(120);
     eng.setParams(p);
     const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
 
@@ -1514,7 +1511,6 @@ static void test_keyboard_note_during_last_step_not_cut() {
     p.latch         = false;
     eng.setOutput(&out);
     eng.setScale(&sc);
-    eng.setBpm(120);
     eng.setParams(p);
     const int kStep = core::arpRateTicks(p.rate);          // Quarter = 24
     const int kGate = kStep * p.gatePercent / 100;         // 24*80/100 = 19

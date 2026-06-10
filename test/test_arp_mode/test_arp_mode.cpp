@@ -74,10 +74,13 @@ static void test_param_edit_steps() {
 // ---------------------------------------------------------------------------
 // test_arp_outgoing_visualised
 //   End-to-end: NoteOn → engine emits notes → model has worms → render shows
-//   them; also verify the FakeMidiOutput received NoteOn events.
+//   them; also verify the FakeMidiOutput received multiple NoteOn events
+//   (i.e. multiple arp steps actually fire and are visualised).
 //
-//   bpm=120, rate=Sixteenth (default) → msPerStep = 125 ms
-//   steps=3 (default) → one cycle = 3 * 125 = 375 ms
+//   Default rate = Sixteenth → arpRateTicks(Sixteenth) = 6 ticks/step.
+//   Default steps = 3 → one cycle = 3 steps.
+//   The engine advances via the internal-clock tick drain: set
+//   out.pendingTicks = 6 before each shell.tick() to cross one step boundary.
 // ---------------------------------------------------------------------------
 static void test_arp_outgoing_visualised() {
     core::AppShell    shell;
@@ -86,38 +89,41 @@ static void test_arp_outgoing_visualised() {
     StubDisplay       disp;
 
     arp.setMidiOutput(&out);
+    shell.setMidiOutput(&out);   // wire clock tick drain to ArpEngine
     shell.addMode(&arp);
     shell.begin();   // enters mode 0 (ArpMode), screen 0
 
-    // Switch to the worms screen (screen 2) via enc5
-    // enc5 +1 each time advances screen index by 1
+    // Switch to the worms screen (screen 2) via enc5.
     shell.onEncoderKnob(5, +1);   // screen 0 → 1
     shell.onEncoderKnob(5, +1);   // screen 1 → 2  (worms)
 
-    // Trigger note 60 at t=0
+    // Trigger note 60 at t=0; step 0 fires immediately inside noteOn().
     shell.tick(0);
     shell.onMidiIn(makeNoteOn(60, 100));
 
-    // Tick across several step boundaries (125 ms each).
-    // t=0 → NoteOn(60) emitted immediately by engine.
-    // ArpMode::onMidiIn triggers engine_.noteOn(); the engine fires step 0 immediately.
-    // We need update() to run via tick(); we already did tick(0) before noteOn;
-    // fire a tick at t=0 again is ok — idempotent for the first call.
-    // Then drive further steps.
-    shell.tick(125);   // step 1 boundary → NoteOn(64) for C major Up triad
-    shell.tick(250);   // step 2 boundary → NoteOn(67)
-    shell.tick(375);   // cycle boundary → back to NoteOn(60) (loop while held)
-    shell.tick(500);   // one more step
+    // Drive three more step boundaries (6 ticks each) so the engine advances
+    // through multiple steps of the arpeggio.
+    const int stepTicks = core::arpRateTicks(core::ArpRate::Sixteenth);  // 6
 
-    // Render the worms screen
+    out.pendingTicks = static_cast<uint32_t>(stepTicks);
+    shell.tick(1);   // step 1 boundary → NoteOn(64)
+
+    out.pendingTicks = static_cast<uint32_t>(stepTicks);
+    shell.tick(2);   // step 2 boundary → NoteOn(67)
+
+    out.pendingTicks = static_cast<uint32_t>(stepTicks);
+    shell.tick(3);   // cycle boundary  → NoteOn(60) again (one-shot done, engine idle)
+
+    // Render the worms screen.
     shell.render(disp);
 
-    // 1. The engine emitted at least one NoteOn event to the FakeMidiOutput.
-    bool hasNoteOn = false;
+    // 1. The engine emitted multiple NoteOn events (steps 0, 1, 2 at minimum).
+    int noteOnCount = 0;
     for (const auto& ev : out.events) {
-        if (ev.isOn) { hasNoteOn = true; break; }
+        if (ev.isOn) ++noteOnCount;
     }
-    TEST_ASSERT_TRUE_MESSAGE(hasNoteOn, "Engine should have emitted NoteOn events");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(1, noteOnCount,
+        "Engine should have emitted multiple NoteOn events across arp steps");
 
     // 2. The worms screen drew some rects (keyboard + worms).
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, disp.rects, "WormsRenderer should have drawn rects");

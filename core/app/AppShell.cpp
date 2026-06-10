@@ -175,6 +175,9 @@ void AppShell::setClockSource(ClockSource s) {
     if (out_) {
         if (s == ClockSource::External) {
             out_->setClockBpm(0);     // stop the internal clock master
+            // When External is selected and no external clock is arriving, the
+            // arp advances only on incoming pulses — a sounding note's gate-off
+            // (fired in onClockTick) is deferred until clock resumes. Intended for v1.
             clockFollower_.reset();
         } else {
             out_->setClockBpm(bpm_);  // resume internal generation

@@ -38,7 +38,6 @@ public:
 
     void setOutput(MidiOutput* o) { out_ = o; }
     void setEcho(EchoFn fn, void* user) { echo_ = fn; echoUser_ = user; }
-    void setBpm(uint16_t bpm) { bpm_ = bpm ? bpm : 120; }
     void setScale(const Scale* s) { scale_ = s; }
     void setParams(const ArpParams& p) { params_ = p; }
     void setOutChannel(uint8_t ch) { outChannel_ = ch; }
@@ -107,7 +106,6 @@ private:
     EchoFn       echo_ = nullptr; void* echoUser_ = nullptr;
     const Scale* scale_ = nullptr;
     ArpParams    params_{};
-    uint16_t     bpm_ = 120;
     uint8_t      outChannel_ = 1;
 
     bool     muted_  = false;
