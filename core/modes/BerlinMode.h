@@ -4,7 +4,9 @@
 #include "core/app/Mode.h"
 #include "core/BerlinEngine.h"
 #include "core/BerlinTypes.h"
+#include "core/DegreeWeightedGenerator.h"
 #include "core/DrunkardWalkGenerator.h"
+#include "core/GatePitchPhasingGenerator.h"
 #include "core/Scale.h"
 
 namespace core {
@@ -38,11 +40,15 @@ public:
 
 private:
     AppServices&          svc_;
-    DrunkardWalkGenerator walkGen_;
+    DrunkardWalkGenerator     walkGen_;
+    DegreeWeightedGenerator   degreeGen_;
+    GatePitchPhasingGenerator phasingGen_;
     BerlinEngine          engine_;
     BerlinParams          params_{};
     Scale                 scale_{};
     bool                  lastLatch_[4] = {false, false, false, false};  // index 1..3 edge-detect
+
+    void applyGenerator();   // point the engine at the generator for params_.algorithm
 
     class StructureScreen : public Screen {
     public:

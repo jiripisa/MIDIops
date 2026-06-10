@@ -10,8 +10,17 @@
 namespace core {
 
 BerlinMode::BerlinMode(AppServices& svc) : svc_(svc) {
-    engine_.setGenerator(&walkGen_);
+    applyGenerator();
     engine_.setParams(params_);
+}
+
+void BerlinMode::applyGenerator() {
+    switch (params_.algorithm) {
+        case BerlinAlgorithm::DegreeWeighted:   engine_.setGenerator(&degreeGen_);  break;
+        case BerlinAlgorithm::GatePitchPhasing: engine_.setGenerator(&phasingGen_); break;
+        case BerlinAlgorithm::DrunkardWalk:
+        default:                                engine_.setGenerator(&walkGen_);    break;
+    }
 }
 
 Screen& BerlinMode::screen(int i) {
@@ -25,6 +34,7 @@ void BerlinMode::onEnter() {
     engine_.setScale(&scale_);
     engine_.setParams(params_);
     engine_.setOutChannel(svc_.midiOutChannel());
+    applyGenerator();
     if (!engine_.sequence().step(0).active) engine_.generate();  // ensure something to show/play
 }
 
@@ -32,6 +42,7 @@ void BerlinMode::update(uint32_t /*nowMs*/) {
     scale_ = svc_.scale();
     engine_.setScale(&scale_);
     engine_.setParams(params_);
+    applyGenerator();
     engine_.setOutChannel(svc_.midiOutChannel());
 }
 
@@ -48,7 +59,7 @@ void BerlinMode::onRawInput(const RawInput& in) {
     switch (in.index) {
         case 1: in.on ? engine_.play() : engine_.pause(); break;  // Play/Pause (level)
         case 2: if (changed) engine_.stop();              break;  // Stop (any flip)
-        case 3: if (changed) engine_.generate();          break;  // Reset/Generate (any flip)
+        case 3: if (changed) { engine_.setParams(params_); applyGenerator(); engine_.generate(); } break;  // Reset/Generate (any flip)
     }
 }
 

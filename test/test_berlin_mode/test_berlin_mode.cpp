@@ -167,6 +167,34 @@ static void test_latch3_generate_on_each_flip() {
     TEST_ASSERT_EQUAL_INT(0, berlin.engine().playhead());           // rewound again
 }
 
+// ---------------------------------------------------------------------------
+// Algorithm dispatch: switching params_.algorithm before a generate causes the
+// engine to use the corresponding generator (reflected in the produced sequence).
+// ---------------------------------------------------------------------------
+static int activeCount(const core::BerlinSequence& s) {
+    int n = 0; for (int i = 0; i < s.length(); ++i) if (s.step(i).active) ++n; return n;
+}
+
+static void test_algorithm_dispatch() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+
+    // Phasing: length 8 × gateLen 6 → realized length lcm = 24 (≠ the 16 Walk uses).
+    berlin.params().algorithm = core::BerlinAlgorithm::GatePitchPhasing;
+    berlin.params().length = 8; berlin.params().gateLen = 6;
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});   // generate
+    TEST_ASSERT_EQUAL_INT(24, berlin.engine().sequence().length());
+
+    // Degree-Weighted: back to a length-16 sequence, all in scale.
+    berlin.params().algorithm = core::BerlinAlgorithm::DegreeWeighted;
+    berlin.params().length = 16;
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});  // generate (other flip)
+    TEST_ASSERT_EQUAL_INT(16, berlin.engine().sequence().length());
+    TEST_ASSERT_TRUE(activeCount(berlin.engine().sequence()) >= 1);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_latch1_play_pause_latch2_stop);
@@ -175,5 +203,6 @@ int main() {
     RUN_TEST(test_structure_screen_edits_and_clamps);
     RUN_TEST(test_character_behavior_screens_edit_clamp);
     RUN_TEST(test_onexit_silences_sounding_note);
+    RUN_TEST(test_algorithm_dispatch);
     return UNITY_END();
 }
