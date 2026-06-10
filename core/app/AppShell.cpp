@@ -136,13 +136,23 @@ void AppShell::onMidiIn(const MidiMessage& msg) {
     if (isRealtime) {
         if (clockSource_ == ClockSource::External && out_) {
             if (msg.type == MidiType::Clock) {
-                // nowMs_ is the last tick() timestamp (refreshed once per main-loop
-                // iteration), used here as the pulse's approximate arrival time. This is
-                // intentionally approximate — fine for tempo follow over a 24-pulse window.
+                // Follow the external clock: derive BPM for display and advance
+                // the active mode one tick per pulse.
+                //
+                // We deliberately do NOT echo the pulse back out. This device
+                // has a single MIDI interface (usbMIDI), and when following an
+                // external clock the host on that interface IS the master — so
+                // forwarding its own clock straight back is useless, and at
+                // 24 PPQN with a send_now() flush per pulse it floods usbMIDI TX
+                // (nothing drains the device's MIDI-out), which starves usbMIDI
+                // RX and stalls incoming note handling. So: follow, don't echo.
+                //
+                // nowMs_ is the last tick() timestamp (refreshed once per
+                // main-loop iteration), used as the pulse's approximate arrival
+                // time — fine for tempo follow over a 24-pulse window.
                 clockFollower_.onPulse(nowMs_);
                 uint16_t b = clockFollower_.bpm();
                 if (b) bpm_ = b;                     // followed tempo updates display BPM
-                out_->forwardClock();
                 if (modeCount_ > 0) modes_[activeMode_]->onClockTick();
             } else if (msg.type == MidiType::Start) {
                 out_->sendStart();

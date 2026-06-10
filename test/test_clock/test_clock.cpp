@@ -30,7 +30,7 @@ static void test_follower_clamps() {
     TEST_ASSERT_EQUAL_INT(300, f.bpm());
 }
 
-static void test_external_clock_routes_and_forwards() {
+static void test_external_clock_follows_without_echo() {
     core::AppShell shell;
     FakeMode a("a", 1);
     FakeMidiOutput out;
@@ -41,8 +41,11 @@ static void test_external_clock_routes_and_forwards() {
     TEST_ASSERT_EQUAL_INT(0, out.lastBpm);        // internal stopped: setClockBpm(0).
     core::MidiMessage clk{}; clk.type = core::MidiType::Clock;
     shell.onMidiIn(clk);
-    TEST_ASSERT_EQUAL_INT(1, out.forwarded);      // pulse forwarded downstream
-    TEST_ASSERT_EQUAL_INT(1, a.clockTicks);       // active mode ticked once
+    TEST_ASSERT_EQUAL_INT(1, a.clockTicks);       // active mode ticked once (follow)
+    // The incoming clock is followed, NOT echoed back: on a single MIDI
+    // interface the host is the master, and re-emitting its own clock floods
+    // usbMIDI TX and starves RX on the device. So no pulse is forwarded.
+    TEST_ASSERT_EQUAL_INT(0, out.forwarded);
 }
 
 int main() {
@@ -50,6 +53,6 @@ int main() {
     RUN_TEST(test_realtime_types_are_not_channel_voice);
     RUN_TEST(test_follower_derives_120bpm);
     RUN_TEST(test_follower_clamps);
-    RUN_TEST(test_external_clock_routes_and_forwards);
+    RUN_TEST(test_external_clock_follows_without_echo);
     return UNITY_END();
 }
