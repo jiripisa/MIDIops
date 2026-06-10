@@ -14,7 +14,7 @@ namespace core {
 class MidiOutput;
 
 // BerlinMode — single-voice generative Berlin-School sequencer.
-// Screens (Plan A): Structure / Character / Behavior. Each draws its top
+// Screens: Structure / Character / Dynamics / Behavior. Each draws its top
 // parameter row plus the shared bottom piano-roll (drawn every screen so the
 // visualization persists across screen switches).
 class BerlinMode : public Mode {
