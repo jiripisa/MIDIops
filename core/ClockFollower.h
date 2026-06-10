@@ -9,7 +9,7 @@ namespace core {
 // enough pulses have been seen.
 class ClockFollower {
 public:
-    void reset() { count_ = 0; haveFirst_ = false; bpm_ = 0; }
+    void reset() { count_ = 0; haveFirst_ = false; bpm_ = 0; firstMs_ = 0; }
     // Call on each incoming Clock pulse with a monotonic ms timestamp.
     void onPulse(uint32_t nowMs);
     uint16_t bpm() const { return bpm_; }   // 0 until known

@@ -136,6 +136,9 @@ void AppShell::onMidiIn(const MidiMessage& msg) {
     if (isRealtime) {
         if (clockSource_ == ClockSource::External && out_) {
             if (msg.type == MidiType::Clock) {
+                // nowMs_ is the last tick() timestamp (refreshed once per main-loop
+                // iteration), used here as the pulse's approximate arrival time. This is
+                // intentionally approximate — fine for tempo follow over a 24-pulse window.
                 clockFollower_.onPulse(nowMs_);
                 uint16_t b = clockFollower_.bpm();
                 if (b) bpm_ = b;                     // followed tempo updates display BPM
