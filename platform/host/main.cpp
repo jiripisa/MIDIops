@@ -20,6 +20,7 @@
 #include "core/MidiMessage.h"
 #include "core/app/AppShell.h"
 #include "core/modes/ArpMode.h"
+#include "core/modes/BerlinMode.h"
 #include "core/modes/BpmMode.h"
 #include "core/modes/DebugMode.h"
 #include "core/modes/MonitoringMode.h"
@@ -109,14 +110,17 @@ int main(int /*argc*/, char* /*argv*/[]) {
     core::DebugMode      debugMode;
     core::BpmMode        bpmMode(app);
     core::ArpMode        arpMode(app);
+    core::BerlinMode     berlinMode(app);
     core::SettingsMode   settingsMode(app);
 
     midiIn.begin();
     midiOut.begin();
     app.setMidiOutput(&midiOut);
     arpMode.setMidiOutput(&midiOut);
+    berlinMode.setMidiOutput(&midiOut);
     app.addMode(&monitoringMode);
     app.addMode(&arpMode);
+    app.addMode(&berlinMode);
     app.addMode(&bpmMode);
     app.addMode(&settingsMode);
     app.addMode(&debugMode);

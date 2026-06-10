@@ -16,6 +16,7 @@
 
 #include "core/app/AppShell.h"
 #include "core/modes/ArpMode.h"
+#include "core/modes/BerlinMode.h"
 #include "core/modes/BpmMode.h"
 #include "core/modes/DebugMode.h"
 #include "core/modes/MonitoringMode.h"
@@ -123,6 +124,7 @@ static core::MonitoringMode monitoringMode;
 static core::DebugMode      debugMode;
 static core::BpmMode        bpmMode(app);
 static core::ArpMode        arpMode(app);
+static core::BerlinMode     berlinMode(app);
 static core::SettingsMode   settingsMode(app);
 
 void setup() {
@@ -138,8 +140,10 @@ void setup() {
     latch3Button.begin();
     app.setMidiOutput(&midiOut);
     arpMode.setMidiOutput(&midiOut);
+    berlinMode.setMidiOutput(&midiOut);
     app.addMode(&monitoringMode);
     app.addMode(&arpMode);
+    app.addMode(&berlinMode);
     app.addMode(&bpmMode);
     app.addMode(&settingsMode);
     app.addMode(&debugMode);
