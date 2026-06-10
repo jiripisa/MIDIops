@@ -75,6 +75,7 @@ void RtMidiOutput::clockThreadFunc() {
         nextTick += period;
         std::this_thread::sleep_until(nextTick);
         sendByte(0xF8);
+        clockTicks_.fetch_add(1, std::memory_order_relaxed);
     }
 }
 
@@ -95,3 +96,9 @@ void RtMidiOutput::sendNoteOff(uint8_t channel, uint8_t note) {
               static_cast<unsigned char>(note & 0x7F),
               0);
 }
+
+uint32_t RtMidiOutput::consumeClockTicks() {
+    return clockTicks_.exchange(0, std::memory_order_relaxed);
+}
+
+void RtMidiOutput::forwardClock() { sendByte(0xF8); }
