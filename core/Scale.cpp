@@ -104,4 +104,9 @@ uint8_t Scale::degreeNote(uint8_t fromNote, int degrees) const {
     return static_cast<uint8_t>(result);
 }
 
+int Scale::degreeCount() const {
+    const uint8_t* ivs = nullptr;
+    return intervals(&ivs);
+}
+
 } // namespace core
