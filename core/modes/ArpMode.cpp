@@ -89,7 +89,6 @@ void ArpMode::onRawInput(const RawInput& in) {
 }
 
 void ArpMode::update(uint32_t nowMs) {
-    lastNowMs_ = nowMs;
     engine_.setBpm(svc_.bpm());
     engine_.setScale(&svc_.scale());
     engine_.setParams(params_);

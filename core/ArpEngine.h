@@ -91,7 +91,7 @@ private:
     //   2. If cyclePending_: resolve the boundary (dequeue / latch-replace /
     //      loop), then return if going idle or continue to emit the promoted note.
     //   3. Guard: go idle if seqLen_ <= 0 or qCount_ == 0.
-    //   4. Emit the current step NoteOn, schedule gate NoteOff + next step time.
+    //   4. Emit the current step NoteOn; gate closes in onClockTick() when noteAge_ >= gateTicks_.
     //   5. Advance seqPos_, increment activeCycleSteps_.
     //   6. If a cycle just completed, set cyclePending_ (boundary deferred to the
     //      next call). No recursion.

@@ -52,7 +52,6 @@ private:
     ArpEngine     engine_;
     NoteWormModel model_;
     ArpParams     params_;
-    uint32_t      lastNowMs_  = 0;
 
     // -----------------------------------------------------------------------
     // Screens (nested classes — declared after the members they reference).

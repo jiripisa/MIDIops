@@ -100,7 +100,7 @@ static void test_arp_outgoing_visualised() {
 
     // Tick across several step boundaries (125 ms each).
     // t=0 → NoteOn(60) emitted immediately by engine.
-    // The ArpMode::onMidiIn is called with lastNowMs_=0 so the engine fires step 0.
+    // ArpMode::onMidiIn triggers engine_.noteOn(); the engine fires step 0 immediately.
     // We need update() to run via tick(); we already did tick(0) before noteOn;
     // fire a tick at t=0 again is ok — idempotent for the first call.
     // Then drive further steps.
