@@ -5,6 +5,7 @@
 #include "core/Display.h"
 #include "core/MidiMessage.h"
 #include "core/render/NotationRenderer.h"
+#include "core/render/ParamGrid.h"
 #include "core/render/WormsRenderer.h"
 
 namespace core {
@@ -43,38 +44,6 @@ static const char* velModeName(ArpVelocityMode v) {
         case ArpVelocityMode::Accent:      return "Accent";
         default:                           return "?";
     }
-}
-
-// Cycle an enum value by `delta` steps (wraps around kCount).
-template<typename E>
-static E cycleEnum(E current, int delta) {
-    int n = static_cast<int>(E::kCount);
-    int v = (static_cast<int>(current) + delta % n + n) % n;
-    return static_cast<E>(v);
-}
-
-// 2x2 parameter grid geometry (below the shell's 10px top bar).
-namespace {
-constexpr int kGridTop = 12;
-constexpr int kCellW   = 160;
-constexpr int kCellH   = (240 - kGridTop) / 2;   // 114
-}
-
-// Draws one grid cell: parameter name in small text, value in large text
-// below it. col/row are 0..1 (col 0 = left, row 0 = top).
-static void drawParamCell(Display& d, int col, int row,
-                          const char* name, const char* value) {
-    const int x = col * kCellW;
-    const int y = kGridTop + row * kCellH;
-    constexpr int pad = 8;
-    d.drawText(x + pad, y + pad,      name,  core::color::Gray,  core::color::Black, 1);
-    d.drawText(x + pad, y + pad + 18, value, core::color::White, core::color::Black, 3);
-}
-
-// Thin dividers separating the four cells.
-static void drawParamGridDividers(Display& d) {
-    d.fillRect(kCellW, kGridTop, 1, 240 - kGridTop, core::color::DarkGray);   // vertical
-    d.fillRect(0, kGridTop + kCellH, 320, 1, core::color::DarkGray);          // horizontal
 }
 
 // ---------------------------------------------------------------------------
@@ -228,8 +197,8 @@ void ArpMode::ParamScreenB::render(Display& d) const {
     drawParamCell(d, 0, 1, "VEL",   velModeName(p.velocityMode)); // Enc3
 
     // Bottom-right cell: read-only HOLD + MUTE status (driven by Latch1/2 switches).
-    const int sx = kCellW + 8;
-    const int sy = kGridTop + kCellH + 8;
+    const int sx = kParamCellW + 8;
+    const int sy = kParamGridTop + kParamCellH + 8;
     char hbuf[16], mbuf[16];
     snprintf(hbuf, sizeof(hbuf), "HOLD %s", mode_.hold()  ? "On" : "Off");
     snprintf(mbuf, sizeof(mbuf), "MUTE %s", mode_.muted() ? "On" : "Off");
