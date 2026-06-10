@@ -116,11 +116,39 @@ static void test_character_behavior_screens_edit_clamp() {
     TEST_ASSERT_EQUAL_INT(1, berlin.params().evolveRate);
 }
 
+// ---------------------------------------------------------------------------
+// onExit() silences a sounding note so voices do not hang on mode switch.
+// ---------------------------------------------------------------------------
+static void test_onexit_silences_sounding_note() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+
+    // Latch1 ON → play; advance a tick so the engine emits a NoteOn for step 0.
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});
+    berlin.onClockTick();   // emitStep(0) → NoteOn queued; noteSounding_ = true
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
+
+    // Count NoteOff events before calling onExit().
+    int noteOffsBefore = 0;
+    for (const auto& e : out.events) { if (!e.isOn) ++noteOffsBefore; }
+
+    berlin.onExit();
+
+    // Engine must be stopped and the sounding note silenced.
+    TEST_ASSERT_FALSE(berlin.engine().isPlaying());
+    int noteOffsAfter = 0;
+    for (const auto& e : out.events) { if (!e.isOn) ++noteOffsAfter; }
+    TEST_ASSERT_GREATER_THAN(noteOffsBefore, noteOffsAfter);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_latch1_play_pause_latch2_stop);
     RUN_TEST(test_held_latch_edge_detect);
     RUN_TEST(test_structure_screen_edits_and_clamps);
     RUN_TEST(test_character_behavior_screens_edit_clamp);
+    RUN_TEST(test_onexit_silences_sounding_note);
     return UNITY_END();
 }

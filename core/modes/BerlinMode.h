@@ -24,6 +24,7 @@ public:
     Screen& screen(int i) override;
 
     void onEnter() override;
+    void onExit()  override { engine_.stop(); }   // silence any sounding note on leave
     void onClockTick() override { engine_.onClockTick(); }
     void onRawInput(const RawInput& in) override;
     bool capturesTransport() const override { return true; }
@@ -34,7 +35,6 @@ public:
     // Test inspectors.
     BerlinParams&         params()        { return params_; }
     const BerlinEngine&   engine() const  { return engine_; }
-    BerlinEngine&         engineMut()     { return engine_; }
 
 private:
     AppServices&          svc_;
