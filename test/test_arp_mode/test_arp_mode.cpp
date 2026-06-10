@@ -304,6 +304,56 @@ static void test_arp_uses_settings_out_channel() {
 }
 
 // ---------------------------------------------------------------------------
+// test_arp_ticks_from_internal_clock
+//   AppShell drains consumeClockTicks() → calls ArpMode::onClockTick() →
+//   calls ArpEngine::onClockTick().  After one full step's worth of ticks
+//   the engine should advance and emit a second NoteOn.
+//
+//   Default rate = Sixteenth → arpRateTicks(Sixteenth) = 6 ticks per step.
+//   Step 0 NoteOn fires immediately on noteOn(); after 6 more ticks the step
+//   boundary is crossed and step 1 NoteOn should appear.
+// ---------------------------------------------------------------------------
+static void test_arp_ticks_from_internal_clock() {
+    core::AppShell shell;
+    core::ArpMode  arp(shell);
+    FakeMidiOutput out;
+
+    arp.setMidiOutput(&out);
+    shell.setMidiOutput(&out);
+    shell.addMode(&arp);
+    shell.begin();  // enters ArpMode
+
+    // Confirm clock source is Internal (default).
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::ClockSource::Internal),
+                          static_cast<int>(shell.clockSource()));
+
+    // Push a note so the engine has a sequence; step 0 fires immediately.
+    shell.tick(0);
+    shell.onMidiIn(makeNoteOn(60, 100));
+
+    // Step 0 NoteOn should have been emitted already (fires in noteOn()).
+    int countBefore = 0;
+    for (const auto& ev : out.events) { if (ev.isOn) ++countBefore; }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, countBefore,
+        "Step 0 NoteOn should fire immediately on noteOn()");
+
+    // Load one full step's worth of ticks into pendingTicks.
+    // Sixteenth rate = 6 ticks/step.
+    const int stepTicks = core::arpRateTicks(core::ArpRate::Sixteenth);  // 6
+    out.pendingTicks = static_cast<uint32_t>(stepTicks);
+
+    // shell.tick() drains pendingTicks and calls onClockTick() N times.
+    shell.tick(1);
+
+    // After 6 ticks the engine should have crossed the step boundary and emitted
+    // another NoteOn (step 1).
+    int countAfter = 0;
+    for (const auto& ev : out.events) { if (ev.isOn) ++countAfter; }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(countBefore, countAfter,
+        "Engine should emit a second NoteOn after one full step's ticks");
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 int main() {
@@ -320,5 +370,6 @@ int main() {
     RUN_TEST(test_mute_via_latch2);
     RUN_TEST(test_reset_via_latch3);
     RUN_TEST(test_arp_uses_settings_out_channel);
+    RUN_TEST(test_arp_ticks_from_internal_clock);
     return UNITY_END();
 }

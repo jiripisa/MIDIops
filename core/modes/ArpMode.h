@@ -27,6 +27,7 @@ public:
     void onEnter() override;
     void onExit() override;
     void onMidiIn(const MidiMessage& msg) override;
+    void onClockTick() override { engine_.onClockTick(); }
     void onRawInput(const RawInput& in) override;
     bool capturesTransport() const override { return true; }
     void update(uint32_t nowMs) override;

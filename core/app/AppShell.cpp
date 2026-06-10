@@ -149,6 +149,11 @@ void AppShell::tick(uint32_t nowMs) {
         modes_[activeMode_]->update(nowMs);
         activeScreen().update(nowMs);
     }
+    // Route internal clock ticks to the active mode (e.g. ArpMode → ArpEngine).
+    if (clockSource_ == ClockSource::Internal && out_ && modeCount_ > 0) {
+        uint32_t n = out_->consumeClockTicks();
+        for (uint32_t i = 0; i < n; ++i) modes_[activeMode_]->onClockTick();
+    }
 }
 
 void AppShell::drawTopBar(Display& d) const {
