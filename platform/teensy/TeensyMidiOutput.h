@@ -26,5 +26,4 @@ public:
     void sendNoteOn (uint8_t channel, uint8_t note, uint8_t velocity) override;
     void sendNoteOff(uint8_t channel, uint8_t note) override;
     uint32_t consumeClockTicks() override;
-    void     forwardClock() override;
 };

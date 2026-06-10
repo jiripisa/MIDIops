@@ -75,8 +75,3 @@ uint32_t TeensyMidiOutput::consumeClockTicks() {
     interrupts();
     return n;
 }
-
-void TeensyMidiOutput::forwardClock() {
-    usbMIDI.sendRealTime(usbMIDI.Clock);
-    usbMIDI.send_now();
-}

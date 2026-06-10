@@ -40,10 +40,6 @@ public:
     // autonomous clock master without losing pulses. Returns 0 when the
     // internal clock is stopped (e.g. following an external clock).
     virtual uint32_t consumeClockTicks() = 0;
-
-    // Send a single MIDI Clock (0xF8) downstream — used to forward an
-    // external clock pulse when following an external source.
-    virtual void forwardClock() = 0;
 };
 
 } // namespace core

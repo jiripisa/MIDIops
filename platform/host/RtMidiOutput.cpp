@@ -100,5 +100,3 @@ void RtMidiOutput::sendNoteOff(uint8_t channel, uint8_t note) {
 uint32_t RtMidiOutput::consumeClockTicks() {
     return clockTicks_.exchange(0, std::memory_order_relaxed);
 }
-
-void RtMidiOutput::forwardClock() { sendByte(0xF8); }

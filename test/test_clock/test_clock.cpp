@@ -42,10 +42,12 @@ static void test_external_clock_follows_without_echo() {
     core::MidiMessage clk{}; clk.type = core::MidiType::Clock;
     shell.onMidiIn(clk);
     TEST_ASSERT_EQUAL_INT(1, a.clockTicks);       // active mode ticked once (follow)
-    // The incoming clock is followed, NOT echoed back: on a single MIDI
-    // interface the host is the master, and re-emitting its own clock floods
-    // usbMIDI TX and starves RX on the device. So no pulse is forwarded.
-    TEST_ASSERT_EQUAL_INT(0, out.forwarded);
+    // The incoming clock is followed (mode ticked), NOT echoed back out: on a
+    // single MIDI interface the host is the master, and re-emitting its own
+    // clock floods usbMIDI TX and starves RX on the device. The output sees no
+    // clock-related sends — only the setClockBpm(0) that stopped the internal
+    // master when External was selected.
+    TEST_ASSERT_EQUAL_INT(0, out.starts + out.continues + out.stops);
 }
 
 int main() {
