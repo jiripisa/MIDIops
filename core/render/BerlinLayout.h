@@ -59,8 +59,9 @@ inline void berlinRollRange(const BerlinSequence& seq, int& lo, int& hi) {
 }
 
 // Piano-roll with a left keyboard. X = step, Y = pitch. The keyboard shows the
-// pitch axis; used keys are tinted, the sounding note's key is highlighted;
-// faint row lines give every semitone its own lane.
+// pitch axis; keys used by the sequence are marked with a small gray dot, and
+// the currently-played note's key greys out; faint row lines give every
+// semitone its own lane.
 inline void drawBerlinPianoRoll(Display& d, const BerlinSequence& seq, int playhead,
                                 int soundingNote, uint16_t noteColor) {
     d.fillRect(0, kBerlinRollTop, 320, kBerlinRollH, color::Black);
@@ -88,9 +89,8 @@ inline void drawBerlinPianoRoll(Display& d, const BerlinSequence& seq, int playh
 
     const uint16_t cWhite = color::LightGray;
     const uint16_t cBlack = rgb565(40, 40, 40);
-    const uint16_t cUsedW = rgb565(40, 110, 40);
-    const uint16_t cUsedB = rgb565(20, 70, 20);
-    const uint16_t cPlay  = rgb565(120, 255, 120);
+    const uint16_t cPlay  = color::Gray;             // played note: the key greys out
+    const uint16_t cDot   = rgb565(110, 110, 110);   // "used in sequence" marker dot
     const uint16_t cLine  = rgb565(30, 30, 30);
 
     // 1) Keyboard + faint per-semitone lane lines.
@@ -101,12 +101,22 @@ inline void drawBerlinPianoRoll(Display& d, const BerlinSequence& seq, int playh
         if (h < 1) h = 1;
         const bool black = berlinIsBlackKey(nt);
         if (soundingNote == nt) {
-            d.fillRect(0, y0, kbW, h, cPlay);                     // sounding key, full width
+            d.fillRect(0, y0, kbW, h, cPlay);                    // played note: key greys out
         } else if (black) {
             d.fillRect(0, y0, kbW, h, cWhite);                   // white base
-            d.fillRect(0, y0, kbW * 6 / 10, h, noteUsed(nt) ? cUsedB : cBlack);
+            d.fillRect(0, y0, kbW * 6 / 10, h, cBlack);          // black key bar
         } else {
-            d.fillRect(0, y0, kbW, h, noteUsed(nt) ? cUsedW : cWhite);
+            d.fillRect(0, y0, kbW, h, cWhite);
+        }
+        // "used in sequence" marker: a small gray dot near the key's right edge
+        // (skipped on the played key, which is already fully grey).
+        if (soundingNote != nt && noteUsed(nt)) {
+            int ds = h - 2;
+            if (ds > 4) ds = 4;
+            if (ds < 2) ds = 2;
+            const int dx = kbW - ds - 3;
+            const int dy = y0 + (h - ds) / 2;
+            d.fillRect(dx, dy, ds, ds, cDot);
         }
         d.fillRect(rollX, y0, rollW, 1, cLine);                  // lane line across the roll
     }
