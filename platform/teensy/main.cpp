@@ -19,6 +19,7 @@
 #include "core/modes/BpmMode.h"
 #include "core/modes/DebugMode.h"
 #include "core/modes/MonitoringMode.h"
+#include "core/modes/SettingsMode.h"
 #include "platform/teensy/TeensyButton.h"
 #include "platform/teensy/TeensyDisplay.h"
 #include "platform/teensy/TeensyEncoder.h"
@@ -122,6 +123,7 @@ static core::MonitoringMode monitoringMode;
 static core::DebugMode      debugMode;
 static core::BpmMode        bpmMode(app);
 static core::ArpMode        arpMode(app);
+static core::SettingsMode   settingsMode(app);
 
 void setup() {
     display.begin();
@@ -139,6 +141,7 @@ void setup() {
     app.addMode(&monitoringMode);
     app.addMode(&arpMode);
     app.addMode(&bpmMode);
+    app.addMode(&settingsMode);
     app.addMode(&debugMode);
     app.setBpm(120);
     app.begin();
