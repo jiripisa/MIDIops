@@ -97,7 +97,8 @@ void BerlinMode::StructureScreen::render(Display& d) const {
     snprintf(buf, sizeof buf, "%d%%", p.density);
     drawBerlinParamCell(d, 3, "DENSITY", buf);
     drawBerlinParamDividers(d);
-    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(), color::Green);
+    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
+                        mode_.engine().soundingNote(), color::Green);
 }
 
 // ---- Character screen -------------------------------------------------------
@@ -133,7 +134,8 @@ void BerlinMode::CharacterScreen::render(Display& d) const {
     snprintf(buf, sizeof buf, "%d", p.octaveRange);
     drawBerlinParamCell(d, 3, "RANGE",   buf);
     drawBerlinParamDividers(d);
-    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(), color::Green);
+    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
+                        mode_.engine().soundingNote(), color::Green);
 }
 
 // ---- Dynamics screen --------------------------------------------------------
@@ -197,7 +199,8 @@ void BerlinMode::DynamicsScreen::render(Display& d) const {
         drawBerlinParamCell(d, 3, "-", "-");
     }
     drawBerlinParamDividers(d);
-    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(), color::Green);
+    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
+                        mode_.engine().soundingNote(), color::Green);
 }
 
 // ---- Behavior screen --------------------------------------------------------
@@ -233,7 +236,8 @@ void BerlinMode::BehaviorScreen::render(Display& d) const {
     drawBerlinParamCell(d, 2, "EVOLVE",   buf);
     drawBerlinParamCell(d, 3, "-",        "");
     drawBerlinParamDividers(d);
-    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(), color::Green);
+    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
+                        mode_.engine().soundingNote(), color::Green);
 }
 
 } // namespace core
