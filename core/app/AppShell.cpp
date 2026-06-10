@@ -125,9 +125,34 @@ void AppShell::applyTransport(Transport t) {
 }
 
 void AppShell::onMidiIn(const MidiMessage& msg) {
+    // Realtime transport/clock handled first. When following an external
+    // clock, each Clock pulse drives BPM follow + downstream forward + a mode
+    // tick; Start/Continue/Stop are passed through. Realtime never reaches a
+    // mode's note handler, so always return after this block.
+    const bool isRealtime = msg.type == MidiType::Clock ||
+                            msg.type == MidiType::Start ||
+                            msg.type == MidiType::Continue ||
+                            msg.type == MidiType::Stop;
+    if (isRealtime) {
+        if (clockSource_ == ClockSource::External && out_) {
+            if (msg.type == MidiType::Clock) {
+                clockFollower_.onPulse(nowMs_);
+                uint16_t b = clockFollower_.bpm();
+                if (b) bpm_ = b;                     // followed tempo updates display BPM
+                out_->forwardClock();
+                if (modeCount_ > 0) modes_[activeMode_]->onClockTick();
+            } else if (msg.type == MidiType::Start) {
+                out_->sendStart();
+            } else if (msg.type == MidiType::Continue) {
+                out_->sendContinue();
+            } else if (msg.type == MidiType::Stop) {
+                out_->sendStop();
+            }
+        }
+        return;
+    }
     // Global MIDI-in channel filter: when not OMNI, drop channel-voice
-    // messages on other channels. Non-channel-voice (realtime/system)
-    // always passes.
+    // messages on other channels. Non-channel-voice (e.g. system) passes.
     if (midiInChannel_ != 0 && msg.isChannelVoice() &&
         msg.channel != midiInChannel_) {
         return;
@@ -137,7 +162,21 @@ void AppShell::onMidiIn(const MidiMessage& msg) {
 
 void AppShell::setBpm(uint16_t bpm) {
     bpm_ = bpm;
-    if (out_) out_->setClockBpm(bpm_);
+    // Only drive the internal clock master while on the internal source;
+    // following an external clock must not fight the derived tempo.
+    if (out_ && clockSource_ == ClockSource::Internal) out_->setClockBpm(bpm_);
+}
+
+void AppShell::setClockSource(ClockSource s) {
+    clockSource_ = s;
+    if (out_) {
+        if (s == ClockSource::External) {
+            out_->setClockBpm(0);     // stop the internal clock master
+            clockFollower_.reset();
+        } else {
+            out_->setClockBpm(bpm_);  // resume internal generation
+        }
+    }
 }
 
 void AppShell::tick(uint32_t nowMs) {
