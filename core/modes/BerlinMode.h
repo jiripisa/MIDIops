@@ -1,0 +1,60 @@
+#pragma once
+
+#include "core/app/AppServices.h"
+#include "core/app/Mode.h"
+#include "core/BerlinEngine.h"
+#include "core/BerlinTypes.h"
+#include "core/DrunkardWalkGenerator.h"
+#include "core/Scale.h"
+
+namespace core {
+
+class MidiOutput;
+
+// BerlinMode — single-voice generative Berlin-School sequencer.
+// Screens (Plan A): Structure / Character / Behavior. Each draws its top
+// parameter row plus the shared bottom piano-roll (drawn every screen so the
+// visualization persists across screen switches).
+class BerlinMode : public Mode {
+public:
+    explicit BerlinMode(AppServices& svc);
+
+    const char* name() const override { return "Berlin"; }
+    int     screenCount() const override { return 1; }   // Task 6 raises this to 3
+    Screen& screen(int i) override;
+
+    void onEnter() override;
+    void onClockTick() override { engine_.onClockTick(); }
+    void onRawInput(const RawInput& in) override;
+    bool capturesTransport() const override { return true; }
+    void update(uint32_t nowMs) override;
+
+    void setMidiOutput(MidiOutput* o) { engine_.setOutput(o); }
+
+    // Test inspectors.
+    BerlinParams&         params()        { return params_; }
+    const BerlinEngine&   engine() const  { return engine_; }
+    BerlinEngine&         engineMut()     { return engine_; }
+
+private:
+    AppServices&          svc_;
+    DrunkardWalkGenerator walkGen_;
+    BerlinEngine          engine_;
+    BerlinParams          params_{};
+    Scale                 scale_{};
+    bool                  lastLatch_[4] = {false, false, false, false};  // index 1..3 edge-detect
+
+    class StructureScreen : public Screen {
+    public:
+        explicit StructureScreen(BerlinMode& m) : mode_(m) {}
+        const char* name() const override { return "structure"; }
+        void onEncoder(int index, int delta) override;
+        void render(Display& d) const override;
+    private:
+        BerlinMode& mode_;
+    };
+
+    StructureScreen structureScreen_{*this};
+};
+
+} // namespace core
