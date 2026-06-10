@@ -11,8 +11,12 @@ void DrunkardWalkGenerator::generate(BerlinSequence& out, const BerlinParams& p,
     out.clear();
     out.setLength(length);
 
-    const int lo = p.octaveBase;
-    const int hi = p.octaveBase + 12 * (p.octaveRange < 1 ? 1 : p.octaveRange);
+    int lo = p.octaveBase;
+    int hi = p.octaveBase + 12 * (p.octaveRange < 1 ? 1 : p.octaveRange);
+    // Defense-in-depth: keep the register within valid MIDI so the octave-fold
+    // below can never push a note past 127 (which the uint8_t cast would wrap).
+    if (hi > 127) hi = 127;
+    if (lo > hi)  lo = hi;
     const int stepTicks = berlinResolutionTicks(p.resolution);
     int gate = stepTicks * p.gatePercent / 100; if (gate < 1) gate = 1;
 
@@ -42,10 +46,10 @@ void DrunkardWalkGenerator::generate(BerlinSequence& out, const BerlinParams& p,
 
         int vel = p.velocityBase
                   + rng.range(-static_cast<int>(p.velocityHumanize), p.velocityHumanize);
-        const bool accent = (i == 0) || (note % 12 == scale.root());
+        const bool accent = (i == 0) || (note % 12 == scale.root()); // accent on beat 1 and on root pitch-class notes
         if (accent) vel += p.accent;
         if (vel < 1)   vel = 1;
-        if (vel > 126) vel = 126;
+        if (vel > 126) vel = 126; // cap at 126: leave 127 as headroom so top layers don't screech (per the Berlin doc)
 
         s.active    = true;
         s.note      = static_cast<uint8_t>(note);
