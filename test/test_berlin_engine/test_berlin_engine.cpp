@@ -3,6 +3,8 @@
 #include "core/BerlinRng.h"
 #include "core/BerlinSequence.h"
 #include "core/BerlinEngine.h"
+#include "core/DrunkardWalkGenerator.h"
+#include "core/Scale.h"
 #include "support/FakeMidiOutput.h"
 
 void setUp() {}
@@ -91,6 +93,46 @@ static void test_pause_holds_and_stop_rewinds() {
     TEST_ASSERT_TRUE(countOff(out) >= 1);
 }
 
+static bool seqEqual(const core::BerlinSequence& a, const core::BerlinSequence& b) {
+    if (a.length() != b.length()) return false;
+    for (int i = 0; i < a.length(); ++i) {
+        if (a.step(i).active != b.step(i).active) return false;
+        if (a.step(i).note   != b.step(i).note)   return false;
+    }
+    return true;
+}
+static int countActiveDiff(const core::BerlinSequence& a, const core::BerlinSequence& b) {
+    int d = 0; int n = a.length() < b.length() ? a.length() : b.length();
+    for (int i = 0; i < n; ++i)
+        if (a.step(i).active != b.step(i).active || a.step(i).note != b.step(i).note) ++d;
+    return d;
+}
+
+static void test_generate_fills_via_generator() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    e.setGenerator(&gen); e.setScale(&sc); e.seed(11);
+    core::BerlinParams p; p.length = 16; p.density = 100; p.morph = 100; e.setParams(p);
+    e.generate();
+    TEST_ASSERT_EQUAL_INT(16, e.sequence().length());
+    TEST_ASSERT_TRUE(e.sequence().step(0).active);
+    TEST_ASSERT_EQUAL_INT(0, e.sequence().step(0).note % 12);
+    TEST_ASSERT_EQUAL_INT(0, e.playhead());
+}
+
+static void test_morph_0_keeps_base_100_replaces() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    e.setGenerator(&gen); e.setScale(&sc); e.seed(3);
+    core::BerlinParams p; p.length = 16; p.density = 60; p.morph = 100; e.setParams(p);
+    e.generate();
+    core::BerlinSequence base = e.sequence();
+
+    p.morph = 0; e.setParams(p); e.generate();
+    TEST_ASSERT_TRUE(seqEqual(base, e.sequence()));        // morph 0 → identical
+
+    p.morph = 100; e.setParams(p); e.generate();
+    TEST_ASSERT_TRUE(countActiveDiff(base, e.sequence()) > 0);  // morph 100 → differs
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_resolution_ticks);
@@ -101,5 +143,7 @@ int main() {
     RUN_TEST(test_step_advances_at_resolution_boundary);
     RUN_TEST(test_loops_back_to_step_0);
     RUN_TEST(test_pause_holds_and_stop_rewinds);
+    RUN_TEST(test_generate_fills_via_generator);
+    RUN_TEST(test_morph_0_keeps_base_100_replaces);
     return UNITY_END();
 }

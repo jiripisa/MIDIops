@@ -1,6 +1,7 @@
 #include "core/BerlinEngine.h"
 
 #include "core/MidiOutput.h"
+#include "core/SequenceGenerator.h"
 
 namespace core {
 
@@ -53,9 +54,24 @@ void BerlinEngine::onClockTick() {
 }
 
 void BerlinEngine::generate() {
-    // Filled in Task 4. For now, leave the sequence as-is and rewind.
+    if (generator_ && scale_) {
+        BerlinSequence cand;
+        generator_->generate(cand, params_, *scale_, rng_);
+        if (params_.morph >= 100) {
+            seq_ = cand;                       // full regeneration
+        } else {
+            const int n = cand.length();
+            for (int i = 0; i < n; ++i) {
+                const bool replace = (i >= seq_.length()) || rng_.chance(params_.morph);
+                if (replace) seq_.step(i) = cand.step(i);   // else keep the base step
+            }
+            seq_.setLength(n);
+        }
+    }
+    if (noteSounding_) { emit(false, soundingNote_, 0); noteSounding_ = false; }
     playhead_  = 0;
     stepTicks_ = 0;
+    noteAge_   = 0;
 }
 
 } // namespace core
