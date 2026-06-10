@@ -23,6 +23,7 @@
 #include "core/modes/BpmMode.h"
 #include "core/modes/DebugMode.h"
 #include "core/modes/MonitoringMode.h"
+#include "core/modes/SettingsMode.h"
 #include "platform/host/RtMidiInput.h"
 #include "platform/host/RtMidiOutput.h"
 #include "platform/host/SdlDisplay.h"
@@ -108,6 +109,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
     core::DebugMode      debugMode;
     core::BpmMode        bpmMode(app);
     core::ArpMode        arpMode(app);
+    core::SettingsMode   settingsMode(app);
 
     midiIn.begin();
     midiOut.begin();
@@ -116,6 +118,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
     app.addMode(&monitoringMode);
     app.addMode(&arpMode);
     app.addMode(&bpmMode);
+    app.addMode(&settingsMode);
     app.addMode(&debugMode);
     app.setBpm(120);
     app.begin();
@@ -123,7 +126,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
     std::fprintf(stderr,
                  "MIDIops simulator running.\n"
                  "  Modes: 1=Monitoring  2=Arp (arpeggiates held/injected notes)\n"
-                 "         3=BPM         4=Debug\n"
+                 "         3=BPM         4=Settings  5=Debug\n"
                  "  Boots into Monitoring (worms) view — MIDI in drives the worms.\n"
                  "  z x c v b n m   inject Note On/Off (white keys C4..B4)\n"
                  "  Shift + 1..9    set the test injection channel (default 1)\n"
