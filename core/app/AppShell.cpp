@@ -125,6 +125,13 @@ void AppShell::applyTransport(Transport t) {
 }
 
 void AppShell::onMidiIn(const MidiMessage& msg) {
+    // Global MIDI-in channel filter: when not OMNI, drop channel-voice
+    // messages on other channels. Non-channel-voice (realtime/system)
+    // always passes.
+    if (midiInChannel_ != 0 && msg.isChannelVoice() &&
+        msg.channel != midiInChannel_) {
+        return;
+    }
     if (modeCount_ > 0) modes_[activeMode_]->onMidiIn(msg);
 }
 

@@ -267,6 +267,25 @@ static void test_shell_settings_defaults_and_setters() {
     TEST_ASSERT_EQUAL_INT(10, shell.midiOutChannel());   // out-of-range ignored
 }
 
+static void test_omni_passes_all_channels() {
+    core::AppShell shell; FakeMode a("a", 1);
+    shell.addMode(&a); shell.begin();
+    core::MidiMessage m{}; m.type = core::MidiType::NoteOn; m.channel = 5; m.data1 = 60; m.data2 = 100;
+    shell.onMidiIn(m);
+    TEST_ASSERT_EQUAL_INT(1, a.midiCount);
+}
+static void test_channel_filter_drops_other_channels() {
+    core::AppShell shell; FakeMode a("a", 1);
+    shell.addMode(&a); shell.begin();
+    shell.setMidiInChannel(3);
+    core::MidiMessage on5{}; on5.type = core::MidiType::NoteOn; on5.channel = 5; on5.data1 = 60; on5.data2 = 100;
+    shell.onMidiIn(on5);
+    TEST_ASSERT_EQUAL_INT(0, a.midiCount);     // ch5 != 3 dropped
+    core::MidiMessage on3{}; on3.type = core::MidiType::NoteOn; on3.channel = 3; on3.data1 = 60; on3.data2 = 100;
+    shell.onMidiIn(on3);
+    TEST_ASSERT_EQUAL_INT(1, a.midiCount);     // ch3 == 3 passes
+}
+
 static void test_shell_scale_defaults_cmajor_and_sets() {
     core::AppShell shell;
     TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Scale::Type::Major),
@@ -300,5 +319,7 @@ int main() {
     RUN_TEST(test_bpm_clamps);
     RUN_TEST(test_shell_scale_defaults_cmajor_and_sets);
     RUN_TEST(test_shell_settings_defaults_and_setters);
+    RUN_TEST(test_omni_passes_all_channels);
+    RUN_TEST(test_channel_filter_drops_other_channels);
     return UNITY_END();
 }
