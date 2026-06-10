@@ -38,6 +38,7 @@ void BerlinEngine::stop() {
     playhead_  = 0;
     stepTicks_ = 0;
     noteAge_   = 0;
+    loopCount_ = 0;
 }
 
 void BerlinEngine::onClockTick() {
@@ -48,7 +49,17 @@ void BerlinEngine::onClockTick() {
     if (!playing_) return;
     ++stepTicks_;
     if (stepTicks_ >= stepLenTicks()) {
-        playhead_ = (playhead_ + 1) % (seq_.length() < 1 ? 1 : seq_.length());
+        const int len = seq_.length() < 1 ? 1 : seq_.length();
+        int next = playhead_ + 1;
+        if (next >= len) {
+            next = 0;
+            ++loopCount_;
+            if (params_.behavior == BerlinBehavior::Evolve && generator_ && scale_
+                && params_.evolveRate > 0 && (loopCount_ % params_.evolveRate) == 0) {
+                evolve();
+            }
+        }
+        playhead_ = next;
         emitStep(playhead_);
     }
 }
@@ -72,6 +83,18 @@ void BerlinEngine::generate() {
     playhead_  = 0;
     stepTicks_ = 0;
     noteAge_   = 0;
+    loopCount_ = 0;
+}
+
+void BerlinEngine::evolve() {
+    BerlinSequence cand;
+    generator_->generate(cand, params_, *scale_, rng_);
+    const int len = seq_.length();
+    const int changes = 1 + rng_.range(0, 1);          // 1 or 2 steps
+    for (int c = 0; c < changes; ++c) {
+        const int idx = rng_.range(0, len - 1);
+        if (idx >= 0 && idx < cand.length()) seq_.step(idx) = cand.step(idx);
+    }
 }
 
 } // namespace core

@@ -34,6 +34,7 @@ public:
 
     bool isPlaying()    const { return playing_; }
     int  playhead()     const { return playhead_; }
+    int  loopCount()    const { return loopCount_; }
     int  soundingNote() const { return noteSounding_ ? static_cast<int>(soundingNote_) : -1; }
     const BerlinSequence& sequence() const { return seq_; }
     BerlinSequence&       sequenceMut()    { return seq_; }   // tests set steps directly
@@ -41,6 +42,7 @@ public:
 private:
     void emit(bool isOn, uint8_t note, uint8_t velocity);
     void emitStep(int i);    // fire step i's NoteOn (if active), arm gate
+    void evolve();           // splice 1-2 steps from a fresh candidate (Evolve behavior)
     int  stepLenTicks() const { return berlinResolutionTicks(params_.resolution); }
 
     MidiOutput*        out_       = nullptr;
@@ -54,6 +56,7 @@ private:
     bool  playing_   = false;
     int   playhead_  = 0;
     int   stepTicks_ = 0;
+    int   loopCount_ = 0;    // completed loops since the last generate()/stop()
 
     bool    noteSounding_ = false;
     uint8_t soundingNote_ = 0;
