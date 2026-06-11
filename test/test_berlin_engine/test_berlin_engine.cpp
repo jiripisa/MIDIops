@@ -440,7 +440,9 @@ static void test_live_octave_base_transposes_exactly() {
     }
 }
 
-static void test_live_octave_range_folds_in() {
+// Narrowing proportionally squeezes the melody into the smaller register
+// (scale-quantized — no out-of-register or out-of-scale notes survive).
+static void test_live_octave_range_squeezes_in() {
     core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
     core::BerlinParams p; p.length = 16; p.density = 100; p.octaveBase = 48; p.octaveRange = 3;
     liveBase(e, gen, sc, p, 13);
@@ -591,7 +593,7 @@ int main() {
     RUN_TEST(test_silence_flushes_note_without_moving_playhead);
     RUN_TEST(test_live_density_adds_and_removes_in_place);
     RUN_TEST(test_live_octave_base_transposes_exactly);
-    RUN_TEST(test_live_octave_range_folds_in);
+    RUN_TEST(test_live_octave_range_squeezes_in);
     RUN_TEST(test_live_octave_range_stretches_out);
     RUN_TEST(test_live_length_shorten_and_extend);
     RUN_TEST(test_live_tension_repitches_keeping_rhythm);
