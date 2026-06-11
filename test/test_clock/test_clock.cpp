@@ -288,6 +288,47 @@ static void test_external_stop_safety_under_off() {
     TEST_ASSERT_EQUAL_INT(0, out.stops);                    // nothing re-emitted
 }
 
+// HARDWARE contract: the latch LEVEL is delivered to the capturing mode every
+// main-loop frame. Under Transport=Receive the DAW owns playback — a Latch1
+// switch physically sitting OFF must NOT keep re-pausing the engine after a
+// received Start (the field bug: one note played, playhead frozen). Under
+// Receive the latch acts only on a real flip (manual override).
+static void test_receive_not_overridden_by_latch_level() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out;
+    berlin.setMidiOutput(&out);
+    shell.setMidiOutput(&out);
+    shell.addMode(&berlin);
+    shell.begin();
+    shell.setTransportMode(core::TransportMode::Receive);
+
+    // Hardware pushes the OFF level every frame (first delivery = sync absorb).
+    shell.onLatch(1, false);
+    shell.onLatch(1, false);
+
+    core::MidiMessage start{}; start.type = core::MidiType::Start;
+    shell.onMidiIn(start);
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
+
+    // Keep delivering the OFF level (every frame, as hardware does) interleaved
+    // with clock ticks — the engine must KEEP playing and the playhead advance.
+    for (int i = 0; i < 24; ++i) {
+        shell.onLatch(1, false);
+        out.pendingTicks = 1;
+        shell.tick(2000 + i);
+    }
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
+    TEST_ASSERT_GREATER_THAN(0, berlin.engine().playhead());
+
+    // A genuine flip is still a manual override: OFF->ON pauses nothing (already
+    // playing), ON->OFF pauses.
+    shell.onLatch(1, true);
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
+    shell.onLatch(1, false);
+    TEST_ASSERT_FALSE(berlin.engine().isPlaying());
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_realtime_types_are_not_channel_voice);
@@ -298,6 +339,7 @@ int main() {
     RUN_TEST(test_bpm_readonly_under_external_clock);
     RUN_TEST(test_clock_source_switch_mid_note);
     RUN_TEST(test_receive_start_continue_stop_drive_berlin);
+    RUN_TEST(test_receive_not_overridden_by_latch_level);
     RUN_TEST(test_transport_ignored_unless_receive);
     RUN_TEST(test_external_stop_safety_under_off);
     RUN_TEST(test_stop_safety_not_under_internal_clock);

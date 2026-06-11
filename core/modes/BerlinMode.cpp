@@ -78,10 +78,22 @@ void BerlinMode::onRawInput(const RawInput& in) {
     latchSynced_[in.index] = true;
     const bool flip = changed && !firstDelivery;
     switch (in.index) {
-        case 1:  // Play/Pause (level). Emit MIDI transport only on a real flip,
-                 // so the every-frame level delivery cannot spam Start/Stop and
-                 // the first-frame sync adoption stays silent.
-            in.on ? engine_.play() : engine_.pause();
+        case 1:  // Play/Pause. Under Send/Off the switch position IS the run
+                 // state (level-driven, applied every frame). Under Receive the
+                 // DAW owns the transport: the every-frame level delivery must
+                 // NOT keep overriding a received Start/Stop (a switch sitting
+                 // OFF would re-pause the engine each frame — the field bug:
+                 // one note, frozen playhead). There the latch acts only on a
+                 // real flip, as a manual override. MIDI transport is emitted
+                 // only on a real flip in either case, so the every-frame level
+                 // cannot spam Start/Stop and the sync frame stays silent.
+            if (svc_.transportMode() == TransportMode::Receive) {
+                if (flip) {
+                    in.on ? engine_.play() : engine_.pause();
+                }
+            } else {
+                in.on ? engine_.play() : engine_.pause();
+            }
             if (flip) svc_.notifyLocalTransport(in.on ? Transport::Play : Transport::Pause);
             break;
         case 2:  // Stop (any flip)

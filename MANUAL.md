@@ -234,7 +234,7 @@ stays visible on all four — only the top parameter row changes).
 
 | Latch | Function |
 |---|---|
-| **Latch1 — Play/Pause** | Switch position = play/pause. Pause holds the playhead in place. |
+| **Latch1 — Play/Pause** | Switch position = play/pause. Pause holds the playhead in place. Under Transport = Recv the DAW drives playback and the switch acts only on a flip (manual override). |
 | **Latch2 — Stop** | Each flip rewinds to step 1 and silences the note. |
 | **Latch3 — Generate** | Each flip generates a new sequence (using **Morph** intensity). |
 

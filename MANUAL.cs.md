@@ -234,7 +234,7 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
 
 | Latch | Funkce |
 |---|---|
-| **Latch1 — Play/Pause** | Poloha páčky = hraje/pauza. Pauza drží playhead na místě. |
+| **Latch1 — Play/Pause** | Poloha páčky = hraje/pauza. Pauza drží playhead na místě. Při Transport = Recv řídí přehrávání DAW a páčka funguje jen na překlopení (ruční zásah). |
 | **Latch2 — Stop** | Každé přepnutí přetočí na krok 1 a utiší notu. |
 | **Latch3 — Generate** | Každé přepnutí vygeneruje novou sekvenci (s intenzitou **Morph**). |
 
