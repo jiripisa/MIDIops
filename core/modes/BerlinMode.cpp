@@ -14,6 +14,14 @@ BerlinMode::BerlinMode(AppServices& svc) : svc_(svc) {
     engine_.setParams(params_);
 }
 
+void BerlinMode::liveRegen() {
+    if (params_.behavior != BerlinBehavior::Live) return;
+    engine_.setScale(&scale_);
+    engine_.setParams(params_);
+    applyGenerator();
+    engine_.generate();
+}
+
 void BerlinMode::applyGenerator() {
     switch (params_.algorithm) {
         case BerlinAlgorithm::DegreeWeighted:   engine_.setGenerator(&degreeGen_);  break;
@@ -85,6 +93,7 @@ void BerlinMode::StructureScreen::onEncoder(int index, int delta) {
         case 4: { int v = p.density + delta * 5; if (v < 0) v = 0; if (v > 100) v = 100;
                   p.density = static_cast<uint8_t>(v); } break;
     }
+    mode_.liveRegen();  // all structure params are structural
 }
 
 void BerlinMode::StructureScreen::render(Display& d) const {
@@ -110,16 +119,18 @@ static void octaveLabel(uint8_t note, char* buf, int n) {
 
 void BerlinMode::CharacterScreen::onEncoder(int index, int delta) {
     BerlinParams& p = mode_.params_;
+    bool structural = false;
     switch (index) {
         case 1: { int v = p.gatePercent + delta;     if (v < 40) v = 40; if (v > 99) v = 99;
                   p.gatePercent = static_cast<uint8_t>(v); } break;
         case 2: { int v = p.tension + delta * 5;     if (v < 0) v = 0;  if (v > 100) v = 100;
-                  p.tension = static_cast<uint8_t>(v); } break;
+                  p.tension = static_cast<uint8_t>(v); structural = true; } break;
         case 3: { int v = p.octaveBase + delta * 12; if (v < 24) v = 24; if (v > 72) v = 72;
-                  p.octaveBase = static_cast<uint8_t>(v); } break;
+                  p.octaveBase = static_cast<uint8_t>(v); structural = true; } break;
         case 4: { int v = p.octaveRange + delta;     if (v < 1) v = 1;  if (v > 3) v = 3;
-                  p.octaveRange = static_cast<uint8_t>(v); } break;
+                  p.octaveRange = static_cast<uint8_t>(v); structural = true; } break;
     }
+    if (structural) mode_.liveRegen();
 }
 
 void BerlinMode::CharacterScreen::render(Display& d) const {
@@ -176,6 +187,7 @@ void BerlinMode::DynamicsScreen::onEncoder(int index, int delta) {
                 if (v > 16) v = 16;
                 p.gateLen = static_cast<uint8_t>(v);
             }
+            mode_.liveRegen();  // scatter and gateLen are structural
             break;
     }
 }

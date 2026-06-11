@@ -34,6 +34,8 @@ public:
 
     void setMidiOutput(MidiOutput* o) { engine_.setOutput(o); }
 
+    void liveRegen();   // regenerate immediately if Behavior == Live (structural edit)
+
     // Test inspectors.
     BerlinParams&         params()        { return params_; }
     const BerlinEngine&   engine() const  { return engine_; }

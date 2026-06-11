@@ -221,6 +221,56 @@ static void test_algorithm_dispatch() {
     TEST_ASSERT_TRUE(activeCount(berlin.engine().sequence()) >= 1);
 }
 
+// ---------------------------------------------------------------------------
+// Live behavior: structural edits immediately regenerate the sequence.
+// ---------------------------------------------------------------------------
+static int berlinSeqDiff(const core::BerlinSequence& a, const core::BerlinSequence& b) {
+    if (a.length() != b.length()) return 999;
+    int d = 0;
+    for (int i = 0; i < a.length(); ++i) {
+        if (a.step(i).active   != b.step(i).active   ||
+            a.step(i).note     != b.step(i).note      ||
+            a.step(i).velocity != b.step(i).velocity) {
+            ++d;
+        }
+    }
+    return d;
+}
+
+static void test_live_regenerates_on_structural_edit() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+    berlin.params().behavior = core::BerlinBehavior::Live;
+    berlin.params().length = 16;
+
+    core::Screen& structure = berlin.screen(0);
+    structure.onEncoder(2, -1);                       // Length 16 → 15, Live regen
+    TEST_ASSERT_EQUAL_INT(15, berlin.engine().sequence().length());
+    structure.onEncoder(2, -1);                       // 15 → 14
+    TEST_ASSERT_EQUAL_INT(14, berlin.engine().sequence().length());
+}
+
+static void test_live_ignores_performance_edit_and_locked_never_regens() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+
+    // Live + PERFORMANCE edit (Velocity, Dynamics Enc1) must NOT regenerate.
+    berlin.params().behavior = core::BerlinBehavior::Live;
+    core::BerlinSequence before = berlin.engine().sequence();
+    berlin.screen(2).onEncoder(1, +1);                // velocity base +1 (performance)
+    TEST_ASSERT_EQUAL_INT(0, berlinSeqDiff(before, berlin.engine().sequence()));
+
+    // Locked + structural edit (Density) must NOT regenerate either.
+    berlin.params().behavior = core::BerlinBehavior::Locked;
+    core::BerlinSequence base2 = berlin.engine().sequence();
+    berlin.screen(0).onEncoder(4, +1);                // density +5 (structural) but Locked
+    TEST_ASSERT_EQUAL_INT(0, berlinSeqDiff(base2, berlin.engine().sequence()));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_latch1_play_pause_latch2_stop);
@@ -231,5 +281,7 @@ int main() {
     RUN_TEST(test_dynamics_screen);
     RUN_TEST(test_onexit_silences_sounding_note);
     RUN_TEST(test_algorithm_dispatch);
+    RUN_TEST(test_live_regenerates_on_structural_edit);
+    RUN_TEST(test_live_ignores_performance_edit_and_locked_never_regens);
     return UNITY_END();
 }
