@@ -160,16 +160,29 @@ void BerlinEngine::applyLiveOctaveBase(int deltaSemis) {
     }
 }
 
-void BerlinEngine::applyLiveOctaveRange() {
+void BerlinEngine::applyLiveOctaveRange(int oldRangeOctaves) {
+    if (!scale_) return;
     int lo = 0, hi = 0;
-    berlinRegister(params_, lo, hi);
+    berlinRegister(params_, lo, hi);                  // the NEW register
+    const int oldSpan = 12 * (oldRangeOctaves < 1 ? 1 : oldRangeOctaves);
+    const int newSpan = hi - lo;
     const int len = seq_.length();
-    for (int i = 0; i < len; ++i) {
+    // Proportional remap: each note keeps its RELATIVE position within the
+    // register, so widening stretches the melody contour open and narrowing
+    // squeezes it -- instead of leaving notes huddled at the bottom (widen) or
+    // octave-folding them (narrow). Quantized back into the scale; step 0
+    // (the root anchor) is left untouched.
+    for (int i = 1; i < len; ++i) {
         BerlinStep& s = seq_.step(i);
         if (!s.active) continue;
-        int note = berlinFoldIntoRegister(static_cast<int>(s.note), lo, hi);
+        int pos = static_cast<int>(s.note) - lo;
+        if (pos < 0) pos = 0;
+        if (pos > oldSpan) pos = oldSpan;
+        int note = lo + (pos * newSpan + oldSpan / 2) / oldSpan;
         if (note < 0)   note = 0;
         if (note > 127) note = 127;
+        note = scale_->quantize(static_cast<uint8_t>(note));
+        note = berlinFoldIntoRegister(note, lo, hi);
         s.note = static_cast<uint8_t>(note);
     }
 }

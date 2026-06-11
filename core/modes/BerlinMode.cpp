@@ -189,9 +189,13 @@ void BerlinMode::CharacterScreen::onEncoder(int index, int delta) {
                       mode_.engine_.applyLiveOctaveBase(static_cast<int>(p.octaveBase) - oldBase);
                   }
                 } break;
-        case 4: { int v = p.octaveRange + delta;     if (v < 1) v = 1;  if (v > 3) v = 3;
+        case 4: { const int oldRange = p.octaveRange;
+                  int v = p.octaveRange + delta;     if (v < 1) v = 1;  if (v > 3) v = 3;
                   p.octaveRange = static_cast<uint8_t>(v);
-                  if (mode_.live()) { mode_.engine_.setParams(p); mode_.engine_.applyLiveOctaveRange(); }
+                  if (mode_.live() && v != oldRange) {
+                      mode_.engine_.setParams(p);
+                      mode_.engine_.applyLiveOctaveRange(oldRange);
+                  }
                 } break;
     }
 }

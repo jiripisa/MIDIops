@@ -173,7 +173,7 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
 | Enc1 | **Gate** | 40–99 % | 55 | Délka noty v rámci kroku. Funguje živě při přehrávání. |
 | Enc2 | **Tension** | 0–100 % | 30 | Nízká = tóny se drží root/kvinty (bezpečné); vysoká = odvážnější. |
 | Enc3 | **Octave base** | C1–C5 | C3 | Nejnižší oktáva hlasu. |
-| Enc4 | **Octave range** | 1–3 | 2 | Přes kolik oktáv se noty rozprostřou. |
+| Enc4 | **Octave range** | 1–3 | 2 | Přes kolik oktáv se noty rozprostřou. V Live rozšíření/zúžení melodii proporcionálně roztáhne/stáhne (ve stupnici; root kotva zůstává). |
 
 **Obrazovka `dynamics`:**
 

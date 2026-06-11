@@ -447,7 +447,7 @@ static void test_live_octave_range_folds_in() {
     core::BerlinSequence base = e.sequence();
 
     p.octaveRange = 1; e.setParams(p);
-    e.applyLiveOctaveRange();
+    e.applyLiveOctaveRange(/*oldRangeOctaves=*/3);
     int lo = 0, hi = 0; core::berlinRegister(p, lo, hi);
     for (int i = 0; i < 16; ++i) {
         if (base.step(i).active) {
@@ -457,6 +457,45 @@ static void test_live_octave_range_folds_in() {
             TEST_ASSERT_EQUAL_UINT8(base.step(i).velocity, s.velocity);
             TEST_ASSERT_EQUAL_UINT16(base.step(i).gateTicks, s.gateTicks);
         }
+    }
+}
+
+// Helper: pitch span (max - min) over ACTIVE steps i >= 1 (step 0 = anchor).
+static int activeSpan(const core::BerlinSequence& s) {
+    int mn = 127;
+    int mx = 0;
+    for (int i = 1; i < s.length(); ++i) {
+        if (!s.step(i).active) continue;
+        if (s.step(i).note < mn) mn = s.step(i).note;
+        if (s.step(i).note > mx) mx = s.step(i).note;
+    }
+    return mx >= mn ? mx - mn : 0;
+}
+
+// Widening the range STRETCHES the melody: each note keeps its relative
+// position in the register (proportional remap, scale-quantized), so the
+// contour opens up vertically instead of staying squeezed at the bottom.
+static void test_live_octave_range_stretches_out() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    core::BerlinParams p; p.length = 16; p.density = 100; p.octaveBase = 48; p.octaveRange = 1;
+    p.scatter = 5;
+    liveBase(e, gen, sc, p, 21);
+    core::BerlinSequence base = e.sequence();
+    const int spanBefore = activeSpan(base);
+    TEST_ASSERT_GREATER_THAN(2, spanBefore);          // a real contour to stretch
+
+    p.octaveRange = 3; e.setParams(p);
+    e.applyLiveOctaveRange(/*oldRangeOctaves=*/1);
+    int lo = 0, hi = 0; core::berlinRegister(p, lo, hi);
+    const int spanAfter = activeSpan(e.sequence());
+    TEST_ASSERT_GREATER_THAN(spanBefore, spanAfter);  // melody opened up
+    TEST_ASSERT_EQUAL_UINT8(base.step(0).note, e.sequence().step(0).note);  // root anchor stays
+    for (int i = 0; i < 16; ++i) {
+        if (!base.step(i).active) continue;
+        const core::BerlinStep& s = e.sequence().step(i);
+        TEST_ASSERT_TRUE(s.note >= lo && s.note <= hi);
+        TEST_ASSERT_EQUAL_UINT8(s.note, sc.quantize(s.note));
+        TEST_ASSERT_EQUAL_UINT8(base.step(i).velocity, s.velocity);    // rhythm/dynamics kept
     }
 }
 
@@ -525,7 +564,7 @@ static void test_live_edits_do_not_reset_playhead() {
 
     e.applyLiveDensity();
     e.applyLiveTension();
-    e.applyLiveOctaveRange();
+    e.applyLiveOctaveRange(/*oldRangeOctaves=*/2);
     TEST_ASSERT_EQUAL_INT(3, e.playhead());
 }
 
@@ -553,6 +592,7 @@ int main() {
     RUN_TEST(test_live_density_adds_and_removes_in_place);
     RUN_TEST(test_live_octave_base_transposes_exactly);
     RUN_TEST(test_live_octave_range_folds_in);
+    RUN_TEST(test_live_octave_range_stretches_out);
     RUN_TEST(test_live_length_shorten_and_extend);
     RUN_TEST(test_live_tension_repitches_keeping_rhythm);
     RUN_TEST(test_live_edits_do_not_reset_playhead);

@@ -173,7 +173,7 @@ stays visible on all four — only the top parameter row changes).
 | Enc1 | **Gate** | 40–99 % | 55 | Note length within a step. Applies live while playing. |
 | Enc2 | **Tension** | 0–100 % | 30 | Low = pitches hug the root/fifth (safe); high = more adventurous. |
 | Enc3 | **Octave base** | C1–C5 | C3 | The lowest octave of the voice. |
-| Enc4 | **Octave range** | 1–3 | 2 | How many octaves the notes may span. |
+| Enc4 | **Octave range** | 1–3 | 2 | How many octaves the notes may span. In Live, widening/narrowing proportionally stretches/squeezes the melody (in scale; the root anchor stays). |
 
 **Screen `dynamics`:**
 

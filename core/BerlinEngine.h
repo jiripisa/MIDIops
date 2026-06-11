@@ -39,7 +39,7 @@ public:
     // the sounding gate. Used by BerlinMode when behavior == Live.
     void applyLiveDensity();                 // add/remove active steps to hit the new density target
     void applyLiveOctaveBase(int deltaSemis);// transpose active notes, fold into the current register
-    void applyLiveOctaveRange();             // fold active notes into the current (possibly narrower) register
+    void applyLiveOctaveRange(int oldRangeOctaves);  // proportionally stretch/squeeze the melody into the new register
     void applyLiveLength();                  // truncate (wrap playhead) or extend (fill the new tail)
     void applyLiveTension();                 // re-pitch active steps (except step 0), keep rhythm/velocity/gate
 
