@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "core/ArpTypes.h"
+#include "core/GateTimer.h"
 
 namespace core {
 
@@ -90,7 +91,7 @@ private:
     //   2. If cyclePending_: resolve the boundary (dequeue / latch-replace /
     //      loop), then return if going idle or continue to emit the promoted note.
     //   3. Guard: go idle if seqLen_ <= 0 or qCount_ == 0.
-    //   4. Emit the current step NoteOn; gate closes in onClockTick() when noteAge_ >= gateTicks_.
+    //   4. Emit the current step NoteOn; gate closes in onClockTick() when the GateTimer elapses.
     //   5. Advance seqPos_, increment activeCycleSteps_.
     //   6. If a cycle just completed, set cyclePending_ (boundary deferred to the
     //      next call). No recursion.
@@ -120,11 +121,9 @@ private:
     // Tick-based step timing (24-PPQN MIDI clock driven).
     int      stepTicks_    = 0;    // ticks elapsed in the current step
     int      curStepLen_   = 0;    // length of the current step in ticks (incl. swing)
-    int      gateTicks_    = 0;    // ticks the current note stays on (set at step start)
-    int      noteAge_      = 0;    // ticks since the current note's NoteOn
 
-    bool     noteSounding_ = false;
-    uint8_t  soundingNote_ = 0;
+    // Gate timing for the current sounding note (note + gate elapse).
+    GateTimer gate_{};
     // Whether the current sounding note's NoteOn actually reached the wire (it is
     // suppressed while muted_). The matching wire NoteOff is sent only if it did,
     // so muting before a note plays produces no orphan NoteOff. If mute engages

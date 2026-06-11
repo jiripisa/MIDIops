@@ -129,8 +129,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
     std::fprintf(stderr,
                  "MIDIops simulator running.\n"
-                 "  Modes: 1=Monitoring  2=Arp (arpeggiates held/injected notes)\n"
-                 "         3=BPM         4=Settings  5=Debug\n"
+                 "  Modes (Enc5 cycles): Monitoring  Arp  Berlin  BPM  Settings  Debug\n"
                  "  Boots into Monitoring (worms) view — MIDI in drives the worms.\n"
                  "  z x c v b n m   inject Note On/Off (white keys C4..B4)\n"
                  "  Shift + 1..9    set the test injection channel (default 1)\n"

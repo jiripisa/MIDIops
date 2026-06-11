@@ -5,6 +5,7 @@
 #include "core/BerlinSequence.h"
 #include "core/BerlinTypes.h"
 #include "core/BerlinRng.h"
+#include "core/GateTimer.h"
 
 namespace core {
 
@@ -36,7 +37,7 @@ public:
     bool isPlaying()    const { return playing_; }
     int  playhead()     const { return playhead_; }
     int  loopCount()    const { return loopCount_; }
-    int  soundingNote() const { return noteSounding_ ? static_cast<int>(soundingNote_) : -1; }
+    int  soundingNote() const { return gate_.sounding() ? static_cast<int>(gate_.note()) : -1; }
     const BerlinSequence& sequence() const { return seq_; }
     BerlinSequence&       sequenceMut()    { return seq_; }   // tests set steps directly
 
@@ -60,10 +61,7 @@ private:
     int   stepTicks_ = 0;
     int   loopCount_ = 0;    // completed loops since the last generate()/stop()
 
-    bool    noteSounding_ = false;
-    uint8_t soundingNote_ = 0;
-    int     gateTicks_    = 0;
-    int     noteAge_      = 0;
+    GateTimer gate_{};
 };
 
 } // namespace core

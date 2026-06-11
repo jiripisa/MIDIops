@@ -102,12 +102,9 @@ void ArpEngine::noteOff(uint8_t /*note*/) {
 void ArpEngine::onClockTick() {
     // Fire the gate NoteOff once the current note has been sounding for its
     // gate duration (in clock ticks).
-    if (noteSounding_) {
-        ++noteAge_;
-        if (noteAge_ >= gateTicks_) {
-            emit(false, soundingNote_, 0);
-            noteSounding_ = false;
-        }
+    if (gate_.sounding()) {
+        const uint8_t n = gate_.note();
+        if (gate_.tick()) emit(false, n, 0);
     }
 
     // Advance the step counter; cross the step boundary when the current step
@@ -120,9 +117,9 @@ void ArpEngine::onClockTick() {
 }
 
 void ArpEngine::stop() {
-    if (noteSounding_) {
-        emit(false, soundingNote_, 0);
-        noteSounding_ = false;
+    if (gate_.sounding()) {
+        emit(false, gate_.note(), 0);
+        gate_.clear();
     }
     active_           = false;
     noteOnSent_       = false;
@@ -133,8 +130,6 @@ void ArpEngine::stop() {
     cyclePending_     = false;
     stepTicks_        = 0;
     curStepLen_       = 0;
-    gateTicks_        = 0;
-    noteAge_          = 0;
 }
 
 void ArpEngine::reset() {
@@ -195,7 +190,7 @@ void ArpEngine::initSeqFromHead() {
 
 void ArpEngine::beginStep() {
     // --- 1. Kill the previous sounding note (its step has ended). ---
-    if (noteSounding_) { emit(false, soundingNote_, 0); noteSounding_ = false; }
+    if (gate_.sounding()) { emit(false, gate_.note(), 0); gate_.clear(); }
 
     // --- 2. If the previous step completed a cycle, resolve the boundary now —
     //        AFTER the last note has had its full step slot. ---
@@ -222,16 +217,13 @@ void ArpEngine::beginStep() {
     uint8_t note = seq_[seqPos_];
     uint8_t vel  = velocityForStep(seqPos_);
     emit(true, note, vel);
-    soundingNote_ = note;
-    noteSounding_ = true;
 
     // Tick bookkeeping for the new step. Gate is computed from the un-swung
     // base step length (mirrors the ms version: gate = stepMs * gate% / 100,
     // where stepMs was the base step length without the swing shift).
-    int stepLen = arpRateTicks(params_.rate);
-    gateTicks_  = stepLen * params_.gatePercent / 100;
-    if (gateTicks_ < 1) gateTicks_ = 1;
-    noteAge_    = 0;
+    int stepLen   = arpRateTicks(params_.rate);
+    int gateTicks = stepLen * params_.gatePercent / 100;
+    gate_.arm(note, gateTicks);   // arm() clamps gateTicks to >= 1
 
     // Length of this step (with swing on odd steps) determines the next boundary.
     curStepLen_ = stepLenTicks(stepCount_);

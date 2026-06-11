@@ -1,6 +1,6 @@
 #pragma once
 
-#include "MidiMessage.h"
+#include "core/MidiMessage.h"
 
 namespace core {
 
