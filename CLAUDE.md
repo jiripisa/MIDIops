@@ -70,10 +70,6 @@ not by the pin names):
 Global settings (in Settings mode): scale type + root, MIDI out channel,
 MIDI in channel (0 = OMNI), and clock source (Internal / External).
 
-* **Splash artwork** — full-screen 320×240 RGB565 bitmap blitted from an
-  auto-generated header (`core/splash_image.h`). Regenerated from PNG via
-  `scripts/build_splash_image.py`.
-
 The physical panel (pins per `platform/teensy/main.cpp`):
   * **Five KY-040 encoders** Enc1–Enc5 — Enc1 4/5/3, Enc2 14/15/16,
     Enc3 17/18/19, Enc4 6/7/0, Enc5 20/21/22 (CLK/DT/SW).
