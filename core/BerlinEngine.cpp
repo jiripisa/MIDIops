@@ -12,6 +12,10 @@ void BerlinEngine::emit(bool isOn, uint8_t note, uint8_t velocity) {
 }
 
 void BerlinEngine::emitStep(int i) {
+    if (noteSounding_) {
+        emit(false, soundingNote_, 0);
+        noteSounding_ = false;
+    }
     const BerlinStep& s = seq_.step(i);
     stepTicks_ = 0;
     if (!s.active) return;

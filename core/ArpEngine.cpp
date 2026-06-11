@@ -14,15 +14,21 @@ namespace core {
 
 int ArpEngine::stepLenTicks(int stepCount) const {
     // Base step length in 24-PPQN clock ticks.
-    int base = arpRateTicks(params_.rate);
+    const int base = arpRateTicks(params_.rate);
 
-    // Swing: lengthen odd steps so the following step lands later.
-    // Mirrors the ms version: odd steps (stepCount odd) get an extra
-    // (swingPercent - 50) * base / 100 ticks. Never negative.
-    if (params_.swingPercent != 50 && (stepCount & 1)) {
-        int swing = (static_cast<int>(params_.swingPercent) - 50) * base / 100;
-        if (swing < 0) swing = 0;
-        base += swing;
+    // Tempo-neutral swing: the downbeat (even step) holds longer, delaying the
+    // off-beat (odd step) which is shortened by the same amount. A pair sums to
+    // 2*base, so there is no cumulative drift against a synced clock.
+    //   s = (swingPercent - 50) * base / 100, clamped >= 0.
+    //   even step → base + s ; odd step → base - s (min 1).
+    if (params_.swingPercent != 50) {
+        int s = (static_cast<int>(params_.swingPercent) - 50) * base / 100;
+        if (s < 0) s = 0;
+        if ((stepCount & 1) == 0) {
+            return base + s;
+        }
+        int len = base - s;
+        return len < 1 ? 1 : len;
     }
     return base;
 }
@@ -75,6 +81,7 @@ void ArpEngine::noteOn(uint8_t note, uint8_t velocity) {
     if (!active_) {
         qCount_ = 0;
         qHead_  = 0;
+        latchHasPending_ = false;   // clear any stale latch pending from a prior session
         cyclePending_ = false;
         qPush(note, velocity);
         initSeqFromHead();
@@ -118,6 +125,7 @@ void ArpEngine::stop() {
         noteSounding_ = false;
     }
     active_           = false;
+    noteOnSent_       = false;
     qCount_           = 0;
     qHead_            = 0;
     latchHasPending_  = false;
@@ -133,6 +141,7 @@ void ArpEngine::reset() {
     stepCount_        = 0;
     activeCycleSteps_ = 0;
     cyclePending_     = false;
+    latchHasPending_  = false;
     stepTicks_        = 0;
     udDir_ = +1;
     if (params_.direction == ArpDirection::Down) {
@@ -151,8 +160,12 @@ void ArpEngine::reset() {
 
 void ArpEngine::emit(bool isOn, uint8_t note, uint8_t velocity) {
     if (out_) {
-        if (isOn) { if (!muted_) out_->sendNoteOn(outChannel_, note, velocity); }
-        else      out_->sendNoteOff(outChannel_, note);
+        if (isOn) {
+            if (!muted_) { out_->sendNoteOn(outChannel_, note, velocity); noteOnSent_ = true; }
+            else         { noteOnSent_ = false; }   // suppressed: no matching wire NoteOff later
+        } else {
+            if (noteOnSent_) out_->sendNoteOff(outChannel_, note);   // only if its NoteOn went out
+        }
     }
     if (echo_) echo_(echoUser_, isOn, outChannel_, note, velocity);
 }
@@ -190,7 +203,7 @@ void ArpEngine::beginStep() {
         cyclePending_ = false;
         if (!params_.latch) {
             qPop();                                         // remove the finished note
-            if (qCount_ == 0) { active_ = false; return; } // queue empty → idle
+            if (qCount_ == 0) { active_ = false; latchHasPending_ = false; return; } // queue empty → idle
             initSeqFromHead();                              // next queued note → step 0
         } else if (latchHasPending_) {
             latchHasPending_ = false;
@@ -203,7 +216,7 @@ void ArpEngine::beginStep() {
     }
 
     // --- 3. Guard. ---
-    if (seqLen_ <= 0 || qCount_ == 0) { active_ = false; return; }
+    if (seqLen_ <= 0 || qCount_ == 0) { active_ = false; latchHasPending_ = false; return; }
 
     // --- 4. Emit current step. ---
     uint8_t note = seq_[seqPos_];
@@ -273,9 +286,12 @@ int ArpEngine::nextSeqIndex() {
         }
 
         case ArpDirection::Random: {
-            // LCG: no immediate repeat
+            // LCG: no immediate repeat. Use the HIGH bits — the low bits of a
+            // mod-2^32 LCG have a short period (the low k bits cycle with period
+            // 2^k), which produces a fixed repeating permutation for power-of-two
+            // sequence lengths. The high bits do not have that defect.
             randState_ = randState_ * 1664525u + 1013904223u;
-            int next = static_cast<int>(randState_ % static_cast<uint32_t>(seqLen_));
+            int next = static_cast<int>((randState_ >> 16) % static_cast<uint32_t>(seqLen_));
             if (seqLen_ > 1 && next == seqPos_) {
                 next = (next + 1) % seqLen_;
             }

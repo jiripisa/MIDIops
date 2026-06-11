@@ -183,6 +183,32 @@ static void test_locked_never_auto_varies() {
     TEST_ASSERT_EQUAL_INT(0, countActiveDiff(base, e.sequence()));
 }
 
+// N1: emitStep must kill a still-sounding note before starting a new one.
+// Repro: gateTicks baked into the sequence are LARGER than the live step length
+// (sequence generated at a coarser resolution, then resolution switched finer).
+// At each step boundary the previous note is still inside its (over-long) gate;
+// emitStep must send its NoteOff or notes accumulate as stuck.
+static void test_emitstep_kills_overlong_gate_note() {
+    core::BerlinEngine e; FakeMidiOutput out; e.setOutput(&out);
+    core::BerlinSequence& s = e.sequenceMut();
+    s.clear(); s.setLength(2);
+    // gateTicks=11 > stepLen=6 (Sixteenth): the gate never closes before the
+    // next step boundary, so emitStep is the only place the NoteOff can come from.
+    s.step(0) = {true, 60, 100, false, 11};
+    s.step(1) = {true, 67, 100, false, 11};
+    core::BerlinParams p; p.resolution = core::BerlinResolution::Sixteenth; p.length = 2;
+    e.setParams(p);
+    e.play();
+    // Drive ~4 step boundaries (24 ticks at 6 ticks/step). At every boundary the
+    // count of NoteOffs must keep up with NoteOns (no permanently stuck note).
+    for (int i = 0; i < 24; ++i) {
+        e.onClockTick();
+        const int ons  = countOn(out);
+        const int offs = countOff(out);
+        TEST_ASSERT_TRUE_MESSAGE(offs >= ons - 1, "stuck note: NoteOffs fell behind NoteOns");
+    }
+}
+
 static void test_roll_range_min_two_octaves_and_contains_notes() {
     core::BerlinSequence s; s.clear(); s.setLength(3);
     s.step(0) = {true, 60, 100, false, 6};   // C4
@@ -218,6 +244,7 @@ int main() {
     RUN_TEST(test_morph_0_keeps_base_100_replaces);
     RUN_TEST(test_evolve_varies_a_few_steps_each_n_loops);
     RUN_TEST(test_locked_never_auto_varies);
+    RUN_TEST(test_emitstep_kills_overlong_gate_note);
     RUN_TEST(test_roll_range_min_two_octaves_and_contains_notes);
     return UNITY_END();
 }

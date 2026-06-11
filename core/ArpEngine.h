@@ -125,6 +125,11 @@ private:
 
     bool     noteSounding_ = false;
     uint8_t  soundingNote_ = 0;
+    // Whether the current sounding note's NoteOn actually reached the wire (it is
+    // suppressed while muted_). The matching wire NoteOff is sent only if it did,
+    // so muting before a note plays produces no orphan NoteOff. If mute engages
+    // mid-note (NoteOn already on the wire) the NoteOff still goes out.
+    bool     noteOnSent_   = false;
     uint32_t randState_ = 0x12345;
 
     // Per-active-note cycle tracking.
