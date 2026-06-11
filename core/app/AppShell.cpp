@@ -84,13 +84,22 @@ void AppShell::onEncoderSw(int index) {
 
 void AppShell::onLatch(int index, bool on) {
     fireRaw({RawInput::Kind::Latch, index, 0, on});
-    if (overlayOpen_) return;                 // transport suppressed in overlay
     if (index < 1 || index > 3) return;
+    // On hardware the latch LEVEL is delivered every main-loop frame, so the
+    // shell must (a) track the level FIRST and act second, (b) keep its shadow
+    // in sync even when it does not act, and (c) absorb the first delivery for
+    // an index so a physically-ON switch at boot — or held ON while leaving a
+    // capturing mode — does not look like an edge and fire a phantom transport.
+    const bool firstDelivery = !latchSeen_[index];
+    const bool changed = on != lastLatchOn_[index];
+    lastLatchOn_[index] = on;                 // shadow tracked unconditionally
+    latchSeen_[index] = true;
+    if (firstDelivery) return;                // absorb: record level only
+    if (!changed) return;                     // act on a genuine level change
+    if (overlayOpen_) return;                 // transport suppressed in overlay
     // Modes that capture transport (e.g. Arp uses the latches for hold/mute)
     // handle the latch via onRawInput; skip the shell's global transport.
     if (modeCount_ > 0 && modes_[activeMode_]->capturesTransport()) return;
-    if (on == lastLatchOn_[index]) return;    // act on any state change
-    lastLatchOn_[index] = on;
     switch (index) {
         case 1:  // Play / Pause toggles
             applyTransport(transportState_ == TransportState::Playing

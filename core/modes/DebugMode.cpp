@@ -24,7 +24,9 @@ void DebugMode::onRawInput(const RawInput& in) {
             }
             break;
         case RawInput::Kind::Latch:
-            if (in.index >= 1 && in.index <= 3) {
+            // Count flips, not frames: the shell delivers the level every loop.
+            if (in.index >= 1 && in.index <= 3 && in.on != lastLatchOn_[in.index]) {
+                lastLatchOn_[in.index] = in.on;
                 ++latch_[in.index].count;
                 latch_[in.index].lastMs = nowMs_;
             }

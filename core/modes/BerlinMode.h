@@ -48,7 +48,8 @@ private:
     BerlinEngine          engine_;
     BerlinParams          params_{};
     Scale                 scale_{};
-    bool                  lastLatch_[4] = {false, false, false, false};  // index 1..3 edge-detect
+    bool                  lastLatch_[4]   = {false, false, false, false};  // index 1..3 edge-detect
+    bool                  latchSynced_[4] = {false, false, false, false};  // first-frame absorb after onEnter
 
     void applyGenerator();   // point the engine at the generator for params_.algorithm
 

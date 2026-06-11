@@ -24,6 +24,9 @@ private:
     Knob     encKnob_[6];   // 1..5
     Button   encSw_[6];     // 1..5
     Button   latch_[4];     // 1..3
+    // The shell delivers the latch LEVEL every main-loop frame; count only state
+    // CHANGES (flips) so the telemetry does not spin at main-loop rate.
+    bool     lastLatchOn_[4] = {false, false, false, false};  // 1..3
     uint32_t nowMs_ = 0;
 
     class DebugScreen : public Screen {

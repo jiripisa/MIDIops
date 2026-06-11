@@ -54,6 +54,14 @@ private:
     NoteWormModel model_;
     ArpParams     params_;
 
+    // Latch edge-detection. The shell delivers the latch LEVEL every main-loop
+    // frame, so Latch3 (Reset) must fire on the RISING edge only — otherwise it
+    // zeroes step timing every frame and freezes the arp. latchSynced_ absorbs
+    // the first delivery per index after onEnter() so entering with a switch ON
+    // does not fire a phantom action.
+    bool lastLatch_[4]   = {false, false, false, false};  // index 1..3
+    bool latchSynced_[4] = {false, false, false, false};  // first-frame absorb
+
     // -----------------------------------------------------------------------
     // Screens (nested classes — declared after the members they reference).
     // -----------------------------------------------------------------------

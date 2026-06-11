@@ -46,6 +46,10 @@ static void test_held_latch_edge_detect() {
     for (int i = 0; i < 24; ++i) berlin.onClockTick();
     TEST_ASSERT_TRUE(berlin.engine().playhead() > 0 || berlin.engine().isPlaying());
 
+    // Prime: the first Latch2 delivery after onEnter() is absorbed (first-frame
+    // resync), so send the opposite (OFF) level first to consume the absorb.
+    berlin.onRawInput({core::RawInput::Kind::Latch, 2, 0, false});
+
     // Hold Latch2 (Stop) ON across many frames — only the rising edge acts.
     for (int i = 0; i < 10; ++i)
         berlin.onRawInput({core::RawInput::Kind::Latch, 2, 0, true});
@@ -57,6 +61,43 @@ static void test_held_latch_edge_detect() {
     berlin.onRawInput({core::RawInput::Kind::Latch, 2, 0, false});
     berlin.onRawInput({core::RawInput::Kind::Latch, 2, 0, true});
     TEST_ASSERT_EQUAL_INT(0, berlin.engine().playhead());
+}
+
+// ---------------------------------------------------------------------------
+// test_latch3_resync_on_reentry (N9)
+//   lastLatch_ must be re-synced on onEnter() so a stale shadow does not fire a
+//   phantom Generate that destroys a Locked sequence. Scenario: Latch3 happens
+//   to be ON; we leave (onExit) and re-enter (onEnter); the first delivery on
+//   re-entry carries a DIFFERENT level than the stale shadow — this must be
+//   ABSORBED (no regenerate). A subsequent genuine flip DOES regenerate.
+// ---------------------------------------------------------------------------
+static int berlinSeqDiffN9(const core::BerlinSequence& a, const core::BerlinSequence& b);
+static void test_latch3_resync_on_reentry() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+
+    // Latch3 ON once → one generate (and syncs the shadow ON for index 3).
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});
+    core::BerlinSequence kept = berlin.engine().sequence();
+
+    // Leave and re-enter — onEnter() must clear the per-index sync flags so the
+    // first delivery is absorbed regardless of the stale ON shadow.
+    berlin.onExit();
+    berlin.onEnter();
+    core::BerlinSequence afterEnter = berlin.engine().sequence();
+
+    // First delivery on re-entry carries the OPPOSITE level (OFF) — different
+    // from the stale ON shadow. With resync this is absorbed: NO regenerate.
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, berlinSeqDiffN9(afterEnter, berlin.engine().sequence()),
+        "first Latch3 delivery on re-entry must be absorbed, not regenerate");
+
+    // A subsequent genuine flip (OFF → ON) DOES regenerate.
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, berlinSeqDiffN9(afterEnter, berlin.engine().sequence()),
+        "a genuine flip after the absorb must regenerate");
 }
 
 // ---------------------------------------------------------------------------
@@ -180,6 +221,7 @@ static void test_latch3_generate_on_each_flip() {
     core::BerlinMode berlin(shell);
     FakeMidiOutput out; berlin.setMidiOutput(&out);
     berlin.onEnter();
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});  // prime: absorb first Latch3 delivery after onEnter
     berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // play
 
     for (int i = 0; i < 12; ++i) berlin.onClockTick();              // 8th step → playhead 1
@@ -206,6 +248,7 @@ static void test_algorithm_dispatch() {
     core::BerlinMode berlin(shell);
     FakeMidiOutput out; berlin.setMidiOutput(&out);
     berlin.onEnter();
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});  // prime: absorb first Latch3 delivery after onEnter
 
     // Phasing: length 8 × gateLen 6 → realized length lcm = 24 (≠ the 16 Walk uses).
     berlin.params().algorithm = core::BerlinAlgorithm::GatePitchPhasing;
@@ -235,6 +278,12 @@ static int berlinSeqDiff(const core::BerlinSequence& a, const core::BerlinSequen
         }
     }
     return d;
+}
+
+// Wrapper so test_latch3_resync_on_reentry (declared earlier) can reuse the
+// sequence-diff logic without duplicating it.
+static int berlinSeqDiffN9(const core::BerlinSequence& a, const core::BerlinSequence& b) {
+    return berlinSeqDiff(a, b);
 }
 
 static void test_live_regenerates_on_structural_edit() {
@@ -292,6 +341,7 @@ int main() {
     RUN_TEST(test_latch1_play_pause_latch2_stop);
     RUN_TEST(test_held_latch_edge_detect);
     RUN_TEST(test_latch3_generate_on_each_flip);
+    RUN_TEST(test_latch3_resync_on_reentry);
     RUN_TEST(test_structure_screen_edits_and_clamps);
     RUN_TEST(test_character_behavior_screens_edit_clamp);
     RUN_TEST(test_dynamics_screen);

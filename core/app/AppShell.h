@@ -77,6 +77,7 @@ private:
     TransportState transportState_ = TransportState::Stopped;
     Transport      transport_ = Transport::Stop;
     bool           lastLatchOn_[4] = {};   // 1-based; [0] unused
+    bool           latchSeen_[4]   = {};   // 1-based; first-delivery absorb per index
 
     uint32_t nowMs_ = 0;
 
