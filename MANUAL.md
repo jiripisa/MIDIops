@@ -25,11 +25,11 @@ button) and **three latching switches** (Latch1–Latch3).
 | **Enc1–Enc4** (press) | Reserved (no function in normal modes yet). |
 | **Enc5** (rotate) | **Switch screens** within the current mode. |
 | **Enc5** (press) | Open the **mode-select overlay** (see §3). |
-| **Latch1–Latch3** | **Transport.** Their meaning depends on the active mode (see each mode below). |
+| **Latch1–Latch3** | **Transport buttons** — each press is one click; the software toggles/acts by its current state (the switch's physical position and LED carry no meaning). Their meaning depends on the active mode (see each mode below). |
 
 Simulator keys: Enc1 = `1`/`2`/`3` (left/press/right), Enc2 = `4`/`5`/`6`,
 Enc3 = `7`/`8`/`9`, Enc4 = `0`/`-`/`=`, Enc5 = `Q`/`W`/`E`. Latch1 = `Space`,
-Latch2 = `Backspace`, Latch3 = `Return` (each key **toggles** the switch).
+Latch2 = `Backspace`, Latch3 = `Return` (each key press = one button click).
 Inject notes with `z x c v b n m` (white keys C4–B4); `Shift`+`1…9` picks the
 channel those notes are sent on; `Esc` quits.
 
@@ -140,9 +140,9 @@ The `worms` and `notes` screens visualize the **outgoing** arpeggio.
 
 | Latch | Function |
 |---|---|
-| **Latch1 — Hold** | ON = loop the current note(s) forever; OFF = play each queued note once, then move on. |
-| **Latch2 — Mute** | ON = stop sending notes (the sequence keeps running silently); OFF = sound again. |
-| **Latch3 — Reset** | Restart the arpeggio from its first step. |
+| **Latch1 — Hold** | Press toggles **Hold** (state shown on the params2 screen): on = loop the current note(s) forever; off = play each queued note once, then move on. |
+| **Latch2 — Mute** | Press toggles **Mute** (state shown on the params2 screen): on = stop sending notes (the sequence keeps running silently); off = sound again. |
+| **Latch3 — Reset** | Press restarts the arpeggio from its first step. |
 
 ### 5.3 Berlin — generative sequencer
 
@@ -234,16 +234,13 @@ stays visible on all four — only the top parameter row changes).
 
 | Latch | Function |
 |---|---|
-| **Latch1 — Play/Pause** | Switch position = play/pause. Pause holds the playhead in place. Under Transport = Recv the DAW drives playback and the switch acts only on a flip (manual override). |
-| **Latch2 — Stop** | Each flip rewinds to step 1 and silences the note. |
-| **Latch3 — Generate** | Each flip generates a new sequence (using **Morph** intensity). |
-
-> On a latching switch, "each flip" means one action whether you flip it up or
-> down — so a single press regenerates once.
+| **Latch1 — Play/Pause** | Press toggles play/pause. Pause holds the playhead in place. (Under Transport = Recv the DAW drives playback; a press is still a manual-override toggle.) |
+| **Latch2 — Stop** | Press rewinds to step 1 and silences the note. |
+| **Latch3 — Generate** | Press generates a new sequence (using **Morph** intensity). |
 
 > When **Transport = Send**, Latch1 and Latch2 also emit MIDI Start/Continue/Stop
-> so a connected DAW follows the device's playback: Latch1 ON sends Start (or
-> Continue when resuming from pause); Latch2 Stop sends Stop.
+> so a connected DAW follows the device's playback: a play press sends Start (or
+> Continue when resuming from pause); a Stop press sends Stop.
 
 ### 5.4 BPM
 
@@ -316,9 +313,9 @@ would never arrive.
 | `7` `8` `9` | Enc3 — left / press / right |
 | `0` `-` `=` | Enc4 — left / press / right |
 | `Q` `W` `E` | Enc5 — left / press / right (screen switch / mode overlay) |
-| `Space` | Latch1 (toggle) |
-| `Backspace` | Latch2 (toggle) |
-| `Return` | Latch3 (toggle) |
+| `Space` | Latch1 (one button click) |
+| `Backspace` | Latch2 (one button click) |
+| `Return` | Latch3 (one button click) |
 | `z x c v b n m` | Inject notes C4–B4 |
 | `Shift`+`1…9` | Set the channel injected notes are sent on |
 | `Esc` | Quit |

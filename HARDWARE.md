@@ -111,6 +111,10 @@ the mechanical state. What the latch does depends on the active mode (a
 global transport Play/Pause for non-capturing modes, or a per-mode action
 such as Arp Hold or Berlin Play).
 
+The firmware treats every mechanical flip as a stateless button **click** —
+the latched position and its LED carry no meaning to the software (all state,
+e.g. play/pause, hold, mute, lives in the app and is shown on screen).
+
 | Switch pin | Goes to |
 |------------|---------|
 | **G** (GND) | − rail |

@@ -173,10 +173,12 @@ Three jumpers:
 | `V`        | + rail (3.3 V, powers the LED) |
 | `S`        | Teensy pin **2** |
 
-The firmware reads the latch level every loop and delivers it to the
-active mode. What Latch1 does depends on that mode — globally it is the
-transport Play/Pause, while a capturing mode repurposes it (Arp Hold,
-Berlin Play). Its LED always tracks the mechanical position.
+The firmware reads the latch every loop and treats each mechanical flip as
+one stateless button **click** — the latched position and its LED carry no
+meaning to the software. What a Latch1 click does depends on the active mode
+— globally it toggles the transport Play/Pause, while a capturing mode
+repurposes it (Arp Hold, Berlin Play). The LED still moves with the switch,
+but the app ignores it; all state is shown on screen.
 
 ## 7. Wire the first encoder (KY-040 #1 — Enc1)
 
@@ -301,11 +303,12 @@ Latch2 if its half of the `−` rail is the un-bridged one.
 There is no fixed mapping from a control to a function — the active mode
 decides. A quick mental model:
 
-* **Latches** drive transport. In a non-capturing mode (e.g. Monitoring)
-  Latch1 = Play/Pause, Latch2 = Stop, Latch3 = Reset. A capturing mode
-  repurposes them: **Arp** = Hold / Mute / Reset, **Berlin** = Play /
-  Stop / Generate. The LED on each latch always tracks its mechanical
-  position.
+* **Latches** are stateless transport buttons — each flip is one click and
+  the switch position carries no meaning. In a non-capturing mode (e.g.
+  Monitoring) Latch1 = Play/Pause, Latch2 = Stop, Latch3 = Reset. A
+  capturing mode repurposes them: **Arp** = Hold / Mute / Reset, **Berlin**
+  = Play / Stop / Generate. Each latch's LED still moves with the switch, but
+  the software ignores it; all state is shown on screen.
 * **Enc1–Enc4** are the per-screen parameter knobs — rotate to edit,
   press for a secondary action.
 * **Enc5** navigates: rotate to change screen, press to open the

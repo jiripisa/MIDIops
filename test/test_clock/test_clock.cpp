@@ -289,10 +289,12 @@ static void test_external_stop_safety_under_off() {
 }
 
 // HARDWARE contract: the latch LEVEL is delivered to the capturing mode every
-// main-loop frame. Under Transport=Receive the DAW owns playback — a Latch1
-// switch physically sitting OFF must NOT keep re-pausing the engine after a
-// received Start (the field bug: one note played, playhead frozen). Under
-// Receive the latch acts only on a real flip (manual override).
+// main-loop frame, but the software treats the latch as a stateless CLICK
+// button — only a flip acts, the switch POSITION is meaningless. Under
+// Transport=Receive the DAW owns playback: a Latch1 switch physically sitting
+// OFF must NOT keep re-pausing the engine after a received Start (the field
+// bug: one note played, playhead frozen). A flip is a manual-override click
+// that TOGGLES Play/Pause by the engine state, regardless of flip direction.
 static void test_receive_not_overridden_by_latch_level() {
     core::AppShell shell;
     core::BerlinMode berlin(shell);
@@ -312,7 +314,8 @@ static void test_receive_not_overridden_by_latch_level() {
     TEST_ASSERT_TRUE(berlin.engine().isPlaying());
 
     // Keep delivering the OFF level (every frame, as hardware does) interleaved
-    // with clock ticks — the engine must KEEP playing and the playhead advance.
+    // with clock ticks — the engine must KEEP playing and the playhead advance
+    // (the held level is not a click; only a flip acts).
     for (int i = 0; i < 24; ++i) {
         shell.onLatch(1, false);
         out.pendingTicks = 1;
@@ -321,12 +324,12 @@ static void test_receive_not_overridden_by_latch_level() {
     TEST_ASSERT_TRUE(berlin.engine().isPlaying());
     TEST_ASSERT_GREATER_THAN(0, berlin.engine().playhead());
 
-    // A genuine flip is still a manual override: OFF->ON pauses nothing (already
-    // playing), ON->OFF pauses.
+    // A flip is a click that TOGGLES regardless of direction: the first flip
+    // (OFF->ON) pauses the playing engine; the second flip (ON->OFF) resumes.
     shell.onLatch(1, true);
-    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
-    shell.onLatch(1, false);
     TEST_ASSERT_FALSE(berlin.engine().isPlaying());
+    shell.onLatch(1, false);
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
 }
 
 int main() {

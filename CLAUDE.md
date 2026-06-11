@@ -63,9 +63,12 @@ not by the pin names):
     press for the screen's secondary action).
   * **Enc5** — rotate to switch screen within a mode; press to open the
     mode-select overlay (rotate to pick a mode, press to confirm).
-  * **Latch1–Latch3** — transport, with per-mode meaning. Globally
-    (non-capturing modes) Latch1 = Play/Pause, Latch2 = Stop, Latch3 =
-    Reset; capturing modes (Arp, Berlin) repurpose them as listed above.
+  * **Latch1–Latch3** — stateless transport buttons: every mechanical flip
+    is one click and the switch position carries no meaning (all state lives
+    in the app and is shown on screen). Per-mode meaning: globally
+    (non-capturing modes) a Latch1 press toggles Play/Pause, Latch2 = Stop,
+    Latch3 = Reset; capturing modes (Arp, Berlin) repurpose the presses as
+    listed above.
 
 Global settings (in Settings mode): scale type + root, MIDI out channel,
 MIDI in channel (0 = OMNI), and clock source (Internal / External).

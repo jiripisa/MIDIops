@@ -25,11 +25,11 @@ a **tři páčkové (latching) spínače** (Latch1–Latch3).
 | **Enc1–Enc4** (stisk) | Rezervováno (v běžných módech zatím bez funkce). |
 | **Enc5** (otáčení) | **Přepínání obrazovek** v rámci módu. |
 | **Enc5** (stisk) | Otevře **překryv pro výběr módu** (viz §3). |
-| **Latch1–Latch3** | **Transport.** Význam závisí na aktivním módu (viz jednotlivé módy). |
+| **Latch1–Latch3** | **Transportní tlačítka** — každé stisknutí je jedno cvaknutí; software přepíná/jedná podle svého aktuálního stavu (fyzická poloha páčky a její LED nemají žádný význam). Význam závisí na aktivním módu (viz jednotlivé módy). |
 
 Klávesy simulátoru: Enc1 = `1`/`2`/`3` (vlevo/stisk/vpravo), Enc2 = `4`/`5`/`6`,
 Enc3 = `7`/`8`/`9`, Enc4 = `0`/`-`/`=`, Enc5 = `Q`/`W`/`E`. Latch1 = `Space`,
-Latch2 = `Backspace`, Latch3 = `Return` (každá klávesa páčku **přepne**). Noty
+Latch2 = `Backspace`, Latch3 = `Return` (každé stisknutí klávesy = jedno cvaknutí tlačítka). Noty
 zahraješ klávesami `z x c v b n m` (bílé klávesy C4–B4); `Shift`+`1…9` volí
 kanál, na který se noty pošlou; `Esc` ukončí.
 
@@ -141,9 +141,9 @@ Obrazovky `worms` a `notes` vizualizují **odchozí** arpeggio.
 
 | Latch | Funkce |
 |---|---|
-| **Latch1 — Hold** | ON = drží/opakuje aktuální notu donekonečna; OFF = každou notu z fronty zahraje jednou a posune se dál. |
-| **Latch2 — Mute** | ON = přestane posílat noty (sekvence běží potichu dál); OFF = zase zní. |
-| **Latch3 — Reset** | Restartuje arpeggio od prvního kroku. |
+| **Latch1 — Hold** | Stisk přepíná **Hold** (stav je zobrazen na obrazovce params2): zapnuto = drží/opakuje aktuální notu donekonečna; vypnuto = každou notu z fronty zahraje jednou a posune se dál. |
+| **Latch2 — Mute** | Stisk přepíná **Mute** (stav je zobrazen na obrazovce params2): zapnuto = přestane posílat noty (sekvence běží potichu dál); vypnuto = zase zní. |
+| **Latch3 — Reset** | Stisk restartuje arpeggio od prvního kroku. |
 
 ### 5.3 Berlin — generativní sekvencer
 
@@ -234,16 +234,13 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
 
 | Latch | Funkce |
 |---|---|
-| **Latch1 — Play/Pause** | Poloha páčky = hraje/pauza. Pauza drží playhead na místě. Při Transport = Recv řídí přehrávání DAW a páčka funguje jen na překlopení (ruční zásah). |
-| **Latch2 — Stop** | Každé přepnutí přetočí na krok 1 a utiší notu. |
-| **Latch3 — Generate** | Každé přepnutí vygeneruje novou sekvenci (s intenzitou **Morph**). |
-
-> U páčkového spínače „každé přepnutí" znamená jednu akci, ať přepneš nahoru nebo
-> dolů — jeden stisk tedy regeneruje jednou.
+| **Latch1 — Play/Pause** | Stisk přepíná hraje/pauza. Pauza drží playhead na místě. (Při Transport = Recv řídí přehrávání DAW; stisk je i tak ruční přepínací zásah.) |
+| **Latch2 — Stop** | Stisk přetočí na krok 1 a utiší notu. |
+| **Latch3 — Generate** | Stisk vygeneruje novou sekvenci (s intenzitou **Morph**). |
 
 > Je-li **Transport = Send**, Latch1 a Latch2 také vysílají MIDI Start/Continue/Stop,
-> aby připojený DAW následoval přehrávání zařízení: Latch1 ON posílá Start (nebo
-> Continue při obnovení po pauze); Latch2 Stop posílá Stop.
+> aby připojený DAW následoval přehrávání zařízení: stisk play posílá Start (nebo
+> Continue při obnovení po pauze); stisk Stop posílá Stop.
 
 ### 5.4 BPM
 
@@ -315,9 +312,9 @@ DAW zastavující clock by notu nikdy nezavřel přes naplánovaný gate-off.
 | `7` `8` `9` | Enc3 — vlevo / stisk / vpravo |
 | `0` `-` `=` | Enc4 — vlevo / stisk / vpravo |
 | `Q` `W` `E` | Enc5 — vlevo / stisk / vpravo (přepínání obrazovek / překryv módů) |
-| `Space` | Latch1 (přepnout) |
-| `Backspace` | Latch2 (přepnout) |
-| `Return` | Latch3 (přepnout) |
+| `Space` | Latch1 (jedno cvaknutí tlačítka) |
+| `Backspace` | Latch2 (jedno cvaknutí tlačítka) |
+| `Return` | Latch3 (jedno cvaknutí tlačítka) |
 | `z x c v b n m` | Zahrát noty C4–B4 |
 | `Shift`+`1…9` | Nastavit kanál, na který se zahrané noty pošlou |
 | `Esc` | Ukončit |

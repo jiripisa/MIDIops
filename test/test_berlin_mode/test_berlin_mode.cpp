@@ -8,7 +8,9 @@ void setUp()    {}
 void tearDown() {}
 
 // ---------------------------------------------------------------------------
-// Latch transport: Latch1 = Play/Pause (level), Latch2 = Stop (rewind, edge).
+// Latch transport: Latch1 = Play/Pause (click toggle), Latch2 = Stop (rewind).
+// Each flip is one click; the switch POSITION carries no meaning. The first
+// delivery is absorbed, so the very first flip toggles from stopped → playing.
 // ---------------------------------------------------------------------------
 static void test_latch1_play_pause_latch2_stop() {
     core::AppShell shell;
@@ -17,15 +19,62 @@ static void test_latch1_play_pause_latch2_stop() {
     berlin.onEnter();
     TEST_ASSERT_FALSE(berlin.engine().isPlaying());
 
-    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // play
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // prime: absorb first delivery
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // flip → play
     TEST_ASSERT_TRUE(berlin.engine().isPlaying());
-    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // same level → still playing
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // same level → no click, still playing
     TEST_ASSERT_TRUE(berlin.engine().isPlaying());
-    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // pause
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // flip → pause
     TEST_ASSERT_FALSE(berlin.engine().isPlaying());
 
     berlin.onRawInput({core::RawInput::Kind::Latch, 2, 0, true});   // stop → rewind
     TEST_ASSERT_EQUAL_INT(0, berlin.engine().playhead());
+}
+
+// ---------------------------------------------------------------------------
+// Latch1 is a stateless CLICK toggle: each flip toggles Play/Pause by the
+// engine state, the switch POSITION is meaningless, and holding the same level
+// across frames never re-triggers. Proven under both edge-style and
+// hardware-style (held-level) frame delivery.
+// ---------------------------------------------------------------------------
+static void test_berlin_latch1_click_toggles() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // prime: absorb first delivery
+    TEST_ASSERT_FALSE(berlin.engine().isPlaying());
+
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // flip ON → playing
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
+
+    // Hardware delivers the SAME level every frame — no re-trigger, stays playing.
+    for (int i = 0; i < 10; ++i)
+        berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
+
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // flip OFF → paused
+    TEST_ASSERT_FALSE(berlin.engine().isPlaying());
+
+    // Held OFF level frames after the toggle leave the state unchanged.
+    for (int i = 0; i < 10; ++i)
+        berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});
+    TEST_ASSERT_FALSE(berlin.engine().isPlaying());
+
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // flip ON → playing again
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
+
+    // Direction-independence: a fresh mode primed ON, then a flip to OFF must
+    // TOGGLE from stopped → playing (a level-driven impl would pause instead).
+    core::BerlinMode berlin2(shell);
+    FakeMidiOutput out2; berlin2.setMidiOutput(&out2);
+    berlin2.onEnter();
+    TEST_ASSERT_FALSE(berlin2.engine().isPlaying());
+    berlin2.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // prime ON (absorbed)
+    TEST_ASSERT_FALSE(berlin2.engine().isPlaying());
+    berlin2.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // flip ON→OFF toggles → playing
+    TEST_ASSERT_TRUE(berlin2.engine().isPlaying());
 }
 
 // ---------------------------------------------------------------------------
@@ -42,6 +91,7 @@ static void test_held_latch_edge_detect() {
     berlin.onEnter();
 
     // Run a few ticks so the playhead moves off step 0.
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // prime: absorb first delivery
     berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // play
     for (int i = 0; i < 24; ++i) berlin.onClockTick();
     TEST_ASSERT_TRUE(berlin.engine().playhead() > 0 || berlin.engine().isPlaying());
@@ -293,6 +343,7 @@ static void test_onexit_silences_sounding_note() {
     berlin.onEnter();
 
     // Latch1 ON → play; advance a tick so the engine emits a NoteOn for step 0.
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // prime: absorb first delivery
     berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});
     berlin.onClockTick();   // emitStep(0) → NoteOn queued; noteSounding_ = true
     TEST_ASSERT_TRUE(berlin.engine().isPlaying());
@@ -322,6 +373,7 @@ static void test_latch3_generate_on_each_flip() {
     FakeMidiOutput out; berlin.setMidiOutput(&out);
     berlin.onEnter();
     berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});  // prime: absorb first Latch3 delivery after onEnter
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // prime: absorb first Latch1 delivery
     berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // play
 
     for (int i = 0; i < 12; ++i) berlin.onClockTick();              // 8th step → playhead 1
@@ -409,6 +461,7 @@ static void test_live_length_edit_sculpts_in_place() {
 
     // Snapshot, then run the playhead off step 0.
     core::BerlinSequence snap = berlin.engine().sequence();
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // prime: absorb first Latch1 delivery
     berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // play
     for (int i = 0; i < 36; ++i) berlin.onClockTick();              // advance several steps
     const int phBefore = berlin.engine().playhead();
@@ -476,6 +529,7 @@ static void test_live_octave_edit_transposes_in_place() {
     berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});   // generate
 
     core::BerlinSequence snap = berlin.engine().sequence();
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // prime: absorb first Latch1 delivery
     berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // play
     for (int i = 0; i < 24; ++i) berlin.onClockTick();
     const int phBefore = berlin.engine().playhead();
@@ -629,6 +683,7 @@ static void test_external_stop_silences_engine() {
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_latch1_play_pause_latch2_stop);
+    RUN_TEST(test_berlin_latch1_click_toggles);
     RUN_TEST(test_berlin_latches_emit_transport_under_send);
     RUN_TEST(test_berlin_latch2_emits_stop_under_send);
     RUN_TEST(test_berlin_latches_silent_under_off);

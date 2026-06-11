@@ -183,58 +183,113 @@ static void test_arp_captures_transport() {
 
 // ---------------------------------------------------------------------------
 // test_hold_via_latch1
-//   onRawInput({Latch, 1, 0, true}) → hold() == true;
-//   onRawInput({Latch, 1, 0, false}) → hold() == false.
+//   Latch1 is a stateless CLICK toggle for Hold: each flip toggles, the switch
+//   POSITION carries no meaning. The first delivery after onEnter() is absorbed.
 // ---------------------------------------------------------------------------
 static void test_hold_via_latch1() {
     core::AppShell shell;
     core::ArpMode  arp(shell);
+    arp.onEnter();
 
     core::RawInput in{};
     in.kind  = core::RawInput::Kind::Latch;
     in.index = 1;
     in.delta = 0;
 
+    in.on = false;
+    arp.onRawInput(in);          // prime: absorb first delivery
+    TEST_ASSERT_FALSE(arp.hold());
+
     in.on = true;
-    arp.onRawInput(in);
+    arp.onRawInput(in);          // flip → hold ON
     TEST_ASSERT_TRUE(arp.hold());
 
     in.on = false;
-    arp.onRawInput(in);
+    arp.onRawInput(in);          // flip → hold OFF
     TEST_ASSERT_FALSE(arp.hold());
 }
 
 // ---------------------------------------------------------------------------
 // test_mute_via_latch2
-//   onRawInput({Latch, 2, 0, true}) → muted() == true;
-//   onRawInput({Latch, 2, 0, false}) → muted() == false.
+//   Latch2 is a stateless CLICK toggle for Mute: each flip toggles, the switch
+//   POSITION carries no meaning. The first delivery after onEnter() is absorbed.
 // ---------------------------------------------------------------------------
 static void test_mute_via_latch2() {
     core::AppShell shell;
     core::ArpMode  arp(shell);
+    arp.onEnter();
 
     core::RawInput in{};
     in.kind  = core::RawInput::Kind::Latch;
     in.index = 2;
     in.delta = 0;
 
+    in.on = false;
+    arp.onRawInput(in);          // prime: absorb first delivery
+    TEST_ASSERT_FALSE(arp.muted());
+
     in.on = true;
-    arp.onRawInput(in);
+    arp.onRawInput(in);          // flip → mute ON
     TEST_ASSERT_TRUE(arp.muted());
 
     in.on = false;
-    arp.onRawInput(in);
+    arp.onRawInput(in);          // flip → mute OFF
     TEST_ASSERT_FALSE(arp.muted());
 }
 
 // ---------------------------------------------------------------------------
+// test_arp_hold_mute_click_toggle
+//   Hold (Latch1) and Mute (Latch2) are stateless CLICK toggles: a flip toggles,
+//   holding the SAME level across frames never re-triggers, and the switch
+//   POSITION carries no meaning.
+// ---------------------------------------------------------------------------
+static void test_arp_hold_mute_click_toggle() {
+    core::AppShell shell;
+    core::ArpMode  arp(shell);
+    arp.onEnter();
+
+    // --- Hold (Latch1) ---
+    arp.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // prime
+    TEST_ASSERT_FALSE(arp.hold());
+    arp.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // flip → ON
+    TEST_ASSERT_TRUE(arp.hold());
+    for (int i = 0; i < 8; ++i)                                  // same level — no re-trigger
+        arp.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});
+    TEST_ASSERT_TRUE(arp.hold());
+    arp.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // flip → OFF
+    TEST_ASSERT_FALSE(arp.hold());
+
+    // --- Mute (Latch2) ---
+    arp.onRawInput({core::RawInput::Kind::Latch, 2, 0, false});  // prime
+    TEST_ASSERT_FALSE(arp.muted());
+    arp.onRawInput({core::RawInput::Kind::Latch, 2, 0, true});   // flip → ON
+    TEST_ASSERT_TRUE(arp.muted());
+    for (int i = 0; i < 8; ++i)                                  // same level — no re-trigger
+        arp.onRawInput({core::RawInput::Kind::Latch, 2, 0, true});
+    TEST_ASSERT_TRUE(arp.muted());
+    arp.onRawInput({core::RawInput::Kind::Latch, 2, 0, false});  // flip → OFF
+    TEST_ASSERT_FALSE(arp.muted());
+
+    // Direction-independence: prime ON, then a flip to OFF must TOGGLE Hold ON
+    // (a level-driven impl would instead drive it OFF). Proves position-blindness.
+    core::ArpMode arp2(shell);
+    arp2.onEnter();
+    arp2.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // prime ON (absorbed)
+    TEST_ASSERT_FALSE(arp2.hold());
+    arp2.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // flip ON→OFF toggles Hold ON
+    TEST_ASSERT_TRUE(arp2.hold());
+}
+
+// ---------------------------------------------------------------------------
 // test_reset_via_latch3
-//   onRawInput({Latch, 3, 0, true}) must not crash.
-//   onRawInput({Latch, 3, 0, false}) must not crash either.
+//   Latch3 (Reset) fires on ANY flip (both directions) — a stateless click.
+//   The first delivery after onEnter() is absorbed; both subsequent flips
+//   reset the engine and must not crash.
 // ---------------------------------------------------------------------------
 static void test_reset_via_latch3() {
     core::AppShell shell;
     core::ArpMode  arp(shell);
+    arp.onEnter();
 
     core::RawInput in{};
     in.kind  = core::RawInput::Kind::Latch;
@@ -242,10 +297,13 @@ static void test_reset_via_latch3() {
     in.delta = 0;
 
     in.on = false;
-    arp.onRawInput(in);  // no-op (falling edge)
+    arp.onRawInput(in);  // prime: absorb first delivery
 
     in.on = true;
-    arp.onRawInput(in);  // rising edge: engine_.reset() — must not crash
+    arp.onRawInput(in);  // flip ON → engine_.reset() — must not crash
+
+    in.on = false;
+    arp.onRawInput(in);  // flip OFF → also resets (any flip) — must not crash
     // No crash == pass
     TEST_ASSERT_TRUE(true);
 }
@@ -417,6 +475,7 @@ int main() {
     RUN_TEST(test_arp_captures_transport);
     RUN_TEST(test_hold_via_latch1);
     RUN_TEST(test_mute_via_latch2);
+    RUN_TEST(test_arp_hold_mute_click_toggle);
     RUN_TEST(test_reset_via_latch3);
     RUN_TEST(test_arp_latch3_reset_is_edge_triggered);
     RUN_TEST(test_arp_uses_settings_out_channel);

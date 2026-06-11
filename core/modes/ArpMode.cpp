@@ -82,20 +82,21 @@ void ArpMode::onMidiIn(const MidiMessage& msg) {
 void ArpMode::onRawInput(const RawInput& in) {
     if (in.kind != RawInput::Kind::Latch) return;
     if (in.index < 1 || in.index > 3) return;
-    // The shell delivers the latch LEVEL every main-loop frame. Latch1 (Hold)
-    // and Latch2 (Mute) are LEVEL-driven — their meaning is the switch position.
-    // Latch3 (Reset) is a momentary action and fires on the RISING edge only,
-    // so a held-ON switch does not zero step timing every frame. The first
-    // delivery per index after onEnter() is absorbed (record level, no edge
-    // action) so entering with a switch ON does not fire a phantom reset.
+    // The three panel switches mechanically latch, but the SOFTWARE treats them
+    // as stateless CLICK buttons: every level change (flip) = one click; the
+    // switch POSITION carries no meaning. All state (hold, mute) lives in the
+    // app and is shown on screen. So every latch acts on a flip, in either
+    // direction — one toggle = one click. The first delivery per index after
+    // onEnter() is absorbed (record level, no action) so entering with a switch
+    // already ON does not fire a phantom click.
     const bool firstDelivery = !latchSynced_[in.index];
-    const bool rising = in.on && !lastLatch_[in.index];
+    const bool flip = (in.on != lastLatch_[in.index]) && !firstDelivery;
     lastLatch_[in.index] = in.on;
     latchSynced_[in.index] = true;
     switch (in.index) {
-        case 1: params_.latch = in.on;   break;  // Hold follows switch position (level)
-        case 2: engine_.setMuted(in.on); break;  // Mute follows switch position (level)
-        case 3: if (!firstDelivery && rising) engine_.reset(); break;  // Reset on rising edge
+        case 1: if (flip) params_.latch = !params_.latch;          break;  // Hold toggle
+        case 2: if (flip) engine_.setMuted(!engine_.muted());      break;  // Mute toggle
+        case 3: if (flip) engine_.reset();                         break;  // Reset on any flip
         default: break;
     }
 }

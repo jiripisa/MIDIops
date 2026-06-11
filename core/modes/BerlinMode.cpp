@@ -61,40 +61,33 @@ void BerlinMode::onTransport(Transport t) {
 void BerlinMode::onRawInput(const RawInput& in) {
     if (in.kind != RawInput::Kind::Latch) return;     // encoders go via Screen
     if (in.index < 1 || in.index > 3) return;
-    // The shell delivers the latch level every main-loop frame, so we act on a
-    // state CHANGE, not the level. Play/Pause is level-driven (the switch
-    // position is the run state). Stop and Generate are momentary actions on a
-    // latching switch, so they fire on EITHER flip (up or down) — one toggle =
-    // one action, instead of needing an off-then-on to re-trigger.
-    // First delivery per index after onEnter() is absorbed: record the level so
-    // a stale shadow across mode re-entry cannot fire a phantom flip action that
-    // (for Latch3) would regenerate and destroy a Locked sequence. Latch1 is
-    // LEVEL-driven (the switch position IS the run state), so it still adopts
-    // the switch position on the sync frame; Latch2/Latch3 (flip-triggered) take
-    // no action on that frame.
+    // The three panel switches mechanically latch, but the SOFTWARE treats them
+    // as stateless CLICK buttons: every level change (flip) = one click; the
+    // switch POSITION carries no meaning. All run-state truth lives in the
+    // engine and the top bar, never in the switch position. So every latch acts
+    // on a flip, in either direction — one toggle = one click. The first
+    // delivery per index after onEnter() is absorbed: record the level (no
+    // action) so a stale shadow across boot/mode re-entry cannot fire a phantom
+    // click that (for Latch3) would regenerate and destroy a Locked sequence.
     const bool firstDelivery = !latchSynced_[in.index];
     const bool changed = in.on != lastLatch_[in.index];
     lastLatch_[in.index] = in.on;
     latchSynced_[in.index] = true;
     const bool flip = changed && !firstDelivery;
     switch (in.index) {
-        case 1:  // Play/Pause. Under Send/Off the switch position IS the run
-                 // state (level-driven, applied every frame). Under Receive the
-                 // DAW owns the transport: the every-frame level delivery must
-                 // NOT keep overriding a received Start/Stop (a switch sitting
-                 // OFF would re-pause the engine each frame — the field bug:
-                 // one note, frozen playhead). There the latch acts only on a
-                 // real flip, as a manual override. MIDI transport is emitted
-                 // only on a real flip in either case, so the every-frame level
-                 // cannot spam Start/Stop and the sync frame stays silent.
-            if (svc_.transportMode() == TransportMode::Receive) {
-                if (flip) {
-                    in.on ? engine_.play() : engine_.pause();
+        case 1:  // Play/Pause — a CLICK toggles by the engine state. The switch
+                 // position carries no meaning (it is a mechanical latch, but the
+                 // software treats every flip as a stateless button press); all
+                 // run-state truth lives in the engine and the top bar.
+            if (flip) {
+                const bool playing = engine_.isPlaying();
+                if (playing) {
+                    engine_.pause();
+                } else {
+                    engine_.play();
                 }
-            } else {
-                in.on ? engine_.play() : engine_.pause();
+                svc_.notifyLocalTransport(playing ? Transport::Pause : Transport::Play);
             }
-            if (flip) svc_.notifyLocalTransport(in.on ? Transport::Play : Transport::Pause);
             break;
         case 2:  // Stop (any flip)
             if (flip) {
