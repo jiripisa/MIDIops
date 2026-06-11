@@ -570,6 +570,75 @@ static void test_live_edits_do_not_reset_playhead() {
     TEST_ASSERT_EQUAL_INT(3, e.playhead());
 }
 
+// Velocity/Humanize/Accent are LIVE: re-stamping from the stored jitter + the
+// current params updates every active step at once, with no RNG re-roll.
+static void test_velocity_knobs_apply_live() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    e.setGenerator(&gen); e.setScale(&sc); e.seed(7);
+    core::BerlinParams p;
+    p.length = 16; p.density = 100; p.morph = 100;
+    p.velocityBase = 100; p.velocityHumanize = 20; p.accent = 20;
+    e.setParams(p);
+    e.generate();
+    core::BerlinSequence snap = e.sequence();
+
+    // (a) +20 to base lifts every active velocity by 20 (or clamps to 126).
+    p.velocityBase = static_cast<uint8_t>(p.velocityBase + 20);
+    core::berlinStampVelocities(e.sequenceMut(), p);
+    for (int i = 0; i < 16; ++i) {
+        if (!snap.step(i).active) continue;
+        int want = snap.step(i).velocity + 20;
+        if (want > 126) want = 126;
+        TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(want), e.sequence().step(i).velocity);
+    }
+
+    // (b) humanize 0 → every active step is base (+accent where accented).
+    p.velocityHumanize = 0;
+    core::berlinStampVelocities(e.sequenceMut(), p);
+    for (int i = 0; i < 16; ++i) {
+        if (!snap.step(i).active) continue;
+        int want = p.velocityBase + (e.sequence().step(i).accent ? p.accent : 0);
+        if (want > 126) want = 126;
+        TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(want), e.sequence().step(i).velocity);
+    }
+
+    // (c) accent 0 (still humanize 0) → every active step is exactly base, with
+    // no accent boost anymore. Verify against base and that accented steps
+    // actually dropped relative to (b).
+    core::BerlinSequence withAccent = e.sequence();
+    p.accent = 0;
+    core::berlinStampVelocities(e.sequenceMut(), p);
+    bool anAccentedDropped = false;
+    for (int i = 0; i < 16; ++i) {
+        if (!snap.step(i).active) continue;
+        int want = p.velocityBase;
+        if (want > 126) want = 126;
+        TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(want), e.sequence().step(i).velocity);
+        if (withAccent.step(i).accent &&
+            e.sequence().step(i).velocity < withAccent.step(i).velocity) {
+            anAccentedDropped = true;
+        }
+    }
+    TEST_ASSERT_TRUE(anAccentedDropped);
+}
+
+// Re-stamping twice with identical params is idempotent — the jitter is stored,
+// not re-rolled, so velocities are byte-identical across stamps.
+static void test_jitter_stable_across_stamps() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    e.setGenerator(&gen); e.setScale(&sc); e.seed(7);
+    core::BerlinParams p;
+    p.length = 16; p.density = 100; p.morph = 100; p.velocityHumanize = 20;
+    e.setParams(p);
+    e.generate();
+
+    core::berlinStampVelocities(e.sequenceMut(), p);
+    core::BerlinSequence first = e.sequence();
+    core::berlinStampVelocities(e.sequenceMut(), p);
+    for (int i = 0; i < 16; ++i)
+        TEST_ASSERT_EQUAL_UINT8(first.step(i).velocity, e.sequence().step(i).velocity);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_resolution_ticks);
@@ -598,5 +667,7 @@ int main() {
     RUN_TEST(test_live_length_shorten_and_extend);
     RUN_TEST(test_live_tension_repitches_keeping_rhythm);
     RUN_TEST(test_live_edits_do_not_reset_playhead);
+    RUN_TEST(test_velocity_knobs_apply_live);
+    RUN_TEST(test_jitter_stable_across_stamps);
     return UNITY_END();
 }

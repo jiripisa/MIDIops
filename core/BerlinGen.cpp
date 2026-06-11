@@ -1,5 +1,6 @@
 #include "core/BerlinGen.h"
 
+#include "core/BerlinSequence.h"
 #include "core/Scale.h"
 
 namespace core {
@@ -26,13 +27,24 @@ int berlinFoldIntoRegister(int note, int lo, int hi) {
     return note;
 }
 
-uint8_t berlinFinalizeVelocity(const BerlinParams& p, bool accent, BerlinRng& rng) {
-    int vel = p.velocityBase
-              + rng.range(-static_cast<int>(p.velocityHumanize), p.velocityHumanize);
+int8_t berlinDrawJitter(BerlinRng& rng) {
+    return static_cast<int8_t>(rng.range(-100, 100));
+}
+
+uint8_t berlinVelocityFor(const BerlinParams& p, bool accent, int8_t velJitter) {
+    int vel = p.velocityBase + (static_cast<int>(velJitter) * p.velocityHumanize) / 100;
     if (accent) vel += p.accent;
     if (vel < 1)   vel = 1;
     if (vel > 126) vel = 126;     // leave 127 as headroom (per the Berlin doc)
     return static_cast<uint8_t>(vel);
+}
+
+void berlinStampVelocities(BerlinSequence& seq, const BerlinParams& p) {
+    for (int i = 0; i < seq.length(); ++i) {
+        BerlinStep& s = seq.step(i);
+        if (!s.active) continue;
+        s.velocity = berlinVelocityFor(p, s.accent, s.velJitter);
+    }
 }
 
 // Interval consonance weight (0..100) by semitone (mod 12), per spec §2.1.

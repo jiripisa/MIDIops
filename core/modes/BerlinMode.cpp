@@ -226,6 +226,11 @@ void BerlinMode::DynamicsScreen::onEncoder(int index, int delta) {
             if (v < 1)   v = 1;
             if (v > 126) v = 126;
             p.velocityBase = static_cast<uint8_t>(v);
+            // Velocity/Humanize/Accent are LIVE performance parameters (like Gate):
+            // re-stamp every active step's velocity from its stable jitter + the
+            // current params, in every behavior, so the knob is audible at once.
+            mode_.engine_.setParams(p);
+            berlinStampVelocities(mode_.engine_.sequenceMut(), p);
             break;
         }
         case 2: {
@@ -233,6 +238,8 @@ void BerlinMode::DynamicsScreen::onEncoder(int index, int delta) {
             if (v < 0)  v = 0;
             if (v > 30) v = 30;
             p.velocityHumanize = static_cast<uint8_t>(v);
+            mode_.engine_.setParams(p);
+            berlinStampVelocities(mode_.engine_.sequenceMut(), p);
             break;
         }
         case 3: {
@@ -240,6 +247,8 @@ void BerlinMode::DynamicsScreen::onEncoder(int index, int delta) {
             if (v < 0)  v = 0;
             if (v > 27) v = 27;
             p.accent = static_cast<uint8_t>(v);
+            mode_.engine_.setParams(p);
+            berlinStampVelocities(mode_.engine_.sequenceMut(), p);
             break;
         }
         case 4:

@@ -104,8 +104,9 @@ BerlinStep BerlinEngine::freshLiveStep(uint8_t baseRoot) {
     s.active    = true;
     s.note      = berlinDegreeWeightedNote(*scale_, baseRoot, params_, rng_);
     s.accent    = (s.note % 12 == scale_->root());
-    s.velocity  = berlinFinalizeVelocity(params_, s.accent, rng_);
     s.gateTicks = static_cast<uint16_t>(berlinGateTicks(params_));
+    s.velJitter = berlinDrawJitter(rng_);
+    s.velocity  = berlinVelocityFor(params_, s.accent, s.velJitter);
     return s;
 }
 

@@ -63,9 +63,10 @@ void DrunkardWalkGenerator::generate(BerlinSequence& out, const BerlinParams& p,
         const bool accent = (i == 0) || (note % 12 == scale.root());
         s.active    = true;
         s.note      = static_cast<uint8_t>(note);
-        s.velocity  = berlinFinalizeVelocity(p, accent, rng);
         s.accent    = accent;
         s.gateTicks = static_cast<uint16_t>(gate);
+        s.velJitter = berlinDrawJitter(rng);
+        s.velocity  = berlinVelocityFor(p, accent, s.velJitter);
         out.step(i) = s;
     }
 }

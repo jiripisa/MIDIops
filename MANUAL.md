@@ -152,7 +152,8 @@ You drive playback with the latches and shape the music with four parameter
 screens. The bottom of every screen shows a **piano-roll** of the current
 sequence with a **left-hand keyboard**: each note has its own lane, keys used by
 the sequence are marked with a small grey dot, and the **currently played note's
-key greys out** as the playhead moves.
+key greys out** as the playhead moves. Each note block's **brightness reflects
+its velocity** — louder notes are brighter, quieter notes dimmer.
 
 **Screens:** `structure` · `character` · `dynamics` · `behavior` (the piano-roll
 stays visible on all four — only the top parameter row changes).
@@ -179,9 +180,9 @@ stays visible on all four — only the top parameter row changes).
 
 | Knob | Parameter | Range | Default | Meaning |
 |---|---|---|---|---|
-| Enc1 | **Velocity** | 1–126 | 100 | Base note velocity. |
-| Enc2 | **Humanize** | 0–30 | 20 | Random ± velocity variation per note. |
-| Enc3 | **Accent** | 0–27 | 20 | Extra velocity on accented notes (beat 1, root notes). |
+| Enc1 | **Velocity** | 1–126 | 100 | Base note velocity. Applies live while playing. |
+| Enc2 | **Humanize** | 0–30 | 20 | Random ± velocity variation per note. Applies live while playing. |
+| Enc3 | **Accent** | 0–27 | 20 | Extra velocity on accented notes (beat 1, root notes). Applies live while playing. |
 | Enc4 | **Scatter** | 1–7 | 3 | (Walk only) step size of the melodic wander. Greyed out and locked under Phase/Degree. |
 
 **Screen `behavior`:**
@@ -221,12 +222,13 @@ stays visible on all four — only the top parameter row changes).
   base/range** transpose and fold the existing notes into the new register
   (melody contour preserved); **Length** truncates (the playhead wraps) or
   extends (only the new tail is filled); **Tension** re-pitches the notes while
-  keeping the existing rhythm, gate and velocities. **Gate** and **Resolution**
-  are live in every behavior (Gate shapes the playing notes, Resolution changes
-  the step grid). **Algorithm, Scatter and GateLen** — which decide *how a
-  sequence is built* — apply at the next **Generate** (Latch3), which still does
-  the full **Morph**-governed regeneration. Velocity, Humanize, Accent and
-  Morph/Evolve rate also apply on the next Generate.
+  keeping the existing rhythm, gate and velocities. **Gate**, **Resolution** and
+  **Velocity/Humanize/Accent** are live in every behavior (Gate shapes the
+  playing notes, Resolution changes the step grid, the Dynamics knobs re-stamp
+  the velocities at once). **Algorithm, Scatter and GateLen** — which decide
+  *how a sequence is built* — apply at the next **Generate** (Latch3), which
+  still does the full **Morph**-governed regeneration. **Morph** and **Evolve
+  rate** are meta settings that govern that regeneration and the Evolve drift.
 
 **Transport (latches):**
 

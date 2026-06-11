@@ -32,6 +32,14 @@ inline void drawBerlinParamDividers(Display& d) {
     d.fillRect(0, kBerlinRollTop - 1, 320, 1, color::DarkGray);
 }
 
+// Scale an RGB565 colour's brightness by t/255 (component-wise).
+inline uint16_t scaleRgb565(uint16_t c, int t) {
+    const int r = ((c >> 11) & 0x1F) * t / 255;
+    const int g = ((c >> 5)  & 0x3F) * t / 255;
+    const int b = (c & 0x1F) * t / 255;
+    return static_cast<uint16_t>((r << 11) | (g << 5) | b);
+}
+
 // Vertical piano keyboard width on the left of the roll.
 constexpr int kBerlinKbW = 26;
 
@@ -143,7 +151,12 @@ inline void drawBerlinPianoRoll(Display& d, const BerlinSequence& seq, int playh
         int w = colW * s.gateTicks / 12;
         if (w < 3) w = 3;
         if (w > colW - 1) w = colW - 1;
-        const uint16_t c = s.accent ? color::White : noteColor;
+        // Block brightness reflects the step's velocity: quiet notes dim, loud
+        // notes bright. Map velocity 1..126 to ~35%..100% so even the quietest
+        // note stays visible against the black roll. Accents stay white (scaled),
+        // normal notes keep the green hue (scaled).
+        const int t = 90 + s.velocity * 165 / 126;
+        const uint16_t c = scaleRgb565(s.accent ? color::White : noteColor, t);
         d.fillRect(rollX + i * colW + 1, y0, w, bh, c);
     }
 }

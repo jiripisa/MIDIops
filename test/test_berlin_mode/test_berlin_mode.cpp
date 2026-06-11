@@ -430,20 +430,31 @@ static void test_live_length_edit_sculpts_in_place() {
     TEST_ASSERT_EQUAL_INT(phBefore % 14, phAfter);
 }
 
-static void test_live_ignores_performance_edit_and_locked_never_regens() {
+static void test_velocity_edit_applies_live_and_locked_never_regens() {
     core::AppShell shell;
     core::BerlinMode berlin(shell);
     FakeMidiOutput out; berlin.setMidiOutput(&out);
     berlin.onEnter();
 
-    // Live + PERFORMANCE edit (Velocity, Dynamics Enc1) must NOT touch the sequence.
-    berlin.params().behavior = core::BerlinBehavior::Live;
-    core::BerlinSequence before = berlin.engine().sequence();
-    berlin.screen(2).onEncoder(1, +1);                // velocity base +1 (performance)
-    TEST_ASSERT_EQUAL_INT(0, berlinSeqDiff(before, berlin.engine().sequence()));
-
-    // Locked + structural edit (Density) stays staged — no in-place edit.
+    // Velocity is now a LIVE performance parameter: a Dynamics Enc1 edit re-stamps
+    // the sequence's velocities at once, in EVERY behavior — even under Locked.
     berlin.params().behavior = core::BerlinBehavior::Locked;
+    core::BerlinSequence before = berlin.engine().sequence();
+    berlin.screen(2).onEncoder(1, +1);                // velocity base +1 (live)
+    bool anyVelChanged = false;
+    for (int i = 0; i < before.length(); ++i) {
+        if (before.step(i).active &&
+            before.step(i).velocity != berlin.engine().sequence().step(i).velocity) {
+            anyVelChanged = true;
+        }
+        // Notes/rhythm untouched — only the velocity re-stamps.
+        TEST_ASSERT_EQUAL_UINT8(before.step(i).note,   berlin.engine().sequence().step(i).note);
+        TEST_ASSERT_EQUAL_INT(static_cast<int>(before.step(i).active),
+                              static_cast<int>(berlin.engine().sequence().step(i).active));
+    }
+    TEST_ASSERT_TRUE_MESSAGE(anyVelChanged, "velocity edit must apply live even under Locked");
+
+    // Locked + STRUCTURAL edit (Density) stays staged — no in-place edit.
     core::BerlinSequence base2 = berlin.engine().sequence();
     berlin.screen(0).onEncoder(4, +1);                // density +5 (structural) but Locked
     TEST_ASSERT_EQUAL_INT(0, berlinSeqDiff(base2, berlin.engine().sequence()));
@@ -632,7 +643,7 @@ int main() {
     RUN_TEST(test_onexit_silences_sounding_note);
     RUN_TEST(test_algorithm_dispatch);
     RUN_TEST(test_live_length_edit_sculpts_in_place);
-    RUN_TEST(test_live_ignores_performance_edit_and_locked_never_regens);
+    RUN_TEST(test_velocity_edit_applies_live_and_locked_never_regens);
     RUN_TEST(test_live_octave_edit_transposes_in_place);
     RUN_TEST(test_live_density_edit_in_place);
     RUN_TEST(test_live_algorithm_knob_does_not_regen);

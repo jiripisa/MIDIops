@@ -152,7 +152,8 @@ smyčkovou sekvenci jedním ze tří algoritmů a přehrává ji na clock. Přeh
 řídíš páčkami a hudbu tvaruješ čtyřmi parametrovými obrazovkami. Dole na každé
 obrazovce je **piano-roll** aktuální sekvence s **klaviaturou vlevo**: každá nota
 má svůj řádek, klávesy použité v sekvenci jsou označené malou šedou tečkou a
-**klávesa právě hrající noty zešedne**, jak playhead postupuje.
+**klávesa právě hrající noty zešedne**, jak playhead postupuje. **Jas** bloku
+každé noty odpovídá její velocity — hlasitější noty jsou jasnější, tišší tmavší.
 
 **Obrazovky:** `structure` · `character` · `dynamics` · `behavior` (piano-roll
 zůstává na všech čtyřech — mění se jen horní řádek parametrů).
@@ -179,9 +180,9 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
 
 | Knob | Parametr | Rozsah | Výchozí | Význam |
 |---|---|---|---|---|
-| Enc1 | **Velocity** | 1–126 | 100 | Základní velocity not. |
-| Enc2 | **Humanize** | 0–30 | 20 | Náhodné ± kolísání velocity na notu. |
-| Enc3 | **Accent** | 0–27 | 20 | Přídavek velocity na akcentovaných notách (1. doba, root noty). |
+| Enc1 | **Velocity** | 1–126 | 100 | Základní velocity not. Funguje živě při přehrávání. |
+| Enc2 | **Humanize** | 0–30 | 20 | Náhodné ± kolísání velocity na notu. Funguje živě při přehrávání. |
+| Enc3 | **Accent** | 0–27 | 20 | Přídavek velocity na akcentovaných notách (1. doba, root noty). Funguje živě při přehrávání. |
 | Enc4 | **Scatter** | 1–7 | 3 | (jen Walk) velikost kroku melodického bloudění. Pod Phase/Degree zašedlé a zamčené. |
 
 **Obrazovka `behavior`:**
@@ -221,12 +222,13 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
   složí stávající noty do nového registru (obrys melodie zůstává zachován);
   **Length** zkrátí (pozice přehrávání se zaroluje) nebo prodlouží (vyplní se jen
   nový ocas); **Tension** přeladí noty se zachováním stávajícího rytmu, gate a
-  velocity. **Gate** a **Resolution** fungují živě v každém chování (Gate tvaruje
-  hrající noty, Resolution mění krokovou mřížku). **Algorithm, Scatter a
+  velocity. **Gate**, **Resolution** a **Velocity/Humanize/Accent** fungují živě
+  v každém chování (Gate tvaruje hrající noty, Resolution mění krokovou mřížku,
+  knoby Dynamics okamžitě přerazítkují velocity). **Algorithm, Scatter a
   GateLen** — které určují, *jak se sekvence vytváří* — se projeví až při dalším
   **Generate** (Latch3), který stále provede plnou regeneraci řízenou parametrem
-  **Morph**. Velocity, Humanize, Accent a Morph/Evolve rate se rovněž projeví až
-  při dalším Generate.
+  **Morph**. **Morph** a **Evolve rate** jsou meta-nastavení, jež řídí tuto
+  regeneraci a posun při Evolve.
 
 **Transport (páčky):**
 
