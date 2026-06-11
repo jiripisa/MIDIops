@@ -33,6 +33,17 @@ public:
     void generate();    // (re)generate using current params + Morph (Reset/Generate)
     void generateFull();// (re)generate ignoring Morph (full fresh) — used by Live
 
+    // Live in-place sculpting. Each operation reads the already-pushed params_
+    // and edits seq_ in place — only the touched parameter's effect is applied,
+    // every untouched step stays byte-identical, and the playhead is NEVER reset
+    // (length-shorten only wraps it). These never touch playing_, stepTicks_, or
+    // the sounding gate. Used by BerlinMode when behavior == Live.
+    void applyLiveDensity();                 // add/remove active steps to hit the new density target
+    void applyLiveOctaveBase(int deltaSemis);// transpose active notes, fold into the current register
+    void applyLiveOctaveRange();             // fold active notes into the current (possibly narrower) register
+    void applyLiveLength();                  // truncate (wrap playhead) or extend (fill the new tail)
+    void applyLiveTension();                 // re-pitch active steps (except step 0), keep rhythm/velocity/gate
+
     void onClockTick();      // advance one 24-PPQN tick
 
     bool isPlaying()    const { return playing_; }
@@ -47,6 +58,7 @@ private:
     void emitStep(int i);    // fire step i's NoteOn (if active), arm gate
     void regenerate(bool full);  // shared body of generate()/generateFull()
     void evolve();           // splice 1-2 steps from a fresh candidate (Evolve behavior)
+    BerlinStep freshLiveStep(uint8_t baseRoot);  // a freshly-rolled active step from current params_
     int  stepLenTicks() const { return berlinResolutionTicks(params_.resolution); }
 
     MidiOutput*        out_       = nullptr;

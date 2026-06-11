@@ -1,6 +1,8 @@
 #include "core/BerlinEngine.h"
 
+#include "core/BerlinGen.h"
 #include "core/MidiOutput.h"
+#include "core/Scale.h"
 #include "core/SequenceGenerator.h"
 
 namespace core {
@@ -98,6 +100,116 @@ void BerlinEngine::regenerate(bool full) {
     playhead_  = 0;
     stepTicks_ = 0;
     loopCount_ = 0;
+}
+
+BerlinStep BerlinEngine::freshLiveStep(uint8_t baseRoot) {
+    BerlinStep s;
+    s.active    = true;
+    s.note      = berlinDegreeWeightedNote(*scale_, baseRoot, params_, rng_);
+    s.accent    = (s.note % 12 == scale_->root());
+    s.velocity  = berlinFinalizeVelocity(params_, s.accent, rng_);
+    s.gateTicks = static_cast<uint16_t>(berlinGateTicks(params_));
+    return s;
+}
+
+void BerlinEngine::applyLiveDensity() {
+    const int len = seq_.length();
+    int target = (static_cast<int>(params_.density) * len + 50) / 100;
+    if (target < 1) target = 1;               // step 0 anchor always survives
+    if (target > len) target = len;
+
+    int active = 0;
+    for (int i = 0; i < len; ++i) if (seq_.step(i).active) ++active;
+
+    if (active < target) {
+        if (!scale_) return;                  // additions need the scale
+        const uint8_t baseRoot = berlinBaseRoot(*scale_, params_);
+        int cand[BerlinSequence::kMaxSteps];
+        int n = 0;
+        for (int i = 0; i < len; ++i) if (!seq_.step(i).active) cand[n++] = i;
+        while (active < target && n > 0) {
+            const int k = rng_.range(0, n - 1);
+            const int idx = cand[k];
+            cand[k] = cand[--n];              // remove the picked candidate
+            seq_.step(idx) = freshLiveStep(baseRoot);
+            ++active;
+        }
+    } else if (active > target) {
+        int cand[BerlinSequence::kMaxSteps];
+        int n = 0;
+        for (int i = 1; i < len; ++i) if (seq_.step(i).active) cand[n++] = i;  // never step 0
+        while (active > target && n > 0) {
+            const int k = rng_.range(0, n - 1);
+            const int idx = cand[k];
+            cand[k] = cand[--n];
+            seq_.step(idx).active = false;
+            --active;
+        }
+    }
+}
+
+void BerlinEngine::applyLiveOctaveBase(int deltaSemis) {
+    int lo = 0, hi = 0;
+    berlinRegister(params_, lo, hi);
+    const int len = seq_.length();
+    for (int i = 0; i < len; ++i) {
+        BerlinStep& s = seq_.step(i);
+        if (!s.active) continue;
+        int note = static_cast<int>(s.note) + deltaSemis;
+        note = berlinFoldIntoRegister(note, lo, hi);
+        if (note < 0)   note = 0;
+        if (note > 127) note = 127;
+        s.note = static_cast<uint8_t>(note);
+    }
+}
+
+void BerlinEngine::applyLiveOctaveRange() {
+    int lo = 0, hi = 0;
+    berlinRegister(params_, lo, hi);
+    const int len = seq_.length();
+    for (int i = 0; i < len; ++i) {
+        BerlinStep& s = seq_.step(i);
+        if (!s.active) continue;
+        int note = berlinFoldIntoRegister(static_cast<int>(s.note), lo, hi);
+        if (note < 0)   note = 0;
+        if (note > 127) note = 127;
+        s.note = static_cast<uint8_t>(note);
+    }
+}
+
+void BerlinEngine::applyLiveLength() {
+    int target = params_.length;
+    if (target < 1) target = 1;
+    if (target > BerlinSequence::kMaxSteps) target = BerlinSequence::kMaxSteps;
+    const int old = seq_.length();
+
+    if (target < old) {
+        seq_.setLength(target);
+        if (playhead_ >= target) playhead_ %= target;   // wrap, do NOT reset
+    } else if (target > old) {
+        const uint8_t baseRoot = scale_ ? berlinBaseRoot(*scale_, params_) : 0;
+        seq_.setLength(target);
+        for (int i = old; i < target; ++i) {
+            if (scale_ && rng_.chance(params_.density)) {
+                seq_.step(i) = freshLiveStep(baseRoot);
+            } else {
+                seq_.step(i) = BerlinStep{};
+            }
+        }
+    }
+}
+
+void BerlinEngine::applyLiveTension() {
+    if (!scale_) return;
+    const uint8_t baseRoot = berlinBaseRoot(*scale_, params_);
+    const int len = seq_.length();
+    for (int i = 1; i < len; ++i) {           // step 0 anchor untouched
+        BerlinStep& s = seq_.step(i);
+        if (!s.active) continue;
+        s.note   = berlinDegreeWeightedNote(*scale_, baseRoot, params_, rng_);
+        s.accent = (s.note % 12 == scale_->root());
+        // velocity and gateTicks intentionally kept.
+    }
 }
 
 void BerlinEngine::evolve() {

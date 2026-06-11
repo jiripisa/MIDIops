@@ -3,6 +3,7 @@
 #include "core/BerlinRng.h"
 #include "core/BerlinSequence.h"
 #include "core/BerlinEngine.h"
+#include "core/BerlinGen.h"
 #include "core/DrunkardWalkGenerator.h"
 #include "core/GatePitchPhasingGenerator.h"
 #include "core/Scale.h"
@@ -365,6 +366,169 @@ static void test_silence_flushes_note_without_moving_playhead() {
     TEST_ASSERT_EQUAL_INT(offBefore + 1, countOff(out));
 }
 
+// --- Live in-place sculpting (Task 1) -------------------------------------
+
+static int countActive(const core::BerlinSequence& s) {
+    int n = 0; for (int i = 0; i < s.length(); ++i) if (s.step(i).active) ++n; return n;
+}
+static bool stepByteEqual(const core::BerlinStep& a, const core::BerlinStep& b) {
+    return a.active == b.active && a.note == b.note &&
+           a.velocity == b.velocity && a.accent == b.accent && a.gateTicks == b.gateTicks;
+}
+
+// Build a base sequence the same way the other Berlin tests do.
+static void liveBase(core::BerlinEngine& e, core::DrunkardWalkGenerator& gen,
+                     core::Scale& sc, const core::BerlinParams& p, uint32_t seed) {
+    e.setGenerator(&gen); e.setScale(&sc); e.seed(seed);
+    e.setParams(p);
+    e.generate();
+}
+
+static void test_live_density_adds_and_removes_in_place() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    core::BerlinParams p; p.length = 16; p.density = 50; p.morph = 100;
+    liveBase(e, gen, sc, p, 7);
+    core::BerlinSequence base = e.sequence();
+
+    // Density up to 100 → every step active.
+    p.density = 100; e.setParams(p);
+    e.applyLiveDensity();
+    TEST_ASSERT_EQUAL_INT(16, countActive(e.sequence()));
+    int lo = 0, hi = 0; core::berlinRegister(p, lo, hi);
+    for (int i = 0; i < 16; ++i) {
+        if (base.step(i).active) {
+            // Previously-active steps untouched (note/velocity/gate identical).
+            TEST_ASSERT_TRUE(stepByteEqual(base.step(i), e.sequence().step(i)));
+        } else {
+            // Newly-activated steps: in scale and in register.
+            const core::BerlinStep& s = e.sequence().step(i);
+            TEST_ASSERT_TRUE(s.active);
+            TEST_ASSERT_EQUAL_UINT8(s.note, sc.quantize(s.note));
+            TEST_ASSERT_TRUE(s.note >= lo && s.note <= hi);
+        }
+    }
+
+    // Density down to 25 → round(25*16/100)=4 active, step 0 kept.
+    core::BerlinSequence before = e.sequence();
+    p.density = 25; e.setParams(p);
+    e.applyLiveDensity();
+    const int target = (25 * 16 + 50) / 100;   // = 4
+    TEST_ASSERT_EQUAL_INT(target, countActive(e.sequence()));
+    TEST_ASSERT_TRUE(e.sequence().step(0).active);
+    // Remaining active steps are byte-identical to before the removal.
+    for (int i = 0; i < 16; ++i)
+        if (e.sequence().step(i).active)
+            TEST_ASSERT_TRUE(stepByteEqual(before.step(i), e.sequence().step(i)));
+}
+
+static void test_live_octave_base_transposes_exactly() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    core::BerlinParams p; p.length = 16; p.density = 100; p.octaveBase = 48; p.octaveRange = 2;
+    liveBase(e, gen, sc, p, 9);
+    core::BerlinSequence base = e.sequence();
+
+    p.octaveBase = static_cast<uint8_t>(p.octaveBase + 12); e.setParams(p);
+    e.applyLiveOctaveBase(+12);
+    for (int i = 0; i < 16; ++i) {
+        if (base.step(i).active) {
+            TEST_ASSERT_EQUAL_UINT8(base.step(i).note + 12, e.sequence().step(i).note);
+            TEST_ASSERT_EQUAL_UINT8(base.step(i).velocity, e.sequence().step(i).velocity);
+            TEST_ASSERT_EQUAL_UINT16(base.step(i).gateTicks, e.sequence().step(i).gateTicks);
+        } else {
+            TEST_ASSERT_TRUE(stepByteEqual(base.step(i), e.sequence().step(i)));
+        }
+    }
+}
+
+static void test_live_octave_range_folds_in() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    core::BerlinParams p; p.length = 16; p.density = 100; p.octaveBase = 48; p.octaveRange = 3;
+    liveBase(e, gen, sc, p, 13);
+    core::BerlinSequence base = e.sequence();
+
+    p.octaveRange = 1; e.setParams(p);
+    e.applyLiveOctaveRange();
+    int lo = 0, hi = 0; core::berlinRegister(p, lo, hi);
+    for (int i = 0; i < 16; ++i) {
+        if (base.step(i).active) {
+            const core::BerlinStep& s = e.sequence().step(i);
+            TEST_ASSERT_TRUE(s.note >= lo && s.note <= hi);
+            TEST_ASSERT_EQUAL_UINT8(s.note, sc.quantize(s.note));
+            TEST_ASSERT_EQUAL_UINT8(base.step(i).velocity, s.velocity);
+            TEST_ASSERT_EQUAL_UINT16(base.step(i).gateTicks, s.gateTicks);
+        }
+    }
+}
+
+static void test_live_length_shorten_and_extend() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    core::BerlinParams p; p.length = 16; p.density = 100;
+    p.resolution = core::BerlinResolution::Sixteenth;   // 6 ticks/step
+    liveBase(e, gen, sc, p, 17);
+    core::BerlinSequence base = e.sequence();
+
+    e.play();
+    for (int i = 0; i < 8 * 6; ++i) e.onClockTick();     // advance playhead to step 8
+    TEST_ASSERT_TRUE(e.playhead() >= 8);
+    const int oldPlayhead = e.playhead();
+
+    p.length = 8; e.setParams(p);
+    e.applyLiveLength();
+    TEST_ASSERT_EQUAL_INT(8, e.sequence().length());
+    for (int i = 0; i < 8; ++i)
+        TEST_ASSERT_TRUE(stepByteEqual(base.step(i), e.sequence().step(i)));
+    TEST_ASSERT_TRUE(e.playhead() < 8);
+    TEST_ASSERT_EQUAL_INT(oldPlayhead % 8, e.playhead());  // wrapped, not reset
+
+    // Extend to 12 → first 8 byte-identical, 8..11 newly filled.
+    core::BerlinSequence shortened = e.sequence();
+    p.length = 12; e.setParams(p);
+    e.applyLiveLength();
+    TEST_ASSERT_EQUAL_INT(12, e.sequence().length());
+    for (int i = 0; i < 8; ++i)
+        TEST_ASSERT_TRUE(stepByteEqual(shortened.step(i), e.sequence().step(i)));
+    // density=100 → the appended tail steps are all active.
+    for (int i = 8; i < 12; ++i)
+        TEST_ASSERT_TRUE(e.sequence().step(i).active);
+}
+
+static void test_live_tension_repitches_keeping_rhythm() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    core::BerlinParams p; p.length = 16; p.density = 100; p.tension = 0;
+    liveBase(e, gen, sc, p, 23);
+    core::BerlinSequence base = e.sequence();
+
+    p.tension = 100; e.setParams(p);
+    e.applyLiveTension();
+    int differs = 0;
+    for (int i = 0; i < 16; ++i) {
+        const core::BerlinStep& b = base.step(i);
+        const core::BerlinStep& s = e.sequence().step(i);
+        TEST_ASSERT_EQUAL_INT(static_cast<int>(b.active), static_cast<int>(s.active));
+        TEST_ASSERT_EQUAL_UINT8(b.velocity, s.velocity);
+        TEST_ASSERT_EQUAL_UINT16(b.gateTicks, s.gateTicks);
+        if (i == 0) TEST_ASSERT_EQUAL_UINT8(b.note, s.note);   // step 0 anchor unchanged
+        else if (s.note != b.note) ++differs;
+    }
+    TEST_ASSERT_TRUE(differs >= 1);
+}
+
+static void test_live_edits_do_not_reset_playhead() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    core::BerlinParams p; p.length = 16; p.density = 100;
+    p.resolution = core::BerlinResolution::Sixteenth;
+    liveBase(e, gen, sc, p, 29);
+
+    e.play();
+    for (int i = 0; i < 3 * 6; ++i) e.onClockTick();   // advance to step 3
+    TEST_ASSERT_EQUAL_INT(3, e.playhead());
+
+    e.applyLiveDensity();
+    e.applyLiveTension();
+    e.applyLiveOctaveRange();
+    TEST_ASSERT_EQUAL_INT(3, e.playhead());
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_resolution_ticks);
@@ -386,5 +550,11 @@ int main() {
     RUN_TEST(test_evolve_on_phasing_sequence);
     RUN_TEST(test_gate_param_applies_live);
     RUN_TEST(test_silence_flushes_note_without_moving_playhead);
+    RUN_TEST(test_live_density_adds_and_removes_in_place);
+    RUN_TEST(test_live_octave_base_transposes_exactly);
+    RUN_TEST(test_live_octave_range_folds_in);
+    RUN_TEST(test_live_length_shorten_and_extend);
+    RUN_TEST(test_live_tension_repitches_keeping_rhythm);
+    RUN_TEST(test_live_edits_do_not_reset_playhead);
     return UNITY_END();
 }
