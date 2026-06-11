@@ -10,10 +10,15 @@
 // (the float period overload keeps it sub-µs accurate) and send_now()
 // force-flushes the USB TX buffer immediately, bypassing the 0–1 ms
 // micro-frame delay that would otherwise smear pulses into a sawtooth
-// jitter pattern. The Teensy 4 USB MIDI buffer is interrupt-safe for
-// short status bytes; send_now() is non-blocking on T4.x so calling it
-// from the ISR is the standard PJRC pattern for a low-jitter Clock
-// master.
+// jitter pattern. send_now() is non-blocking on T4.x so calling it from
+// the ISR is the standard PJRC pattern for a low-jitter Clock master.
+//
+// The Teensy core's USB MIDI TX buffer is NOT interrupt-safe: its
+// tx_head/tx_available are mutated without an IRQ guard. Because the clock
+// pulse is sent from this ISR while the main loop sends notes/transport,
+// every main-loop send is wrapped in noInterrupts()/interrupts() (see
+// TeensyMidiOutput.cpp) to close the race — the ISR side already runs
+// atomically w.r.t. the main loop on this single-core MCU.
 //
 // Requires the project to be built with the "MIDI + Serial" USB type
 // (-D USB_MIDI_SERIAL in platformio.ini).

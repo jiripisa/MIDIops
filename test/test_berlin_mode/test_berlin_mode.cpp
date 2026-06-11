@@ -336,9 +336,53 @@ static void test_live_full_regen_ignores_morph() {
     TEST_ASSERT_TRUE(after0 > before0);                // octave shift fully applied (full regen)
 }
 
+// ---------------------------------------------------------------------------
+// N6: external Stop silences the engine. With clockSource=External the engine
+// only closes gates in onClockTick(); a DAW that stops sending clock when its
+// transport stops would leave a note hanging forever. An incoming MidiType::Stop
+// must notify the mode so the engine stops (NoteOff sent, playhead rewound).
+// ---------------------------------------------------------------------------
+static void test_external_stop_silences_engine() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out;
+    berlin.setMidiOutput(&out);
+    shell.setMidiOutput(&out);
+    shell.addMode(&berlin);
+    shell.begin();
+    shell.setClockSource(core::ClockSource::External);
+
+    // Prime the first-frame latch absorb with the opposite level, then play.
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // play
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
+
+    // Feed external Clock pulses until a note is actively sounding (gate open).
+    core::MidiMessage clk{}; clk.type = core::MidiType::Clock;
+    for (int i = 0; i < 96 && berlin.engine().soundingNote() < 0; ++i) {
+        shell.onMidiIn(clk);
+    }
+    TEST_ASSERT_GREATER_OR_EQUAL(0, berlin.engine().soundingNote());   // a note is sounding
+
+    int noteOffsBefore = 0;
+    for (const auto& e : out.events) { if (!e.isOn) ++noteOffsBefore; }
+
+    // The DAW presses Stop: an external Stop message arrives via the shell.
+    // Under External clock the gate-off never arrives via onClockTick(), so the
+    // Stop must flush the sounding note (a fresh NoteOff) and rewind.
+    core::MidiMessage stop{}; stop.type = core::MidiType::Stop;
+    shell.onMidiIn(stop);
+
+    int noteOffsAfter = 0;
+    for (const auto& e : out.events) { if (!e.isOn) ++noteOffsAfter; }
+    TEST_ASSERT_GREATER_THAN(noteOffsBefore, noteOffsAfter);   // NoteOff was sent
+    TEST_ASSERT_FALSE(berlin.engine().isPlaying());            // engine stopped
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_latch1_play_pause_latch2_stop);
+    RUN_TEST(test_external_stop_silences_engine);
     RUN_TEST(test_held_latch_edge_detect);
     RUN_TEST(test_latch3_generate_on_each_flip);
     RUN_TEST(test_latch3_resync_on_reentry);

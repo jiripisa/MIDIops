@@ -3,6 +3,15 @@
 namespace core {
 
 void ClockFollower::onPulse(uint32_t nowMs) {
+    // Gap detection: if a window is in progress and the spacing since the last
+    // pulse exceeds kGapMs (far beyond any 30-BPM ~83 ms spacing), the upstream
+    // clock paused and resumed. Re-anchor on this pulse so the long idle span is
+    // never averaged into the window (which would report a bogus ~30 BPM), while
+    // keeping the last known bpm_ for display.
+    if (haveFirst_ && (nowMs - lastPulseMs_) > kGapMs) {
+        haveFirst_ = false;
+    }
+    lastPulseMs_ = nowMs;
     if (!haveFirst_) {
         firstMs_ = nowMs;
         haveFirst_ = true;
