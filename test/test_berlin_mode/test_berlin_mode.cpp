@@ -365,7 +365,9 @@ static void test_algorithm_dispatch() {
 }
 
 // ---------------------------------------------------------------------------
-// Live behavior: structural edits immediately regenerate the sequence.
+// Live behavior: structural edits SCULPT the existing sequence in place —
+// only the touched parameter's effect is applied, the rest of the sequence and
+// the playhead stay. A full regeneration happens only on Generate (Latch3).
 // ---------------------------------------------------------------------------
 static int berlinSeqDiff(const core::BerlinSequence& a, const core::BerlinSequence& b) {
     if (a.length() != b.length()) return 999;
