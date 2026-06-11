@@ -1,6 +1,7 @@
 #include "core/app/AppShell.h"
 
 #include <cstdio>
+#include <cstring>
 
 #include "core/Display.h"
 #include "core/MidiOutput.h"
@@ -259,17 +260,48 @@ void AppShell::drawTopBar(Display& d) const {
 }
 
 void AppShell::drawOverlay(Display& d) const {
-    const int w = 200, h = 16 * modeCount_ + 8;
-    const int x = (d.width() - w) / 2;
-    const int y = (d.height() - h) / 2;
-    d.fillRect(x, y, w, h, color::Black);
-    d.fillRect(x, y, w, 12, color::Blue);
-    d.drawText(x + 4, y + 2, "SELECT MODE", color::White, color::Blue, 1);
-    for (int i = 0; i < modeCount_; ++i) {
-        const bool sel = (i == overlayChoice_);
-        const uint16_t bg = sel ? color::Yellow : color::Black;
-        const uint16_t fg = sel ? color::Black : color::White;
-        d.drawText(x + 8, y + 14 + i * 16, modes_[i]->name(), fg, bg, 1);
+    // Horizontal mode carousel: the mode names sit on one row across the
+    // middle of the screen; the selected one is drawn large inside a centred
+    // frame, and rotating Enc5 slides the row through it (wrapping).
+    if (modeCount_ == 0) return;
+    const int cx  = d.width() / 2;
+    const int cy  = d.height() / 2;
+    const int gap = 18;
+
+    d.drawText(cx - 33, cy - 40, "SELECT MODE", color::Gray, color::Black, 1);
+
+    // Selected mode: size-2 text centred in a 1px frame.
+    const char* selName = modes_[overlayChoice_]->name();
+    const int selW = static_cast<int>(std::strlen(selName)) * 12;
+    d.drawText(cx - selW / 2, cy - 7, selName, color::White, color::Black, 2);
+    const int fx = cx - selW / 2 - 8;
+    const int fy = cy - 14;
+    const int fw = selW + 16;
+    const int fh = 28;
+    d.fillRect(fx, fy, fw, 1, color::Yellow);
+    d.fillRect(fx, fy + fh - 1, fw, 1, color::Yellow);
+    d.fillRect(fx, fy, 1, fh, color::Yellow);
+    d.fillRect(fx + fw - 1, fy, 1, fh, color::Yellow);
+
+    // Neighbours, size 1 and grey, walking outward from the frame. The offset
+    // bounds split the remaining n-1 modes between the two sides so each mode
+    // appears at most once even with few modes; off-screen names are skipped.
+    const int n = modeCount_;
+    int x = fx + fw + gap;
+    for (int off = 1; off <= n / 2; ++off) {
+        const char* nm = modes_[(overlayChoice_ + off) % n]->name();
+        const int w = static_cast<int>(std::strlen(nm)) * 6;
+        if (x + w > d.width()) break;
+        d.drawText(x, cy - 3, nm, color::Gray, color::Black, 1);
+        x += w + gap;
+    }
+    x = fx - gap;
+    for (int off = 1; off <= (n - 1) / 2; ++off) {
+        const char* nm = modes_[((overlayChoice_ - off) % n + n) % n]->name();
+        const int w = static_cast<int>(std::strlen(nm)) * 6;
+        if (x - w < 0) break;
+        d.drawText(x - w, cy - 3, nm, color::Gray, color::Black, 1);
+        x -= w + gap;
     }
 }
 

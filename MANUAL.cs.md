@@ -56,8 +56,10 @@ notace, piano-roll) vyplňují plochu pod horní lištou.
 
 - **Přepnout obrazovku** (v rámci módu): otoč **Enc5**. Obrazovky se cyklí
   dokola.
-- **Přepnout mód**: stiskni **Enc5** pro otevření **překryvu výběru módu**, otoč
-  **Enc5** pro zvýraznění módu, dalším stiskem **Enc5** do něj vstoupíš. Překryv
+- **Přepnout mód**: stiskni **Enc5** pro otevření **překryvu výběru módu** —
+  názvy módů leží v jednom vodorovném řádku a výběr označuje rámeček uprostřed
+  obrazovky. Otáčením **Enc5** se řádek posouvá doleva/doprava (cyklí dokola),
+  dalším stiskem **Enc5** vstoupíš do módu v rámečku. Překryv
   se po pár sekundách bez vstupu sám zavře. Dokud je překryv otevřený, páčky
   neovládají globální transport, ale vlastní funkce páček aktivního módu
   (např. Berlin Generate) stále platí.
