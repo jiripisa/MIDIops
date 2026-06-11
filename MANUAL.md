@@ -61,7 +61,7 @@ piano-roll) fill the area below the top bar.
   the latches do not drive the global transport, but the active mode's own latch
   functions (e.g. Berlin Generate) still apply.
 
-The device boots into **Monitoring**. Modes, in order: **Monitoring · Arp ·
+The device boots into **Berlin**. Modes, in order: **Monitoring · Arp ·
 Berlin · BPM · Settings · Debug**.
 
 ---

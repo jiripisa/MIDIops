@@ -62,7 +62,7 @@ notace, piano-roll) vyplňují plochu pod horní lištou.
   neovládají globální transport, ale vlastní funkce páček aktivního módu
   (např. Berlin Generate) stále platí.
 
-Zařízení startuje v **Monitoringu**. Pořadí módů: **Monitoring · Arp · Berlin ·
+Zařízení startuje v **Berlinu**. Pořadí módů: **Monitoring · Arp · Berlin ·
 BPM · Settings · Debug**.
 
 ---

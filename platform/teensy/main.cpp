@@ -148,7 +148,7 @@ void setup() {
     app.addMode(&settingsMode);
     app.addMode(&debugMode);
     app.setBpm(120);
-    app.begin();
+    app.begin(2);   // boot into Berlin (addMode order: Monitoring, Arp, Berlin, ...)
     app.tick(millis());
     app.render(display);
 }
