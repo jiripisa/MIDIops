@@ -152,10 +152,14 @@ inline void drawBerlinPianoRoll(Display& d, const BerlinSequence& seq, int playh
         if (w < 3) w = 3;
         if (w > colW - 1) w = colW - 1;
         // Block brightness reflects the step's velocity: quiet notes dim, loud
-        // notes bright. Map velocity 1..126 to ~35%..100% so even the quietest
-        // note stays visible against the black roll. Accents stay white (scaled),
-        // normal notes keep the green hue (scaled).
-        const int t = 90 + s.velocity * 165 / 126;
+        // notes bright. QUADRATIC mapping: real velocities cluster in ~70..126
+        // (base 100 ± humanize, + accent), and a linear map over 1..126 wasted
+        // most of the brightness range — squaring spreads that musical band
+        // across ~30%..100% so per-note differences are clearly visible, while
+        // the ~10% floor keeps even the quietest note legible on black.
+        // Accents stay white (scaled), normal notes keep the green hue (scaled).
+        const int v = s.velocity;
+        const int t = 25 + (v * v * 230) / (126 * 126);
         const uint16_t c = scaleRgb565(s.accent ? color::White : noteColor, t);
         d.fillRect(rollX + i * colW + 1, y0, w, bh, c);
     }
