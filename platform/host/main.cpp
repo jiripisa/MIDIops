@@ -127,6 +127,15 @@ int main(int /*argc*/, char* /*argv*/[]) {
     app.setBpm(120);
     app.begin();
 
+    // Prime the shell's latch shadow state with the initial OFF levels. On
+    // hardware the main loop pushes the latch level every frame, so the
+    // shell's first-delivery absorb syncs immediately; the simulator only
+    // delivers one onLatch per keypress, so without this priming the very
+    // first Space/Backspace/Return press would be absorbed and do nothing.
+    app.onLatch(1, false);
+    app.onLatch(2, false);
+    app.onLatch(3, false);
+
     std::fprintf(stderr,
                  "MIDIops simulator running.\n"
                  "  Modes (Enc5 cycles): Monitoring  Arp  Berlin  BPM  Settings  Debug\n"
