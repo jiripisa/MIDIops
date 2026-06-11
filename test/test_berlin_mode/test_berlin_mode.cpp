@@ -387,19 +387,46 @@ static int berlinSeqDiffN9(const core::BerlinSequence& a, const core::BerlinSequ
     return berlinSeqDiff(a, b);
 }
 
-static void test_live_regenerates_on_structural_edit() {
+// Live now SCULPTS in place: a Length edit truncates/extends the existing
+// sequence, keeps the surviving prefix byte-identical, and the playhead keeps
+// running (it wraps on shorten, never resets to 0).
+static bool berlinStepEqual(const core::BerlinStep& a, const core::BerlinStep& b) {
+    return a.active == b.active && a.note == b.note && a.velocity == b.velocity &&
+           a.accent == b.accent && a.gateTicks == b.gateTicks;
+}
+
+static void test_live_length_edit_sculpts_in_place() {
     core::AppShell shell;
     core::BerlinMode berlin(shell);
     FakeMidiOutput out; berlin.setMidiOutput(&out);
     berlin.onEnter();
     berlin.params().behavior = core::BerlinBehavior::Live;
     berlin.params().length = 16;
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});  // prime latch absorb
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});   // generate at length 16
+    TEST_ASSERT_EQUAL_INT(16, berlin.engine().sequence().length());
 
+    // Snapshot, then run the playhead off step 0.
+    core::BerlinSequence snap = berlin.engine().sequence();
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // play
+    for (int i = 0; i < 36; ++i) berlin.onClockTick();              // advance several steps
+    const int phBefore = berlin.engine().playhead();
+    TEST_ASSERT_TRUE(phBefore > 0);                                 // moved off 0
+
+    // Turn Length down by 2 — sculpt in place (no full regen).
     core::Screen& structure = berlin.screen(0);
-    structure.onEncoder(2, -1);                       // Length 16 → 15, Live regen
-    TEST_ASSERT_EQUAL_INT(15, berlin.engine().sequence().length());
-    structure.onEncoder(2, -1);                       // 15 → 14
+    structure.onEncoder(2, -1);                                     // 16 → 15
+    structure.onEncoder(2, -1);                                     // 15 → 14
     TEST_ASSERT_EQUAL_INT(14, berlin.engine().sequence().length());
+
+    // The kept prefix is byte-identical (truncation, not regeneration).
+    for (int i = 0; i < 14; ++i) {
+        TEST_ASSERT_TRUE_MESSAGE(berlinStepEqual(snap.step(i), berlin.engine().sequence().step(i)),
+            "kept prefix must be byte-identical after a Live length shorten");
+    }
+    // Playhead did NOT reset to 0; it kept/wrapped its running position.
+    const int phAfter = berlin.engine().playhead();
+    TEST_ASSERT_EQUAL_INT(phBefore % 14, phAfter);
 }
 
 static void test_live_ignores_performance_edit_and_locked_never_regens() {
@@ -408,33 +435,135 @@ static void test_live_ignores_performance_edit_and_locked_never_regens() {
     FakeMidiOutput out; berlin.setMidiOutput(&out);
     berlin.onEnter();
 
-    // Live + PERFORMANCE edit (Velocity, Dynamics Enc1) must NOT regenerate.
+    // Live + PERFORMANCE edit (Velocity, Dynamics Enc1) must NOT touch the sequence.
     berlin.params().behavior = core::BerlinBehavior::Live;
     core::BerlinSequence before = berlin.engine().sequence();
     berlin.screen(2).onEncoder(1, +1);                // velocity base +1 (performance)
     TEST_ASSERT_EQUAL_INT(0, berlinSeqDiff(before, berlin.engine().sequence()));
 
-    // Locked + structural edit (Density) must NOT regenerate either.
+    // Locked + structural edit (Density) stays staged — no in-place edit.
     berlin.params().behavior = core::BerlinBehavior::Locked;
     core::BerlinSequence base2 = berlin.engine().sequence();
     berlin.screen(0).onEncoder(4, +1);                // density +5 (structural) but Locked
     TEST_ASSERT_EQUAL_INT(0, berlinSeqDiff(base2, berlin.engine().sequence()));
 }
 
-// Live regenerates FULLY (ignores Morph): a structural edit must take complete
-// effect even at Morph 0 (where a morph-blend would keep the old steps).
-static void test_live_full_regen_ignores_morph() {
+// Live octave edit transposes the existing sequence in place: every active note
+// shifts by +12 (or folds), the melody contour (note-to-note deltas) is
+// preserved, and the playhead is untouched. Morph is irrelevant now.
+static void test_live_octave_edit_transposes_in_place() {
     core::AppShell shell;
     core::BerlinMode berlin(shell);
     FakeMidiOutput out; berlin.setMidiOutput(&out);
-    berlin.onEnter();                                  // base generated at octaveBase 48
+    berlin.onEnter();
     berlin.params().behavior = core::BerlinBehavior::Live;
-    berlin.params().morph = 0;                         // a blend would keep the base notes
+    berlin.params().morph = 0;                         // irrelevant for in-place sculpting
+    berlin.params().octaveBase = 36;                   // room to shift up without clamping
+    berlin.params().octaveRange = 3;                   // wide register so +12 doesn't fold
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});  // prime latch absorb
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});   // generate
 
-    const uint8_t before0 = berlin.engine().sequence().step(0).note;   // root in base octave
-    berlin.screen(1).onEncoder(3, +1);                 // Character Enc3: OctaveBase 48 → 60
-    const uint8_t after0 = berlin.engine().sequence().step(0).note;
-    TEST_ASSERT_TRUE(after0 > before0);                // octave shift fully applied (full regen)
+    core::BerlinSequence snap = berlin.engine().sequence();
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // play
+    for (int i = 0; i < 24; ++i) berlin.onClockTick();
+    const int phBefore = berlin.engine().playhead();
+
+    berlin.screen(1).onEncoder(3, +1);                 // Character Enc3: OctaveBase +12
+
+    // Every active note shifted up by exactly 12 (wide register, no folding).
+    const core::BerlinSequence& now = berlin.engine().sequence();
+    for (int i = 0; i < snap.length(); ++i) {
+        if (snap.step(i).active) {
+            TEST_ASSERT_EQUAL_INT(snap.step(i).note + 12, now.step(i).note);
+        }
+    }
+    // Playhead untouched (no regen).
+    TEST_ASSERT_EQUAL_INT(phBefore, berlin.engine().playhead());
+}
+
+// Live density up adds notes in place: the active count grows and the
+// previously-active steps are unchanged.
+static void test_live_density_edit_in_place() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+    berlin.params().behavior = core::BerlinBehavior::Live;
+    berlin.params().length = 16;
+    berlin.params().density = 40;
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});  // prime latch absorb
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});   // generate at density 40
+
+    core::BerlinSequence snap = berlin.engine().sequence();
+    const int activeBefore = activeCount(snap);
+
+    core::Screen& structure = berlin.screen(0);
+    for (int i = 0; i < 8; ++i) structure.onEncoder(4, +1);        // density up to 80
+
+    const core::BerlinSequence& now = berlin.engine().sequence();
+    TEST_ASSERT_TRUE(activeCount(now) > activeBefore);             // grew
+    // Previously-active steps are byte-identical (only inactive steps were filled).
+    for (int i = 0; i < snap.length(); ++i) {
+        if (snap.step(i).active) {
+            TEST_ASSERT_TRUE_MESSAGE(berlinStepEqual(snap.step(i), now.step(i)),
+                "previously-active steps must stay identical after a Live density add");
+        }
+    }
+}
+
+// The Algorithm knob does NOT regenerate under Live (it parameterizes how a
+// sequence is created, applied at the next Generate). A subsequent Latch3 flip
+// DOES regenerate using the new algorithm.
+static void test_live_algorithm_knob_does_not_regen() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+    berlin.params().behavior = core::BerlinBehavior::Live;
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});  // prime latch absorb
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});   // generate
+
+    core::BerlinSequence snap = berlin.engine().sequence();
+    berlin.screen(0).onEncoder(1, +1);                 // Algorithm change — no regen
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, berlinSeqDiff(snap, berlin.engine().sequence()),
+        "Algorithm knob must not regenerate under Live");
+
+    // A subsequent Generate DOES regenerate with the new algorithm.
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});  // flip → generate
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, berlinSeqDiff(snap, berlin.engine().sequence()),
+        "a Generate after the Algorithm change must regenerate");
+}
+
+// Resolution is inherently live in every behavior: turning it re-stamps the
+// per-step gateTicks (for the piano-roll widths) without changing the notes or
+// the playhead. We assert on a non-Live behavior to prove it is unconditional.
+static void test_resolution_restamps_gate_without_regen() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+    berlin.params().behavior = core::BerlinBehavior::Locked;  // not Live
+    berlin.params().resolution = core::BerlinResolution::Sixteenth;
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});  // prime latch absorb
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});   // generate
+
+    // Capture notes (must not change) and the first active step's gateTicks.
+    core::BerlinSequence snap = berlin.engine().sequence();
+    int firstActive = -1;
+    for (int i = 0; i < snap.length(); ++i) { if (snap.step(i).active) { firstActive = i; break; } }
+    TEST_ASSERT_TRUE(firstActive >= 0);
+    const uint16_t gateBefore = snap.step(firstActive).gateTicks;
+
+    berlin.screen(0).onEncoder(3, +1);                 // Resolution 16th → 8th
+
+    const core::BerlinSequence& now = berlin.engine().sequence();
+    // Notes unchanged (active flags + pitches identical).
+    for (int i = 0; i < snap.length(); ++i) {
+        TEST_ASSERT_EQUAL_INT(snap.step(i).active, now.step(i).active);
+        TEST_ASSERT_EQUAL_INT(snap.step(i).note,   now.step(i).note);
+    }
+    // gateTicks re-stamped for the wider 8th-note resolution.
+    TEST_ASSERT_TRUE(now.step(firstActive).gateTicks != gateBefore);
 }
 
 // ---------------------------------------------------------------------------
@@ -501,8 +630,11 @@ int main() {
     RUN_TEST(test_behavior_screen_gatelen_and_evolve_locks);
     RUN_TEST(test_onexit_silences_sounding_note);
     RUN_TEST(test_algorithm_dispatch);
-    RUN_TEST(test_live_regenerates_on_structural_edit);
+    RUN_TEST(test_live_length_edit_sculpts_in_place);
     RUN_TEST(test_live_ignores_performance_edit_and_locked_never_regens);
-    RUN_TEST(test_live_full_regen_ignores_morph);
+    RUN_TEST(test_live_octave_edit_transposes_in_place);
+    RUN_TEST(test_live_density_edit_in_place);
+    RUN_TEST(test_live_algorithm_knob_does_not_regen);
+    RUN_TEST(test_resolution_restamps_gate_without_regen);
     return UNITY_END();
 }

@@ -214,12 +214,19 @@ stays visible on all four — only the top parameter row changes).
   next **Generate** (Latch3).
 - **Evolve** — while playing, the sequence slowly drifts: 1–2 steps change
   every **Evolve rate** loops. Generate still rolls a whole new pattern.
-- **Live** — editing a *structural* parameter (Algorithm, Length, Resolution,
-  Density, Tension, Octave base/range, Scatter/GateLen) **regenerates
-  immediately**, so you hear the change as you turn the knob. **Gate applies
-  live in every behavior** (it shapes the playing notes without re-rolling
-  them); Velocity, Humanize, Accent and Morph/Evolve rate apply on the next
-  Generate.
+- **Live** — your edits **sculpt the existing sequence in place** as you turn
+  the knob, without re-rolling it and **without ever resetting the playhead** —
+  playback keeps running through the change. **Density** adds or removes notes
+  to hit the new amount (the root anchor on step 1 always stays); **Octave
+  base/range** transpose and fold the existing notes into the new register
+  (melody contour preserved); **Length** truncates (the playhead wraps) or
+  extends (only the new tail is filled); **Tension** re-pitches the notes while
+  keeping the existing rhythm, gate and velocities. **Gate** and **Resolution**
+  are live in every behavior (Gate shapes the playing notes, Resolution changes
+  the step grid). **Algorithm, Scatter and GateLen** — which decide *how a
+  sequence is built* — apply at the next **Generate** (Latch3), which still does
+  the full **Morph**-governed regeneration. Velocity, Humanize, Accent and
+  Morph/Evolve rate also apply on the next Generate.
 
 **Transport (latches):**
 

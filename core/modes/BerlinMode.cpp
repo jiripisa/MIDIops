@@ -15,14 +15,6 @@ BerlinMode::BerlinMode(AppServices& svc) : svc_(svc) {
     engine_.setParams(params_);
 }
 
-void BerlinMode::liveRegen() {
-    if (params_.behavior != BerlinBehavior::Live) return;
-    engine_.setScale(&scale_);
-    engine_.setParams(params_);
-    applyGenerator();
-    engine_.generateFull();   // structural edit takes full effect, independent of Morph
-}
-
 void BerlinMode::applyGenerator() {
     switch (params_.algorithm) {
         case BerlinAlgorithm::DegreeWeighted:   engine_.setGenerator(&degreeGen_);  break;
@@ -115,17 +107,40 @@ static const char* algoName(BerlinAlgorithm a) {
     }
 }
 
+// Re-stamp the baked per-step gateTicks of the active steps from the current
+// params, so the piano-roll widths track a live Gate/Resolution change.
+static void restampGateTicks(BerlinEngine& engine, const BerlinParams& p) {
+    BerlinSequence& seq = engine.sequenceMut();
+    const int g = berlinGateTicks(p);
+    for (int i = 0; i < seq.length(); ++i) {
+        if (seq.step(i).active) {
+            seq.step(i).gateTicks = static_cast<uint16_t>(g);
+        }
+    }
+}
+
 void BerlinMode::StructureScreen::onEncoder(int index, int delta) {
     BerlinParams& p = mode_.params_;
     switch (index) {
-        case 1: p.algorithm = cycleEnum(p.algorithm, delta); break;
+        case 1:  // Algorithm — no live action (applies at the next Generate).
+            p.algorithm = cycleEnum(p.algorithm, delta);
+            break;
         case 2: { int v = p.length + delta; if (v < 3) v = 3; if (v > 32) v = 32;
-                  p.length = static_cast<uint8_t>(v); } break;
-        case 3: p.resolution = cycleEnum(p.resolution, delta); break;
+                  p.length = static_cast<uint8_t>(v);
+                  if (mode_.live()) { mode_.engine_.setParams(p); mode_.engine_.applyLiveLength(); }
+                } break;
+        case 3:  // Resolution is inherently live in every behavior (the engine
+                 // reads the grid per tick); just re-stamp the baked gateTicks
+                 // so the piano-roll widths match. No regeneration.
+            p.resolution = cycleEnum(p.resolution, delta);
+            mode_.engine_.setParams(p);
+            restampGateTicks(mode_.engine_, p);
+            break;
         case 4: { int v = p.density + delta * 5; if (v < 0) v = 0; if (v > 100) v = 100;
-                  p.density = static_cast<uint8_t>(v); } break;
+                  p.density = static_cast<uint8_t>(v);
+                  if (mode_.live()) { mode_.engine_.setParams(p); mode_.engine_.applyLiveDensity(); }
+                } break;
     }
-    mode_.liveRegen();  // all structure params are structural
 }
 
 void BerlinMode::StructureScreen::render(Display& d) const {
@@ -151,30 +166,34 @@ static void octaveLabel(uint8_t note, char* buf, int n) {
 
 void BerlinMode::CharacterScreen::onEncoder(int index, int delta) {
     BerlinParams& p = mode_.params_;
-    bool structural = false;
     switch (index) {
         case 1: { int v = p.gatePercent + delta;     if (v < 40) v = 40; if (v > 99) v = 99;
                   p.gatePercent = static_cast<uint8_t>(v);
-                  // Gate applies LIVE: the engine derives the gate from the
-                  // current params at each step; re-stamping the baked
-                  // per-step gateTicks keeps the piano-roll widths in sync.
+                  // Gate applies LIVE in every behavior: the engine derives the
+                  // gate from the current params at each step; re-stamping the
+                  // baked per-step gateTicks keeps the piano-roll widths in sync.
                   mode_.engine_.setParams(p);
-                  BerlinSequence& seq = mode_.engine_.sequenceMut();
-                  const int g = berlinGateTicks(p);
-                  for (int i = 0; i < seq.length(); ++i) {
-                      if (seq.step(i).active) {
-                          seq.step(i).gateTicks = static_cast<uint16_t>(g);
-                      }
-                  }
+                  restampGateTicks(mode_.engine_, p);
                 } break;
         case 2: { int v = p.tension + delta * 5;     if (v < 0) v = 0;  if (v > 100) v = 100;
-                  p.tension = static_cast<uint8_t>(v); structural = true; } break;
-        case 3: { int v = p.octaveBase + delta * 12; if (v < 24) v = 24; if (v > 72) v = 72;
-                  p.octaveBase = static_cast<uint8_t>(v); structural = true; } break;
+                  p.tension = static_cast<uint8_t>(v);
+                  if (mode_.live()) { mode_.engine_.setParams(p); mode_.engine_.applyLiveTension(); }
+                } break;
+        case 3: { const int oldBase = p.octaveBase;
+                  int v = p.octaveBase + delta * 12; if (v < 24) v = 24; if (v > 72) v = 72;
+                  p.octaveBase = static_cast<uint8_t>(v);
+                  // Pass the ACTUAL applied delta (clamping at the edges can make
+                  // it less than delta*12), so the transpose matches the new base.
+                  if (mode_.live()) {
+                      mode_.engine_.setParams(p);
+                      mode_.engine_.applyLiveOctaveBase(static_cast<int>(p.octaveBase) - oldBase);
+                  }
+                } break;
         case 4: { int v = p.octaveRange + delta;     if (v < 1) v = 1;  if (v > 3) v = 3;
-                  p.octaveRange = static_cast<uint8_t>(v); structural = true; } break;
+                  p.octaveRange = static_cast<uint8_t>(v);
+                  if (mode_.live()) { mode_.engine_.setParams(p); mode_.engine_.applyLiveOctaveRange(); }
+                } break;
     }
-    if (structural) mode_.liveRegen();
 }
 
 void BerlinMode::CharacterScreen::render(Display& d) const {
@@ -221,13 +240,14 @@ void BerlinMode::DynamicsScreen::onEncoder(int index, int delta) {
         }
         case 4:
             // Scatter applies to the Drunkard's Walk only; the cell is dimmed
-            // and the knob locked under the other algorithms.
+            // and the knob locked under the other algorithms. It parameterizes
+            // how a sequence is generated, so it takes effect at the next
+            // Generate (no immediate live action).
             if (p.algorithm == BerlinAlgorithm::DrunkardWalk) {
                 int v = p.scatter + delta;
                 if (v < 1) v = 1;
                 if (v > 7) v = 7;
                 p.scatter = static_cast<uint8_t>(v);
-                mode_.liveRegen();  // structural
             }
             break;
     }
@@ -278,14 +298,15 @@ void BerlinMode::BehaviorScreen::onEncoder(int index, int delta) {
             }
             break;
         case 4:
-            // GateLen applies to Gate/Pitch Phasing only; dimmed/locked
-            // under the other algorithms.
+            // GateLen applies to Gate/Pitch Phasing only; dimmed/locked under
+            // the other algorithms. It parameterizes how a sequence is
+            // generated, so it takes effect at the next Generate (no immediate
+            // live action).
             if (p.algorithm == BerlinAlgorithm::GatePitchPhasing) {
                 int v = p.gateLen + delta;
                 if (v < 3)  v = 3;
                 if (v > 16) v = 16;
                 p.gateLen = static_cast<uint8_t>(v);
-                mode_.liveRegen();  // structural
             }
             break;
     }

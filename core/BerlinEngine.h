@@ -31,7 +31,6 @@ public:
     void silence(); // NoteOff a sounding note; playhead + playing state untouched
     void stop();    // rewind to step 0 + all-notes-off
     void generate();    // (re)generate using current params + Morph (Reset/Generate)
-    void generateFull();// (re)generate ignoring Morph (full fresh) — used by Live
 
     // Live in-place sculpting. Each operation reads the already-pushed params_
     // and edits seq_ in place — only the touched parameter's effect is applied,
@@ -56,7 +55,6 @@ public:
 private:
     void emit(bool isOn, uint8_t note, uint8_t velocity);
     void emitStep(int i);    // fire step i's NoteOn (if active), arm gate
-    void regenerate(bool full);  // shared body of generate()/generateFull()
     void evolve();           // splice 1-2 steps from a fresh candidate (Evolve behavior)
     BerlinStep freshLiveStep(uint8_t baseRoot);  // a freshly-rolled active step from current params_
     int  stepLenTicks() const { return berlinResolutionTicks(params_.resolution); }

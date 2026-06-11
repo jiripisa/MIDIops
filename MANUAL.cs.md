@@ -214,11 +214,19 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
   při dalším **Generate** (Latch3).
 - **Evolve** — za hraní se sekvence pomalu mění: každých **Evolve rate** smyček
   se změní 1–2 kroky. Generate stále vytvoří úplně nový vzor.
-- **Live** — úprava *strukturního* parametru (Algorithm, Length, Resolution,
-  Density, Tension, Octave base/range, Scatter/GateLen) **okamžitě regeneruje**,
-  takže změnu slyšíš při otáčení knobu. **Gate funguje živě v každém chování**
-  (tvaruje hrající noty bez jejich přegenerování); Velocity, Humanize, Accent
-  a Morph/Evolve rate se projeví až při dalším Generate.
+- **Live** — tvoje úpravy **tvarují stávající sekvenci na místě** při otáčení
+  knobu, bez jejího přegenerování a **bez resetu pozice přehrávání** — přehrávání
+  běží dál skrz změnu. **Density** přidává nebo ubírá noty na nové množství
+  (kotva rootu na kroku 1 vždy zůstává); **Octave base/range** transponují a
+  složí stávající noty do nového registru (obrys melodie zůstává zachován);
+  **Length** zkrátí (pozice přehrávání se zaroluje) nebo prodlouží (vyplní se jen
+  nový ocas); **Tension** přeladí noty se zachováním stávajícího rytmu, gate a
+  velocity. **Gate** a **Resolution** fungují živě v každém chování (Gate tvaruje
+  hrající noty, Resolution mění krokovou mřížku). **Algorithm, Scatter a
+  GateLen** — které určují, *jak se sekvence vytváří* — se projeví až při dalším
+  **Generate** (Latch3), který stále provede plnou regeneraci řízenou parametrem
+  **Morph**. Velocity, Humanize, Accent a Morph/Evolve rate se rovněž projeví až
+  při dalším Generate.
 
 **Transport (páčky):**
 
