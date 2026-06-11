@@ -28,11 +28,12 @@ public:
     void onExit() override;
     void onMidiIn(const MidiMessage& msg) override;
     void onClockTick() override { engine_.onClockTick(); }
-    // External transport Stop must silence + rewind the engine, since under an
-    // external clock the gate-off normally fired in onClockTick() never arrives
-    // once the upstream clock stops. Start/Continue do not auto-play here —
-    // external transport driving playback start is out of scope.
-    void onTransport(Transport t) override { if (t == Transport::Stop) engine_.stop(); }
+    // Stop and Pause silence the engine: under an external clock the gate-off
+    // normally fired in onClockTick() never arrives once the upstream clock
+    // stops. An arp has no meaningful Start/Continue, so Play is ignored.
+    void onTransport(Transport t) override {
+        if (t == Transport::Stop || t == Transport::Pause) engine_.stop();
+    }
     void onRawInput(const RawInput& in) override;
     bool capturesTransport() const override { return true; }
     void update(uint32_t nowMs) override;

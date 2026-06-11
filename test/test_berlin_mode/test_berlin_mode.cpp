@@ -438,10 +438,12 @@ static void test_live_full_regen_ignores_morph() {
 }
 
 // ---------------------------------------------------------------------------
-// N6: external Stop silences the engine. With clockSource=External the engine
-// only closes gates in onClockTick(); a DAW that stops sending clock when its
-// transport stops would leave a note hanging forever. An incoming MidiType::Stop
-// must notify the mode so the engine stops (NoteOff sent, playhead rewound).
+// N6 safety: external Stop silences the engine. With clockSource=External the
+// engine only closes gates in onClockTick(); a DAW that stops sending clock
+// when its transport stops would leave a note hanging forever. Under the
+// default Send mode the safety branch maps the incoming Stop to onTransport
+// (Pause), which silences the sounding note (NoteOff) and halts playback. The
+// Stop is CONSUMED, never re-emitted downstream.
 // ---------------------------------------------------------------------------
 static void test_external_stop_silences_engine() {
     core::AppShell shell;
@@ -470,7 +472,8 @@ static void test_external_stop_silences_engine() {
 
     // The DAW presses Stop: an external Stop message arrives via the shell.
     // Under External clock the gate-off never arrives via onClockTick(), so the
-    // Stop must flush the sounding note (a fresh NoteOff) and rewind.
+    // safety branch maps it to onTransport(Pause) — flushing the sounding note
+    // (a fresh NoteOff) and halting playback.
     core::MidiMessage stop{}; stop.type = core::MidiType::Stop;
     shell.onMidiIn(stop);
 
@@ -478,6 +481,8 @@ static void test_external_stop_silences_engine() {
     for (const auto& e : out.events) { if (!e.isOn) ++noteOffsAfter; }
     TEST_ASSERT_GREATER_THAN(noteOffsBefore, noteOffsAfter);   // NoteOff was sent
     TEST_ASSERT_FALSE(berlin.engine().isPlaying());            // engine stopped
+    // The incoming Stop is CONSUMED — never re-emitted downstream.
+    TEST_ASSERT_EQUAL_INT(0, out.stops);
 }
 
 int main() {

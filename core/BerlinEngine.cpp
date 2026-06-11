@@ -33,6 +33,12 @@ void BerlinEngine::pause() {
     playing_ = false;   // hold playhead; leave a sounding note to ring out
 }
 
+void BerlinEngine::silence() {
+    if (!gate_.sounding()) return;
+    emit(false, gate_.note(), 0);
+    gate_.clear();
+}
+
 void BerlinEngine::stop() {
     playing_ = false;
     if (gate_.sounding()) { emit(false, gate_.note(), 0); gate_.clear(); }

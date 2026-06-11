@@ -28,11 +28,12 @@ public:
     void onEnter() override;
     void onExit()  override { engine_.stop(); }   // silence any sounding note on leave
     void onClockTick() override { engine_.onClockTick(); }
-    // External transport Stop must silence + rewind the engine, since under an
-    // external clock the gate-off normally fired in onClockTick() never arrives
-    // once the upstream clock stops. Start/Continue do not auto-play here —
-    // external transport driving playback start is out of scope.
-    void onTransport(Transport t) override { if (t == Transport::Stop) engine_.stop(); }
+    // Drives engine transport from the shell (Receive mapping + external-clock
+    // Stop safety): Play → run, Pause → silence + hold position, Reset/Stop →
+    // rewind + silence. Under an external clock the gate-off normally fired in
+    // onClockTick() never arrives once the upstream clock stops, so Pause/Stop
+    // silence the sounding note immediately.
+    void onTransport(Transport t) override;
     void onRawInput(const RawInput& in) override;
     bool capturesTransport() const override { return true; }
     void update(uint32_t nowMs) override;

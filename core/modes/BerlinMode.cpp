@@ -56,6 +56,15 @@ void BerlinMode::update(uint32_t /*nowMs*/) {
     engine_.setOutChannel(svc_.midiOutChannel());
 }
 
+void BerlinMode::onTransport(Transport t) {
+    switch (t) {
+        case Transport::Play:  engine_.play();  break;
+        case Transport::Pause: engine_.silence(); engine_.pause(); break;
+        case Transport::Reset:
+        case Transport::Stop:  engine_.stop();  break;
+    }
+}
+
 void BerlinMode::onRawInput(const RawInput& in) {
     if (in.kind != RawInput::Kind::Latch) return;     // encoders go via Screen
     if (in.index < 1 || in.index > 3) return;

@@ -139,17 +139,17 @@ void AppShell::applyTransport(Transport t) {
 }
 
 void AppShell::onMidiIn(const MidiMessage& msg) {
-    // Realtime transport/clock handled first. When following an external
-    // clock, each Clock pulse drives BPM follow + downstream forward + a mode
-    // tick; Start/Continue/Stop are passed through. Realtime never reaches a
-    // mode's note handler, so always return after this block.
+    // Realtime transport/clock handled first. Clock is followed under an
+    // external source; transport (Start/Continue/Stop) is handled per the
+    // Transport setting and is CONSUMED (never re-emitted). Realtime never
+    // reaches a mode's note handler, so always return after this block.
     const bool isRealtime = msg.type == MidiType::Clock ||
                             msg.type == MidiType::Start ||
                             msg.type == MidiType::Continue ||
                             msg.type == MidiType::Stop;
     if (isRealtime) {
-        if (clockSource_ == ClockSource::External && out_) {
-            if (msg.type == MidiType::Clock) {
+        if (msg.type == MidiType::Clock) {
+            if (clockSource_ == ClockSource::External) {
                 // Follow the external clock: derive BPM for display and advance
                 // the active mode one tick per pulse.
                 //
@@ -168,24 +168,32 @@ void AppShell::onMidiIn(const MidiMessage& msg) {
                 uint16_t b = clockFollower_.bpm();
                 if (b) bpm_ = b;                     // followed tempo updates display BPM
                 if (modeCount_ > 0) modes_[activeMode_]->onClockTick();
-            } else if (msg.type == MidiType::Start ||
-                       msg.type == MidiType::Continue) {
-                // Forward the transport downstream exactly once, mirror the
-                // playback state, and notify the active mode. We do NOT call
-                // applyTransport here — it would re-send Start/Continue.
-                if (msg.type == MidiType::Start) out_->sendStart();
-                else out_->sendContinue();
-                transportState_ = TransportState::Playing;
-                if (modeCount_ > 0) modes_[activeMode_]->onTransport(Transport::Play);
-            } else if (msg.type == MidiType::Stop) {
-                // A DAW that stops its transport stops sending clock too, so the
-                // engine would never get the onClockTick() that closes a gate —
-                // leaving a note sounding forever. Forward Stop once, mirror the
-                // state, and notify the mode so it can silence + rewind.
-                out_->sendStop();
-                transportState_ = TransportState::Stopped;
-                if (modeCount_ > 0) modes_[activeMode_]->onTransport(Transport::Stop);
             }
+            return;
+        }
+        // Transport (Start/Continue/Stop). Receive drives playback per the
+        // MIDI standard and CONSUMES the message (no re-emit — the same
+        // no-echo rule as the clock). Otherwise incoming transport is
+        // ignored, except the external-clock Stop safety below.
+        if (transportMode_ == TransportMode::Receive) {
+            if (modeCount_ > 0) {
+                if (msg.type == MidiType::Start) {
+                    modes_[activeMode_]->onTransport(Transport::Reset);   // rewind
+                    modes_[activeMode_]->onTransport(Transport::Play);    // from the top
+                } else if (msg.type == MidiType::Continue) {
+                    modes_[activeMode_]->onTransport(Transport::Play);    // from position
+                } else {
+                    modes_[activeMode_]->onTransport(Transport::Pause);   // halt, keep position
+                }
+            }
+            transportState_ = (msg.type == MidiType::Stop)
+                                  ? TransportState::Paused
+                                  : TransportState::Playing;
+        } else if (msg.type == MidiType::Stop && clockSource_ == ClockSource::External) {
+            // Safety (audit N6): a stopping master stops its clock too, so a
+            // tick-scheduled gate-off would never fire. Silence immediately;
+            // playback state is otherwise untouched.
+            if (modeCount_ > 0) modes_[activeMode_]->onTransport(Transport::Pause);
         }
         return;
     }
