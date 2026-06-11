@@ -46,18 +46,22 @@ static int intervalWeight(int semitone) {
     }
 }
 
+int berlinDegreeWeight(const Scale& scale, int note, int tensionPercent) {
+    const int t = tensionPercent < 0 ? 0 : (tensionPercent > 100 ? 100 : tensionPercent);
+    const int semis = ((note % 12) - scale.root() + 24) % 12;
+    const int w = intervalWeight(semis);
+    return w + (100 - w) * t / 100;               // higher tension → flatter
+}
+
 uint8_t berlinDegreeWeightedNote(const Scale& scale, uint8_t baseRoot,
                                  const BerlinParams& p, BerlinRng& rng) {
     int lo, hi; berlinRegister(p, lo, hi);
     const int degs = scale.degreeCount();
-    const int tension = p.tension > 100 ? 100 : p.tension;
 
     int weights[8];                 // degreeCount is 5..8
     int total = 0;
     for (int i = 0; i < degs; ++i) {
-        const int semis = (static_cast<int>(scale.degreeNote(baseRoot, i)) - baseRoot + 120) % 12;
-        int w = intervalWeight(semis);
-        w = w + (100 - w) * tension / 100;        // higher tension → flatter
+        const int w = berlinDegreeWeight(scale, scale.degreeNote(baseRoot, i), p.tension);
         weights[i] = w;
         total += w;
     }

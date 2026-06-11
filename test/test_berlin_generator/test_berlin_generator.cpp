@@ -217,6 +217,37 @@ static void test_length_32_supported() {
         if (seq2.step(i).active) TEST_ASSERT_TRUE(scale.contains(seq2.step(i).note));
 }
 
+// Spec §4.1: the Walk biases its wander by degree-consonance weights, spread
+// by Tension. Low tension must gravitate to root/fifth pitch classes more
+// than high tension does (summed over a few seeds to be robust).
+static int rootFifthCount(const core::BerlinSequence& s, const core::Scale& sc) {
+    int n = 0;
+    for (int i = 0; i < s.length(); ++i) {
+        if (!s.step(i).active) continue;
+        const int pc = ((s.step(i).note % 12) - sc.root() + 24) % 12;
+        if (pc == 0 || pc == 7) ++n;
+    }
+    return n;
+}
+
+static void test_walk_tension_biases_toward_root_fifth() {
+    core::DrunkardWalkGenerator gen;
+    core::Scale scale(core::Scale::Type::Minor, 0);
+    int lowT = 0;
+    int highT = 0;
+    for (uint32_t seed = 1; seed <= 4; ++seed) {
+        core::BerlinParams p = baseParams();
+        p.length = 32; p.density = 100; p.scatter = 7; p.octaveRange = 2;
+        core::BerlinSequence a, b;
+        core::BerlinRng r1, r2; r1.seed(seed); r2.seed(seed);
+        p.tension = 0;   gen.generate(a, p, scale, r1);
+        p.tension = 100; gen.generate(b, p, scale, r2);
+        lowT  += rootFifthCount(a, scale);
+        highT += rootFifthCount(b, scale);
+    }
+    TEST_ASSERT_GREATER_THAN(highT, lowT);   // low tension → more root/fifth hits
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_walk_starts_on_root_and_stays_in_scale);
@@ -231,5 +262,6 @@ int main() {
     RUN_TEST(test_phasing_in_scale_and_capped);
     RUN_TEST(test_phasing_repeats_pitch_by_period);
     RUN_TEST(test_length_32_supported);
+    RUN_TEST(test_walk_tension_biases_toward_root_fifth);
     return UNITY_END();
 }

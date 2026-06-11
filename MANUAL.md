@@ -191,7 +191,9 @@ stays visible on all four — only the top parameter row changes).
 **Algorithms (Enc1 on `structure`):**
 
 - **Walk** (Drunkard's Walk) — a meandering melody: each note steps a small
-  random interval (up to **Scatter**) from the previous one, kept in scale.
+  random interval (up to **Scatter**) from the previous one, kept in scale,
+  with **Tension** weighting the choice toward (low) or away from (high) the
+  root and fifth.
 - **Phase** (Gate/Pitch Phasing) — a pitch list (length = **Length**) and a
   gate list (length = **GateLen**) of different lengths run against each other,
   producing a long, slowly evolving pattern that "sounds random but isn't."

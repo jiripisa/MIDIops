@@ -26,12 +26,37 @@ void DrunkardWalkGenerator::generate(BerlinSequence& out, const BerlinParams& p,
         if (i == 0) {
             note = baseRoot;
         } else {
-            const int delta = rng.range(-static_cast<int>(p.scatter), p.scatter);
-            int cand = last + delta;
-            if (cand < lo) cand = lo;
-            if (cand > hi) cand = hi;
-            note = scale.quantize(static_cast<uint8_t>(cand < 0 ? 0 : (cand > 127 ? 127 : cand)));
-            note = berlinFoldIntoRegister(note, lo, hi);
+            // Spec §4.1: bias the wander toward consonant degrees. Enumerate
+            // the in-scale candidates within ±scatter semitones of the
+            // previous note (inside the register) and pick one weighted by
+            // the consonance of its pitch class relative to the scale root;
+            // Tension flattens the weights toward uniform. The window always
+            // contains `last` itself, so it is effectively never empty.
+            const int scat = p.scatter < 1 ? 1 : (p.scatter > 7 ? 7 : p.scatter);
+            int cands[15];                  // scatter <= 7 → window <= 15 semitones
+            int wts[15];
+            int cnt = 0;
+            int total = 0;
+            for (int c = last - scat; c <= last + scat; ++c) {
+                if (c < lo || c > hi) continue;
+                if (!scale.contains(static_cast<uint8_t>(c))) continue;
+                const int w = berlinDegreeWeight(scale, c, p.tension);
+                cands[cnt] = c;
+                wts[cnt] = w;
+                ++cnt;
+                total += w;
+            }
+            if (cnt == 0) {
+                note = last;                // defensive; unreachable in practice
+            } else {
+                int pick = rng.range(0, total - 1);
+                int idx = 0;
+                for (int k = 0; k < cnt; ++k) {
+                    pick -= wts[k];
+                    if (pick < 0) { idx = k; break; }
+                }
+                note = cands[idx];
+            }
         }
         last = note;
 

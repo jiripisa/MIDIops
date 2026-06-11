@@ -191,7 +191,8 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
 **Algoritmy (Enc1 na `structure`):**
 
 - **Walk** (Drunkard's Walk) — bloudivá melodie: každá nota udělá malý náhodný
-  krok (až **Scatter**) od předchozí, vždy ve stupnici.
+  krok (až **Scatter**) od předchozí, vždy ve stupnici; **Tension** váží výběr
+  k rootu a kvintě (nízká) nebo od nich (vysoká).
 - **Phase** (Gate/Pitch Phasing) — seznam výšek (délka = **Length**) a seznam
   gate (délka = **GateLen**) různých délek běží proti sobě a tvoří dlouhý,
   pomalu se vyvíjející vzor, který „zní náhodně, ale není".
