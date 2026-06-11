@@ -195,7 +195,3 @@ MANUAL.md / MANUAL.cs.md      Bilingual user manual
 HARDWARE.md / ASSEMBLY.md     Hardware reference + build walkthrough
 CLAUDE.md                    Project conventions for AI assistants
 ```
-
-> Some legacy `core/` files from the original chord-trigger prototype
-> (`MidiMonitorApp.*`, `ChordEngine.*`) still live in the tree but are no
-> longer wired into the app.

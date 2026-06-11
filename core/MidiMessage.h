@@ -35,9 +35,6 @@ struct MidiMessage {
     // MIDI note number -> "C4", "F#3", etc. (Middle C = 60 = "C4").
     static std::string noteName(uint8_t note);
 
-    // Compact one-line representation suitable for the message log.
-    std::string format() const;
-
     // 14-bit signed pitch-bend value (-8192..+8191) reconstructed from data1/data2.
     int16_t pitchBendValue() const;
 };
