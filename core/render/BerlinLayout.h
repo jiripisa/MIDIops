@@ -14,10 +14,16 @@ constexpr int kBerlinCellW    = 80;                                 // 320 / 4
 constexpr int kBerlinRollTop  = kBerlinParamTop + kBerlinParamH;    // 90
 constexpr int kBerlinRollH    = 240 - kBerlinRollTop;               // 150
 
-inline void drawBerlinParamCell(Display& d, int col, const char* name, const char* value) {
+// `dim` renders the cell greyed-out — used for parameters the currently
+// selected algorithm/behavior ignores, so the user sees at a glance that the
+// knob has no effect right now.
+inline void drawBerlinParamCell(Display& d, int col, const char* name, const char* value,
+                                bool dim = false) {
     const int x = col * kBerlinCellW;
     drawParamCellAt(d, x, kBerlinParamTop, name, value, /*pad=*/4, /*nameDy=*/6,
-                    /*valueDy=*/24, /*valueSize=*/2);
+                    /*valueDy=*/24, /*valueSize=*/2,
+                    dim ? color::DarkGray : color::Gray,
+                    dim ? color::DarkGray : color::White);
 }
 
 inline void drawBerlinParamDividers(Display& d) {

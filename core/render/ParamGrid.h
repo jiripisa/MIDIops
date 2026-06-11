@@ -22,11 +22,15 @@ inline E cycleEnum(E current, int delta) {
 // Low-level: small parameter name above a large value, at an absolute (x,y).
 // pad / nameDy / valueDy / valueSize let callers reproduce their exact pixel
 // geometry (the 2x2 grid and the Berlin 1x4 row use different offsets).
+// nameFg / valueFg allow a dimmed variant for parameters that the current
+// configuration ignores.
 inline void drawParamCellAt(Display& d, int x, int y, const char* name,
                             const char* value, int pad, int nameDy,
-                            int valueDy, int valueSize) {
-    d.drawText(x + pad, y + nameDy,  name,  color::Gray,  color::Black, 1);
-    d.drawText(x + pad, y + valueDy, value, color::White, color::Black, valueSize);
+                            int valueDy, int valueSize,
+                            uint16_t nameFg = color::Gray,
+                            uint16_t valueFg = color::White) {
+    d.drawText(x + pad, y + nameDy,  name,  nameFg,  color::Black, 1);
+    d.drawText(x + pad, y + valueDy, value, valueFg, color::Black, valueSize);
 }
 
 // Draws one grid cell: parameter name (small) above its value (large).

@@ -177,7 +177,7 @@ stays visible on all four — only the top parameter row changes).
 | Enc1 | **Velocity** | 1–126 | 100 | Base note velocity. |
 | Enc2 | **Humanize** | 0–30 | 20 | Random ± velocity variation per note. |
 | Enc3 | **Accent** | 0–27 | 20 | Extra velocity on accented notes (beat 1, root notes). |
-| Enc4 | **Scatter / GateLen** *(contextual)* | Walk: 1–7 · Phase: 3–16 | 3 / 6 | **Scatter** (Walk): step size of the melodic wander. **GateLen** (Phase): length of the gate list. Empty for Degree. |
+| Enc4 | **Scatter** | 1–7 | 3 | (Walk only) step size of the melodic wander. Greyed out and locked under Phase/Degree. |
 
 **Screen `behavior`:**
 
@@ -185,8 +185,11 @@ stays visible on all four — only the top parameter row changes).
 |---|---|---|---|---|
 | Enc1 | **Behavior** | Lock, Evolve, Live | Lock | How the sequence changes over time (see below). |
 | Enc2 | **Morph** | 0–100 % | 100 | How different a regeneration is from the current sequence: 0 % ≈ same, 100 % = brand new. |
-| Enc3 | **Evolve rate** | 1–8 | 4 | (Evolve) loops between automatic variations. |
-| Enc4 | — | — | — | Unused. |
+| Enc3 | **Evolve rate** | 1–8 | 4 | (Evolve only) loops between automatic variations. Greyed out and locked under Lock/Live. |
+| Enc4 | **GateLen** | 3–16 | 6 | (Phase only) length of the gate list. Greyed out and locked under Walk/Degree. |
+
+> Cells drawn in grey are parameters the current algorithm/behavior ignores —
+> their knobs are locked until you switch to a configuration that uses them.
 
 **Algorithms (Enc1 on `structure`):**
 

@@ -177,7 +177,7 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
 | Enc1 | **Velocity** | 1–126 | 100 | Základní velocity not. |
 | Enc2 | **Humanize** | 0–30 | 20 | Náhodné ± kolísání velocity na notu. |
 | Enc3 | **Accent** | 0–27 | 20 | Přídavek velocity na akcentovaných notách (1. doba, root noty). |
-| Enc4 | **Scatter / GateLen** *(kontextové)* | Walk: 1–7 · Phase: 3–16 | 3 / 6 | **Scatter** (Walk): velikost kroku melodického bloudění. **GateLen** (Phase): délka gate seznamu. U Degree prázdné. |
+| Enc4 | **Scatter** | 1–7 | 3 | (jen Walk) velikost kroku melodického bloudění. Pod Phase/Degree zašedlé a zamčené. |
 
 **Obrazovka `behavior`:**
 
@@ -185,8 +185,12 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
 |---|---|---|---|---|
 | Enc1 | **Behavior** | Lock, Evolve, Live | Lock | Jak se sekvence mění v čase (viz níže). |
 | Enc2 | **Morph** | 0–100 % | 100 | Jak moc se regenerace liší od aktuální sekvence: 0 % ≈ stejná, 100 % = úplně nová. |
-| Enc3 | **Evolve rate** | 1–8 | 4 | (Evolve) počet smyček mezi automatickými variacemi. |
-| Enc4 | — | — | — | Nevyužito. |
+| Enc3 | **Evolve rate** | 1–8 | 4 | (jen Evolve) počet smyček mezi automatickými variacemi. Pod Lock/Live zašedlé a zamčené. |
+| Enc4 | **GateLen** | 3–16 | 6 | (jen Phase) délka gate seznamu. Pod Walk/Degree zašedlé a zamčené. |
+
+> Šedě vykreslené buňky jsou parametry, které aktuální algoritmus/chování
+> ignoruje — jejich knoby jsou zamčené, dokud nepřepneš na konfiguraci, která
+> je používá.
 
 **Algoritmy (Enc1 na `structure`):**
 

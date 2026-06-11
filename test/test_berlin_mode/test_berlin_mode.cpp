@@ -150,7 +150,8 @@ static void test_character_behavior_screens_edit_clamp() {
     for (int i = 0; i < 40; ++i) bh.onEncoder(2, -1);
     TEST_ASSERT_EQUAL_INT(0, berlin.params().morph);
 
-    // EvolveRate clamps 1..8 (Enc3)
+    // EvolveRate clamps 1..8 (Enc3) — editable only under the Evolve behavior.
+    berlin.params().behavior = core::BerlinBehavior::Evolve;
     for (int i = 0; i < 20; ++i) bh.onEncoder(3, +1);
     TEST_ASSERT_EQUAL_INT(8, berlin.params().evolveRate);
     for (int i = 0; i < 20; ++i) bh.onEncoder(3, -1);
@@ -158,7 +159,9 @@ static void test_character_behavior_screens_edit_clamp() {
 }
 
 // ---------------------------------------------------------------------------
-// Dynamics screen (index 2): velocity/humanize/accent + contextual Enc4.
+// Dynamics screen (index 2): velocity/humanize/accent + fixed SCATTER cell.
+// Scatter edits only under DrunkardWalk; the knob is locked (cell dimmed)
+// under the other algorithms.
 // ---------------------------------------------------------------------------
 static void test_dynamics_screen() {
     core::AppShell shell;
@@ -172,15 +175,43 @@ static void test_dynamics_screen() {
 
     berlin.params().algorithm = core::BerlinAlgorithm::DrunkardWalk;
     for (int i = 0; i < 20; ++i) dyn.onEncoder(4, +1);
-    TEST_ASSERT_EQUAL_INT(7, berlin.params().scatter);
+    TEST_ASSERT_EQUAL_INT(7, berlin.params().scatter);          // clamps 1..7
     berlin.params().algorithm = core::BerlinAlgorithm::GatePitchPhasing;
-    for (int i = 0; i < 30; ++i) dyn.onEncoder(4, +1);
-    TEST_ASSERT_EQUAL_INT(16, berlin.params().gateLen);
+    uint8_t scBefore = berlin.params().scatter;
+    for (int i = 0; i < 5; ++i) dyn.onEncoder(4, -1);
+    TEST_ASSERT_EQUAL_UINT8(scBefore, berlin.params().scatter); // locked under Phase
     berlin.params().algorithm = core::BerlinAlgorithm::DegreeWeighted;
-    uint8_t scBefore = berlin.params().scatter, glBefore = berlin.params().gateLen;
-    for (int i = 0; i < 5; ++i) dyn.onEncoder(4, +1);
-    TEST_ASSERT_EQUAL_UINT8(scBefore, berlin.params().scatter);
-    TEST_ASSERT_EQUAL_UINT8(glBefore, berlin.params().gateLen);
+    for (int i = 0; i < 5; ++i) dyn.onEncoder(4, -1);
+    TEST_ASSERT_EQUAL_UINT8(scBefore, berlin.params().scatter); // locked under Degree
+}
+
+// ---------------------------------------------------------------------------
+// Behavior screen Enc4 = fixed GATELEN cell: edits only under GatePitchPhasing,
+// locked (dimmed) otherwise. Enc3 (Evolve rate) edits only under Evolve.
+// ---------------------------------------------------------------------------
+static void test_behavior_screen_gatelen_and_evolve_locks() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    core::Screen& bh = berlin.screen(3);
+
+    // GateLen edits + clamps under Phase only.
+    berlin.params().algorithm = core::BerlinAlgorithm::GatePitchPhasing;
+    for (int i = 0; i < 30; ++i) bh.onEncoder(4, +1);
+    TEST_ASSERT_EQUAL_INT(16, berlin.params().gateLen);
+    for (int i = 0; i < 30; ++i) bh.onEncoder(4, -1);
+    TEST_ASSERT_EQUAL_INT(3, berlin.params().gateLen);
+    berlin.params().algorithm = core::BerlinAlgorithm::DrunkardWalk;
+    for (int i = 0; i < 5; ++i) bh.onEncoder(4, +1);
+    TEST_ASSERT_EQUAL_INT(3, berlin.params().gateLen);          // locked under Walk
+
+    // Evolve rate edits only under the Evolve behavior.
+    berlin.params().behavior = core::BerlinBehavior::Locked;
+    uint8_t evBefore = berlin.params().evolveRate;
+    for (int i = 0; i < 3; ++i) bh.onEncoder(3, +1);
+    TEST_ASSERT_EQUAL_UINT8(evBefore, berlin.params().evolveRate);  // locked
+    berlin.params().behavior = core::BerlinBehavior::Evolve;
+    for (int i = 0; i < 20; ++i) bh.onEncoder(3, +1);
+    TEST_ASSERT_EQUAL_INT(8, berlin.params().evolveRate);           // editable + clamped
 }
 
 // ---------------------------------------------------------------------------
@@ -389,6 +420,7 @@ int main() {
     RUN_TEST(test_structure_screen_edits_and_clamps);
     RUN_TEST(test_character_behavior_screens_edit_clamp);
     RUN_TEST(test_dynamics_screen);
+    RUN_TEST(test_behavior_screen_gatelen_and_evolve_locks);
     RUN_TEST(test_onexit_silences_sounding_note);
     RUN_TEST(test_algorithm_dispatch);
     RUN_TEST(test_live_regenerates_on_structural_edit);

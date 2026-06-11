@@ -186,18 +186,15 @@ void BerlinMode::DynamicsScreen::onEncoder(int index, int delta) {
             break;
         }
         case 4:
+            // Scatter applies to the Drunkard's Walk only; the cell is dimmed
+            // and the knob locked under the other algorithms.
             if (p.algorithm == BerlinAlgorithm::DrunkardWalk) {
                 int v = p.scatter + delta;
                 if (v < 1) v = 1;
                 if (v > 7) v = 7;
                 p.scatter = static_cast<uint8_t>(v);
-            } else if (p.algorithm == BerlinAlgorithm::GatePitchPhasing) {
-                int v = p.gateLen + delta;
-                if (v < 3)  v = 3;
-                if (v > 16) v = 16;
-                p.gateLen = static_cast<uint8_t>(v);
+                mode_.liveRegen();  // structural
             }
-            mode_.liveRegen();  // scatter and gateLen are structural
             break;
     }
 }
@@ -211,15 +208,9 @@ void BerlinMode::DynamicsScreen::render(Display& d) const {
     drawBerlinParamCell(d, 1, "HUMAN", buf);
     snprintf(buf, sizeof buf, "+%d", p.accent);
     drawBerlinParamCell(d, 2, "ACCENT", buf);
-    if (p.algorithm == BerlinAlgorithm::DrunkardWalk) {
-        snprintf(buf, sizeof buf, "%d", p.scatter);
-        drawBerlinParamCell(d, 3, "SCATTER", buf);
-    } else if (p.algorithm == BerlinAlgorithm::GatePitchPhasing) {
-        snprintf(buf, sizeof buf, "%d", p.gateLen);
-        drawBerlinParamCell(d, 3, "GATELEN", buf);
-    } else {
-        drawBerlinParamCell(d, 3, "-", "-");
-    }
+    snprintf(buf, sizeof buf, "%d", p.scatter);
+    drawBerlinParamCell(d, 3, "SCATTER", buf,
+                        p.algorithm != BerlinAlgorithm::DrunkardWalk);
     drawBerlinParamDividers(d);
     drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
                         mode_.engine().soundingNote(), color::Green);
@@ -242,9 +233,27 @@ void BerlinMode::BehaviorScreen::onEncoder(int index, int delta) {
         case 1: p.behavior = cycleEnum(p.behavior, delta); break;
         case 2: { int v = p.morph + delta * 5;     if (v < 0) v = 0;  if (v > 100) v = 100;
                   p.morph = static_cast<uint8_t>(v); } break;
-        case 3: { int v = p.evolveRate + delta;    if (v < 1) v = 1;  if (v > 8) v = 8;
-                  p.evolveRate = static_cast<uint8_t>(v); } break;
-        case 4: break;  // unused
+        case 3:
+            // Evolve rate only matters under the Evolve behavior; the cell is
+            // dimmed and the knob locked otherwise.
+            if (p.behavior == BerlinBehavior::Evolve) {
+                int v = p.evolveRate + delta;
+                if (v < 1) v = 1;
+                if (v > 8) v = 8;
+                p.evolveRate = static_cast<uint8_t>(v);
+            }
+            break;
+        case 4:
+            // GateLen applies to Gate/Pitch Phasing only; dimmed/locked
+            // under the other algorithms.
+            if (p.algorithm == BerlinAlgorithm::GatePitchPhasing) {
+                int v = p.gateLen + delta;
+                if (v < 3)  v = 3;
+                if (v > 16) v = 16;
+                p.gateLen = static_cast<uint8_t>(v);
+                mode_.liveRegen();  // structural
+            }
+            break;
     }
 }
 
@@ -255,8 +264,11 @@ void BerlinMode::BehaviorScreen::render(Display& d) const {
     snprintf(buf, sizeof buf, "%d%%", p.morph);
     drawBerlinParamCell(d, 1, "MORPH",    buf);
     snprintf(buf, sizeof buf, "%d", p.evolveRate);
-    drawBerlinParamCell(d, 2, "EVOLVE",   buf);
-    drawBerlinParamCell(d, 3, "-",        "");
+    drawBerlinParamCell(d, 2, "EVOLVE",   buf,
+                        p.behavior != BerlinBehavior::Evolve);
+    snprintf(buf, sizeof buf, "%d", p.gateLen);
+    drawBerlinParamCell(d, 3, "GATELEN",  buf,
+                        p.algorithm != BerlinAlgorithm::GatePitchPhasing);
     drawBerlinParamDividers(d);
     drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
                         mode_.engine().soundingNote(), color::Green);
