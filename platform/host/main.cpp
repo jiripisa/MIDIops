@@ -125,7 +125,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
     app.addMode(&settingsMode);
     app.addMode(&debugMode);
     app.setBpm(120);
-    app.begin();
+    app.begin(2);   // boot into Berlin (addMode order: Monitoring, Arp, Berlin, ...)
 
     // Prime the shell's latch shadow state with the initial OFF levels. On
     // hardware the main loop pushes the latch level every frame, so the
@@ -139,7 +139,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
     std::fprintf(stderr,
                  "MIDIops simulator running.\n"
                  "  Modes (Enc5 cycles): Monitoring  Arp  Berlin  BPM  Settings  Debug\n"
-                 "  Boots into Monitoring (worms) view — MIDI in drives the worms.\n"
+                 "  Boots into Berlin (generative sequencer).\n"
                  "  z x c v b n m   inject Note On/Off (white keys C4..B4)\n"
                  "  Shift + 1..9    set the test injection channel (default 1)\n"
                  "  Encoders are key trios {left, click, right}:\n"

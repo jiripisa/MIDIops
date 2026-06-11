@@ -424,8 +424,29 @@ static void test_shell_scale_defaults_cmajor_and_sets() {
                           static_cast<int>(shell.scale().type()));
 }
 
+// begin(startMode) boots into the given mode (used to boot into Berlin);
+// out-of-range values fall back to mode 0.
+static void test_begin_starts_on_given_mode() {
+    core::AppShell shell;
+    FakeMode a("a", 1), b("b", 1), c("c", 1);
+    shell.addMode(&a); shell.addMode(&b); shell.addMode(&c);
+    shell.begin(2);
+    shell.onEncoderKnob(1, +1);                  // routed to the ACTIVE mode's screen
+    auto& sc = static_cast<FakeScreen&>(c.screen(0));
+    TEST_ASSERT_EQUAL_INT(1, static_cast<int>(sc.encoders.size()));
+
+    core::AppShell shell2;
+    FakeMode d("d", 1), e("e", 1);
+    shell2.addMode(&d); shell2.addMode(&e);
+    shell2.begin(99);                            // out of range -> mode 0
+    shell2.onEncoderKnob(1, +1);
+    auto& sd = static_cast<FakeScreen&>(d.screen(0));
+    TEST_ASSERT_EQUAL_INT(1, static_cast<int>(sd.encoders.size()));
+}
+
 int main() {
     UNITY_BEGIN();
+    RUN_TEST(test_begin_starts_on_given_mode);
     RUN_TEST(test_fake_mode_screen_dispatch);
     RUN_TEST(test_enc1to4_route_to_active_screen);
     RUN_TEST(test_enc5_switches_screen_with_wrap);

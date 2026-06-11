@@ -3,6 +3,7 @@
 #include "core/BerlinRng.h"
 #include "core/BerlinSequence.h"
 #include "core/BerlinEngine.h"
+#include "core/BerlinGen.h"
 #include "core/DrunkardWalkGenerator.h"
 #include "core/GatePitchPhasingGenerator.h"
 #include "core/Scale.h"
@@ -365,6 +366,279 @@ static void test_silence_flushes_note_without_moving_playhead() {
     TEST_ASSERT_EQUAL_INT(offBefore + 1, countOff(out));
 }
 
+// --- Live in-place sculpting (Task 1) -------------------------------------
+
+static int countActive(const core::BerlinSequence& s) {
+    int n = 0; for (int i = 0; i < s.length(); ++i) if (s.step(i).active) ++n; return n;
+}
+static bool stepByteEqual(const core::BerlinStep& a, const core::BerlinStep& b) {
+    return a.active == b.active && a.note == b.note &&
+           a.velocity == b.velocity && a.accent == b.accent && a.gateTicks == b.gateTicks;
+}
+
+// Build a base sequence the same way the other Berlin tests do.
+static void liveBase(core::BerlinEngine& e, core::DrunkardWalkGenerator& gen,
+                     core::Scale& sc, const core::BerlinParams& p, uint32_t seed) {
+    e.setGenerator(&gen); e.setScale(&sc); e.seed(seed);
+    e.setParams(p);
+    e.generate();
+}
+
+static void test_live_density_adds_and_removes_in_place() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    core::BerlinParams p; p.length = 16; p.density = 50; p.morph = 100;
+    liveBase(e, gen, sc, p, 7);
+    core::BerlinSequence base = e.sequence();
+
+    // Density up to 100 → every step active.
+    p.density = 100; e.setParams(p);
+    e.applyLiveDensity();
+    TEST_ASSERT_EQUAL_INT(16, countActive(e.sequence()));
+    int lo = 0, hi = 0; core::berlinRegister(p, lo, hi);
+    for (int i = 0; i < 16; ++i) {
+        if (base.step(i).active) {
+            // Previously-active steps untouched (note/velocity/gate identical).
+            TEST_ASSERT_TRUE(stepByteEqual(base.step(i), e.sequence().step(i)));
+        } else {
+            // Newly-activated steps: in scale and in register.
+            const core::BerlinStep& s = e.sequence().step(i);
+            TEST_ASSERT_TRUE(s.active);
+            TEST_ASSERT_EQUAL_UINT8(s.note, sc.quantize(s.note));
+            TEST_ASSERT_TRUE(s.note >= lo && s.note <= hi);
+        }
+    }
+
+    // Density down to 25 → round(25*16/100)=4 active, step 0 kept.
+    core::BerlinSequence before = e.sequence();
+    p.density = 25; e.setParams(p);
+    e.applyLiveDensity();
+    const int target = (25 * 16 + 50) / 100;   // = 4
+    TEST_ASSERT_EQUAL_INT(target, countActive(e.sequence()));
+    TEST_ASSERT_TRUE(e.sequence().step(0).active);
+    // Remaining active steps are byte-identical to before the removal.
+    for (int i = 0; i < 16; ++i)
+        if (e.sequence().step(i).active)
+            TEST_ASSERT_TRUE(stepByteEqual(before.step(i), e.sequence().step(i)));
+}
+
+static void test_live_octave_base_transposes_exactly() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    core::BerlinParams p; p.length = 16; p.density = 100; p.octaveBase = 48; p.octaveRange = 2;
+    liveBase(e, gen, sc, p, 9);
+    core::BerlinSequence base = e.sequence();
+
+    p.octaveBase = static_cast<uint8_t>(p.octaveBase + 12); e.setParams(p);
+    e.applyLiveOctaveBase(+12);
+    for (int i = 0; i < 16; ++i) {
+        if (base.step(i).active) {
+            TEST_ASSERT_EQUAL_UINT8(base.step(i).note + 12, e.sequence().step(i).note);
+            TEST_ASSERT_EQUAL_UINT8(base.step(i).velocity, e.sequence().step(i).velocity);
+            TEST_ASSERT_EQUAL_UINT16(base.step(i).gateTicks, e.sequence().step(i).gateTicks);
+        } else {
+            TEST_ASSERT_TRUE(stepByteEqual(base.step(i), e.sequence().step(i)));
+        }
+    }
+}
+
+// Narrowing proportionally squeezes the melody into the smaller register
+// (scale-quantized — no out-of-register or out-of-scale notes survive).
+static void test_live_octave_range_squeezes_in() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    core::BerlinParams p; p.length = 16; p.density = 100; p.octaveBase = 48; p.octaveRange = 3;
+    liveBase(e, gen, sc, p, 13);
+    core::BerlinSequence base = e.sequence();
+
+    p.octaveRange = 1; e.setParams(p);
+    e.applyLiveOctaveRange(/*oldRangeOctaves=*/3);
+    int lo = 0, hi = 0; core::berlinRegister(p, lo, hi);
+    for (int i = 0; i < 16; ++i) {
+        if (base.step(i).active) {
+            const core::BerlinStep& s = e.sequence().step(i);
+            TEST_ASSERT_TRUE(s.note >= lo && s.note <= hi);
+            TEST_ASSERT_EQUAL_UINT8(s.note, sc.quantize(s.note));
+            TEST_ASSERT_EQUAL_UINT8(base.step(i).velocity, s.velocity);
+            TEST_ASSERT_EQUAL_UINT16(base.step(i).gateTicks, s.gateTicks);
+        }
+    }
+}
+
+// Helper: pitch span (max - min) over ACTIVE steps i >= 1 (step 0 = anchor).
+static int activeSpan(const core::BerlinSequence& s) {
+    int mn = 127;
+    int mx = 0;
+    for (int i = 1; i < s.length(); ++i) {
+        if (!s.step(i).active) continue;
+        if (s.step(i).note < mn) mn = s.step(i).note;
+        if (s.step(i).note > mx) mx = s.step(i).note;
+    }
+    return mx >= mn ? mx - mn : 0;
+}
+
+// Widening the range STRETCHES the melody: each note keeps its relative
+// position in the register (proportional remap, scale-quantized), so the
+// contour opens up vertically instead of staying squeezed at the bottom.
+static void test_live_octave_range_stretches_out() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    core::BerlinParams p; p.length = 16; p.density = 100; p.octaveBase = 48; p.octaveRange = 1;
+    p.scatter = 5;
+    liveBase(e, gen, sc, p, 21);
+    core::BerlinSequence base = e.sequence();
+    const int spanBefore = activeSpan(base);
+    TEST_ASSERT_GREATER_THAN(2, spanBefore);          // a real contour to stretch
+
+    p.octaveRange = 3; e.setParams(p);
+    e.applyLiveOctaveRange(/*oldRangeOctaves=*/1);
+    int lo = 0, hi = 0; core::berlinRegister(p, lo, hi);
+    const int spanAfter = activeSpan(e.sequence());
+    TEST_ASSERT_GREATER_THAN(spanBefore, spanAfter);  // melody opened up
+    TEST_ASSERT_EQUAL_UINT8(base.step(0).note, e.sequence().step(0).note);  // root anchor stays
+    for (int i = 0; i < 16; ++i) {
+        if (!base.step(i).active) continue;
+        const core::BerlinStep& s = e.sequence().step(i);
+        TEST_ASSERT_TRUE(s.note >= lo && s.note <= hi);
+        TEST_ASSERT_EQUAL_UINT8(s.note, sc.quantize(s.note));
+        TEST_ASSERT_EQUAL_UINT8(base.step(i).velocity, s.velocity);    // rhythm/dynamics kept
+    }
+}
+
+static void test_live_length_shorten_and_extend() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    core::BerlinParams p; p.length = 16; p.density = 100;
+    p.resolution = core::BerlinResolution::Sixteenth;   // 6 ticks/step
+    liveBase(e, gen, sc, p, 17);
+    core::BerlinSequence base = e.sequence();
+
+    e.play();
+    for (int i = 0; i < 8 * 6; ++i) e.onClockTick();     // advance playhead to step 8
+    TEST_ASSERT_TRUE(e.playhead() >= 8);
+    const int oldPlayhead = e.playhead();
+
+    p.length = 8; e.setParams(p);
+    e.applyLiveLength();
+    TEST_ASSERT_EQUAL_INT(8, e.sequence().length());
+    for (int i = 0; i < 8; ++i)
+        TEST_ASSERT_TRUE(stepByteEqual(base.step(i), e.sequence().step(i)));
+    TEST_ASSERT_TRUE(e.playhead() < 8);
+    TEST_ASSERT_EQUAL_INT(oldPlayhead % 8, e.playhead());  // wrapped, not reset
+
+    // Extend to 12 → first 8 byte-identical, 8..11 newly filled.
+    core::BerlinSequence shortened = e.sequence();
+    p.length = 12; e.setParams(p);
+    e.applyLiveLength();
+    TEST_ASSERT_EQUAL_INT(12, e.sequence().length());
+    for (int i = 0; i < 8; ++i)
+        TEST_ASSERT_TRUE(stepByteEqual(shortened.step(i), e.sequence().step(i)));
+    // density=100 → the appended tail steps are all active.
+    for (int i = 8; i < 12; ++i)
+        TEST_ASSERT_TRUE(e.sequence().step(i).active);
+}
+
+static void test_live_tension_repitches_keeping_rhythm() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    core::BerlinParams p; p.length = 16; p.density = 100; p.tension = 0;
+    liveBase(e, gen, sc, p, 23);
+    core::BerlinSequence base = e.sequence();
+
+    p.tension = 100; e.setParams(p);
+    e.applyLiveTension();
+    int differs = 0;
+    for (int i = 0; i < 16; ++i) {
+        const core::BerlinStep& b = base.step(i);
+        const core::BerlinStep& s = e.sequence().step(i);
+        TEST_ASSERT_EQUAL_INT(static_cast<int>(b.active), static_cast<int>(s.active));
+        TEST_ASSERT_EQUAL_UINT8(b.velocity, s.velocity);
+        TEST_ASSERT_EQUAL_UINT16(b.gateTicks, s.gateTicks);
+        if (i == 0) TEST_ASSERT_EQUAL_UINT8(b.note, s.note);   // step 0 anchor unchanged
+        else if (s.note != b.note) ++differs;
+    }
+    TEST_ASSERT_TRUE(differs >= 1);
+}
+
+static void test_live_edits_do_not_reset_playhead() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    core::BerlinParams p; p.length = 16; p.density = 100;
+    p.resolution = core::BerlinResolution::Sixteenth;
+    liveBase(e, gen, sc, p, 29);
+
+    e.play();
+    for (int i = 0; i < 3 * 6; ++i) e.onClockTick();   // advance to step 3
+    TEST_ASSERT_EQUAL_INT(3, e.playhead());
+
+    e.applyLiveDensity();
+    e.applyLiveTension();
+    e.applyLiveOctaveRange(/*oldRangeOctaves=*/2);
+    TEST_ASSERT_EQUAL_INT(3, e.playhead());
+}
+
+// Velocity/Humanize/Accent are LIVE: re-stamping from the stored jitter + the
+// current params updates every active step at once, with no RNG re-roll.
+static void test_velocity_knobs_apply_live() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    e.setGenerator(&gen); e.setScale(&sc); e.seed(7);
+    core::BerlinParams p;
+    p.length = 16; p.density = 100; p.morph = 100;
+    p.velocityBase = 100; p.velocityHumanize = 20; p.accent = 20;
+    e.setParams(p);
+    e.generate();
+    core::BerlinSequence snap = e.sequence();
+
+    // (a) +20 to base lifts every active velocity by 20 (or clamps to 126).
+    p.velocityBase = static_cast<uint8_t>(p.velocityBase + 20);
+    core::berlinStampVelocities(e.sequenceMut(), p);
+    for (int i = 0; i < 16; ++i) {
+        if (!snap.step(i).active) continue;
+        int want = snap.step(i).velocity + 20;
+        if (want > 126) want = 126;
+        TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(want), e.sequence().step(i).velocity);
+    }
+
+    // (b) humanize 0 → every active step is base (+accent where accented).
+    p.velocityHumanize = 0;
+    core::berlinStampVelocities(e.sequenceMut(), p);
+    for (int i = 0; i < 16; ++i) {
+        if (!snap.step(i).active) continue;
+        int want = p.velocityBase + (e.sequence().step(i).accent ? p.accent : 0);
+        if (want > 126) want = 126;
+        TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(want), e.sequence().step(i).velocity);
+    }
+
+    // (c) accent 0 (still humanize 0) → every active step is exactly base, with
+    // no accent boost anymore. Verify against base and that accented steps
+    // actually dropped relative to (b).
+    core::BerlinSequence withAccent = e.sequence();
+    p.accent = 0;
+    core::berlinStampVelocities(e.sequenceMut(), p);
+    bool anAccentedDropped = false;
+    for (int i = 0; i < 16; ++i) {
+        if (!snap.step(i).active) continue;
+        int want = p.velocityBase;
+        if (want > 126) want = 126;
+        TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(want), e.sequence().step(i).velocity);
+        if (withAccent.step(i).accent &&
+            e.sequence().step(i).velocity < withAccent.step(i).velocity) {
+            anAccentedDropped = true;
+        }
+    }
+    TEST_ASSERT_TRUE(anAccentedDropped);
+}
+
+// Re-stamping twice with identical params is idempotent — the jitter is stored,
+// not re-rolled, so velocities are byte-identical across stamps.
+static void test_jitter_stable_across_stamps() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    e.setGenerator(&gen); e.setScale(&sc); e.seed(7);
+    core::BerlinParams p;
+    p.length = 16; p.density = 100; p.morph = 100; p.velocityHumanize = 20;
+    e.setParams(p);
+    e.generate();
+
+    core::berlinStampVelocities(e.sequenceMut(), p);
+    core::BerlinSequence first = e.sequence();
+    core::berlinStampVelocities(e.sequenceMut(), p);
+    for (int i = 0; i < 16; ++i)
+        TEST_ASSERT_EQUAL_UINT8(first.step(i).velocity, e.sequence().step(i).velocity);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_resolution_ticks);
@@ -386,5 +660,14 @@ int main() {
     RUN_TEST(test_evolve_on_phasing_sequence);
     RUN_TEST(test_gate_param_applies_live);
     RUN_TEST(test_silence_flushes_note_without_moving_playhead);
+    RUN_TEST(test_live_density_adds_and_removes_in_place);
+    RUN_TEST(test_live_octave_base_transposes_exactly);
+    RUN_TEST(test_live_octave_range_squeezes_in);
+    RUN_TEST(test_live_octave_range_stretches_out);
+    RUN_TEST(test_live_length_shorten_and_extend);
+    RUN_TEST(test_live_tension_repitches_keeping_rhythm);
+    RUN_TEST(test_live_edits_do_not_reset_playhead);
+    RUN_TEST(test_velocity_knobs_apply_live);
+    RUN_TEST(test_jitter_stable_across_stamps);
     return UNITY_END();
 }

@@ -62,7 +62,7 @@ notace, piano-roll) vyplňují plochu pod horní lištou.
   neovládají globální transport, ale vlastní funkce páček aktivního módu
   (např. Berlin Generate) stále platí.
 
-Zařízení startuje v **Monitoringu**. Pořadí módů: **Monitoring · Arp · Berlin ·
+Zařízení startuje v **Berlinu**. Pořadí módů: **Monitoring · Arp · Berlin ·
 BPM · Settings · Debug**.
 
 ---
@@ -152,7 +152,8 @@ smyčkovou sekvenci jedním ze tří algoritmů a přehrává ji na clock. Přeh
 řídíš páčkami a hudbu tvaruješ čtyřmi parametrovými obrazovkami. Dole na každé
 obrazovce je **piano-roll** aktuální sekvence s **klaviaturou vlevo**: každá nota
 má svůj řádek, klávesy použité v sekvenci jsou označené malou šedou tečkou a
-**klávesa právě hrající noty zešedne**, jak playhead postupuje.
+**klávesa právě hrající noty zešedne**, jak playhead postupuje. **Jas** bloku
+každé noty odpovídá její velocity — hlasitější noty jsou jasnější, tišší tmavší.
 
 **Obrazovky:** `structure` · `character` · `dynamics` · `behavior` (piano-roll
 zůstává na všech čtyřech — mění se jen horní řádek parametrů).
@@ -173,22 +174,22 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
 | Enc1 | **Gate** | 40–99 % | 55 | Délka noty v rámci kroku. Funguje živě při přehrávání. |
 | Enc2 | **Tension** | 0–100 % | 30 | Nízká = tóny se drží root/kvinty (bezpečné); vysoká = odvážnější. |
 | Enc3 | **Octave base** | C1–C5 | C3 | Nejnižší oktáva hlasu. |
-| Enc4 | **Octave range** | 1–3 | 2 | Přes kolik oktáv se noty rozprostřou. |
+| Enc4 | **Octave range** | 1–3 | 2 | Přes kolik oktáv se noty rozprostřou. V Live rozšíření/zúžení melodii proporcionálně roztáhne/stáhne (ve stupnici; root kotva zůstává). |
 
 **Obrazovka `dynamics`:**
 
 | Knob | Parametr | Rozsah | Výchozí | Význam |
 |---|---|---|---|---|
-| Enc1 | **Velocity** | 1–126 | 100 | Základní velocity not. |
-| Enc2 | **Humanize** | 0–30 | 20 | Náhodné ± kolísání velocity na notu. |
-| Enc3 | **Accent** | 0–27 | 20 | Přídavek velocity na akcentovaných notách (1. doba, root noty). |
+| Enc1 | **Velocity** | 1–126 | 100 | Základní velocity not. Funguje živě při přehrávání. |
+| Enc2 | **Humanize** | 0–30 | 20 | Náhodné ± kolísání velocity na notu. Funguje živě při přehrávání. |
+| Enc3 | **Accent** | 0–27 | 20 | Přídavek velocity na akcentovaných notách (1. doba, root noty). Funguje živě při přehrávání. |
 | Enc4 | **Scatter** | 1–7 | 3 | (jen Walk) velikost kroku melodického bloudění. Pod Phase/Degree zašedlé a zamčené. |
 
 **Obrazovka `behavior`:**
 
 | Knob | Parametr | Rozsah | Výchozí | Význam |
 |---|---|---|---|---|
-| Enc1 | **Behavior** | Lock, Evolve, Live | Lock | Jak se sekvence mění v čase (viz níže). |
+| Enc1 | **Behavior** | Lock, Evolve, Live | Live | Jak se sekvence mění v čase (viz níže). |
 | Enc2 | **Morph** | 0–100 % | 100 | Jak moc se regenerace liší od aktuální sekvence: 0 % ≈ stejná, 100 % = úplně nová. |
 | Enc3 | **Evolve rate** | 1–8 | 4 | (jen Evolve) počet smyček mezi automatickými variacemi. Pod Lock/Live zašedlé a zamčené. |
 | Enc4 | **GateLen** | 3–16 | 6 | (jen Phase) délka gate seznamu. Pod Walk/Degree zašedlé a zamčené. |
@@ -214,11 +215,20 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
   při dalším **Generate** (Latch3).
 - **Evolve** — za hraní se sekvence pomalu mění: každých **Evolve rate** smyček
   se změní 1–2 kroky. Generate stále vytvoří úplně nový vzor.
-- **Live** — úprava *strukturního* parametru (Algorithm, Length, Resolution,
-  Density, Tension, Octave base/range, Scatter/GateLen) **okamžitě regeneruje**,
-  takže změnu slyšíš při otáčení knobu. **Gate funguje živě v každém chování**
-  (tvaruje hrající noty bez jejich přegenerování); Velocity, Humanize, Accent
-  a Morph/Evolve rate se projeví až při dalším Generate.
+- **Live** — tvoje úpravy **tvarují stávající sekvenci na místě** při otáčení
+  knobu, bez jejího přegenerování a **bez resetu pozice přehrávání** — přehrávání
+  běží dál skrz změnu. **Density** přidává nebo ubírá noty na nové množství
+  (kotva rootu na kroku 1 vždy zůstává); **Octave base/range** transponují a
+  složí stávající noty do nového registru (obrys melodie zůstává zachován);
+  **Length** zkrátí (pozice přehrávání se zaroluje) nebo prodlouží (vyplní se jen
+  nový ocas); **Tension** přeladí noty se zachováním stávajícího rytmu, gate a
+  velocity. **Gate**, **Resolution** a **Velocity/Humanize/Accent** fungují živě
+  v každém chování (Gate tvaruje hrající noty, Resolution mění krokovou mřížku,
+  knoby Dynamics okamžitě přerazítkují velocity). **Algorithm, Scatter a
+  GateLen** — které určují, *jak se sekvence vytváří* — se projeví až při dalším
+  **Generate** (Latch3), který stále provede plnou regeneraci řízenou parametrem
+  **Morph**. **Morph** a **Evolve rate** jsou meta-nastavení, jež řídí tuto
+  regeneraci a posun při Evolve.
 
 **Transport (páčky):**
 

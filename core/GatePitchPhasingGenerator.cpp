@@ -44,9 +44,10 @@ void GatePitchPhasingGenerator::generate(BerlinSequence& out, const BerlinParams
             const bool accent = (note % 12 == scale.root());
             s.active    = true;
             s.note      = note;
-            s.velocity  = berlinFinalizeVelocity(p, accent, rng);
             s.accent    = accent;
             s.gateTicks = static_cast<uint16_t>(gate);
+            s.velJitter = berlinDrawJitter(rng);
+            s.velocity  = berlinVelocityFor(p, accent, s.velJitter);
         }
         out.step(i) = s;
     }

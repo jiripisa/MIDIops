@@ -61,7 +61,7 @@ piano-roll) fill the area below the top bar.
   the latches do not drive the global transport, but the active mode's own latch
   functions (e.g. Berlin Generate) still apply.
 
-The device boots into **Monitoring**. Modes, in order: **Monitoring · Arp ·
+The device boots into **Berlin**. Modes, in order: **Monitoring · Arp ·
 Berlin · BPM · Settings · Debug**.
 
 ---
@@ -152,7 +152,8 @@ You drive playback with the latches and shape the music with four parameter
 screens. The bottom of every screen shows a **piano-roll** of the current
 sequence with a **left-hand keyboard**: each note has its own lane, keys used by
 the sequence are marked with a small grey dot, and the **currently played note's
-key greys out** as the playhead moves.
+key greys out** as the playhead moves. Each note block's **brightness reflects
+its velocity** — louder notes are brighter, quieter notes dimmer.
 
 **Screens:** `structure` · `character` · `dynamics` · `behavior` (the piano-roll
 stays visible on all four — only the top parameter row changes).
@@ -173,22 +174,22 @@ stays visible on all four — only the top parameter row changes).
 | Enc1 | **Gate** | 40–99 % | 55 | Note length within a step. Applies live while playing. |
 | Enc2 | **Tension** | 0–100 % | 30 | Low = pitches hug the root/fifth (safe); high = more adventurous. |
 | Enc3 | **Octave base** | C1–C5 | C3 | The lowest octave of the voice. |
-| Enc4 | **Octave range** | 1–3 | 2 | How many octaves the notes may span. |
+| Enc4 | **Octave range** | 1–3 | 2 | How many octaves the notes may span. In Live, widening/narrowing proportionally stretches/squeezes the melody (in scale; the root anchor stays). |
 
 **Screen `dynamics`:**
 
 | Knob | Parameter | Range | Default | Meaning |
 |---|---|---|---|---|
-| Enc1 | **Velocity** | 1–126 | 100 | Base note velocity. |
-| Enc2 | **Humanize** | 0–30 | 20 | Random ± velocity variation per note. |
-| Enc3 | **Accent** | 0–27 | 20 | Extra velocity on accented notes (beat 1, root notes). |
+| Enc1 | **Velocity** | 1–126 | 100 | Base note velocity. Applies live while playing. |
+| Enc2 | **Humanize** | 0–30 | 20 | Random ± velocity variation per note. Applies live while playing. |
+| Enc3 | **Accent** | 0–27 | 20 | Extra velocity on accented notes (beat 1, root notes). Applies live while playing. |
 | Enc4 | **Scatter** | 1–7 | 3 | (Walk only) step size of the melodic wander. Greyed out and locked under Phase/Degree. |
 
 **Screen `behavior`:**
 
 | Knob | Parameter | Range | Default | Meaning |
 |---|---|---|---|---|
-| Enc1 | **Behavior** | Lock, Evolve, Live | Lock | How the sequence changes over time (see below). |
+| Enc1 | **Behavior** | Lock, Evolve, Live | Live | How the sequence changes over time (see below). |
 | Enc2 | **Morph** | 0–100 % | 100 | How different a regeneration is from the current sequence: 0 % ≈ same, 100 % = brand new. |
 | Enc3 | **Evolve rate** | 1–8 | 4 | (Evolve only) loops between automatic variations. Greyed out and locked under Lock/Live. |
 | Enc4 | **GateLen** | 3–16 | 6 | (Phase only) length of the gate list. Greyed out and locked under Walk/Degree. |
@@ -214,12 +215,20 @@ stays visible on all four — only the top parameter row changes).
   next **Generate** (Latch3).
 - **Evolve** — while playing, the sequence slowly drifts: 1–2 steps change
   every **Evolve rate** loops. Generate still rolls a whole new pattern.
-- **Live** — editing a *structural* parameter (Algorithm, Length, Resolution,
-  Density, Tension, Octave base/range, Scatter/GateLen) **regenerates
-  immediately**, so you hear the change as you turn the knob. **Gate applies
-  live in every behavior** (it shapes the playing notes without re-rolling
-  them); Velocity, Humanize, Accent and Morph/Evolve rate apply on the next
-  Generate.
+- **Live** — your edits **sculpt the existing sequence in place** as you turn
+  the knob, without re-rolling it and **without ever resetting the playhead** —
+  playback keeps running through the change. **Density** adds or removes notes
+  to hit the new amount (the root anchor on step 1 always stays); **Octave
+  base/range** transpose and fold the existing notes into the new register
+  (melody contour preserved); **Length** truncates (the playhead wraps) or
+  extends (only the new tail is filled); **Tension** re-pitches the notes while
+  keeping the existing rhythm, gate and velocities. **Gate**, **Resolution** and
+  **Velocity/Humanize/Accent** are live in every behavior (Gate shapes the
+  playing notes, Resolution changes the step grid, the Dynamics knobs re-stamp
+  the velocities at once). **Algorithm, Scatter and GateLen** — which decide
+  *how a sequence is built* — apply at the next **Generate** (Latch3), which
+  still does the full **Morph**-governed regeneration. **Morph** and **Evolve
+  rate** are meta settings that govern that regeneration and the Evolve drift.
 
 **Transport (latches):**
 

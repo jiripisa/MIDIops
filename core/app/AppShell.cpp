@@ -13,8 +13,8 @@ void AppShell::addMode(Mode* mode) {
 
 void AppShell::setMidiOutput(MidiOutput* o) { out_ = o; }
 
-void AppShell::begin() {
-    activeMode_ = 0;
+void AppShell::begin(int startMode) {
+    activeMode_ = (startMode >= 0 && startMode < modeCount_) ? startMode : 0;
     screenIndex_ = 0;
     if (modeCount_ > 0) {
         modes_[activeMode_]->onEnter();

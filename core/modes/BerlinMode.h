@@ -40,7 +40,9 @@ public:
 
     void setMidiOutput(MidiOutput* o) { engine_.setOutput(o); }
 
-    void liveRegen();   // regenerate immediately if Behavior == Live (structural edit)
+    // Live sculpting: when Behavior == Live, apply the edited parameter to the
+    // existing sequence in place (no regeneration, playhead untouched).
+    bool live() const { return params_.behavior == BerlinBehavior::Live; }
 
     // Test inspectors.
     BerlinParams&         params()        { return params_; }

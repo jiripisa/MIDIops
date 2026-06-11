@@ -26,9 +26,10 @@ void DegreeWeightedGenerator::generate(BerlinSequence& out, const BerlinParams& 
 
         s.active    = true;
         s.note      = static_cast<uint8_t>(note);
-        s.velocity  = berlinFinalizeVelocity(p, accent, rng);
         s.accent    = accent;
         s.gateTicks = static_cast<uint16_t>(gate);
+        s.velJitter = berlinDrawJitter(rng);
+        s.velocity  = berlinVelocityFor(p, accent, s.velJitter);
         out.step(i) = s;
     }
 }

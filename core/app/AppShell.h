@@ -22,7 +22,7 @@ public:
 
     void addMode(Mode* mode);          // call once per mode before begin()
     void setMidiOutput(MidiOutput* o); // for transport realtime messages
-    void begin();                      // enters mode 0 — call exactly once
+    void begin(int startMode = 0);     // enters the given mode — call exactly once
 
     // Hardware input. Encoder index 1..5, latch index 1..3.
     void onEncoderKnob(int index, int delta);

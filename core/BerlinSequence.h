@@ -10,6 +10,7 @@ struct BerlinStep {
     uint8_t  velocity  = 0;      // 1..127
     bool     accent    = false;  // visualization + already folded into velocity
     uint16_t gateTicks = 0;      // note-on duration in 24-PPQN ticks
+    int8_t   velJitter = 0;      // stable humanize draw, -100..100 (unit), scaled by params.velocityHumanize
 };
 
 // Fixed-capacity realized step pattern (no heap). Walk/Degree fill ≤ length
