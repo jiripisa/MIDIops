@@ -29,7 +29,7 @@ struct BerlinParams {
     uint8_t          accent           = 20;   // 0..27 velocity boost
     uint8_t          scatter          = 3;    // 1..7 semitones (Drunkard's Walk)
     uint8_t          gateLen          = 6;    // 3..16 (Gate/Pitch Phasing — Plan B)
-    BerlinBehavior   behavior         = BerlinBehavior::Locked;
+    BerlinBehavior   behavior         = BerlinBehavior::Live;
     uint8_t          morph            = 100;  // 0..100 % regeneration intensity
     uint8_t          evolveRate       = 4;    // 1..8 loops (Evolve — Plan C)
 };

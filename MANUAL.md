@@ -189,7 +189,7 @@ stays visible on all four — only the top parameter row changes).
 
 | Knob | Parameter | Range | Default | Meaning |
 |---|---|---|---|---|
-| Enc1 | **Behavior** | Lock, Evolve, Live | Lock | How the sequence changes over time (see below). |
+| Enc1 | **Behavior** | Lock, Evolve, Live | Live | How the sequence changes over time (see below). |
 | Enc2 | **Morph** | 0–100 % | 100 | How different a regeneration is from the current sequence: 0 % ≈ same, 100 % = brand new. |
 | Enc3 | **Evolve rate** | 1–8 | 4 | (Evolve only) loops between automatic variations. Greyed out and locked under Lock/Live. |
 | Enc4 | **GateLen** | 3–16 | 6 | (Phase only) length of the gate list. Greyed out and locked under Walk/Degree. |

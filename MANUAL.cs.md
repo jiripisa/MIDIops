@@ -189,7 +189,7 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
 
 | Knob | Parametr | Rozsah | Výchozí | Význam |
 |---|---|---|---|---|
-| Enc1 | **Behavior** | Lock, Evolve, Live | Lock | Jak se sekvence mění v čase (viz níže). |
+| Enc1 | **Behavior** | Lock, Evolve, Live | Live | Jak se sekvence mění v čase (viz níže). |
 | Enc2 | **Morph** | 0–100 % | 100 | Jak moc se regenerace liší od aktuální sekvence: 0 % ≈ stejná, 100 % = úplně nová. |
 | Enc3 | **Evolve rate** | 1–8 | 4 | (jen Evolve) počet smyček mezi automatickými variacemi. Pod Lock/Live zašedlé a zamčené. |
 | Enc4 | **GateLen** | 3–16 | 6 | (jen Phase) délka gate seznamu. Pod Walk/Degree zašedlé a zamčené. |
