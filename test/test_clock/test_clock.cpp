@@ -3,6 +3,7 @@
 #include "core/ClockFollower.h"
 #include "core/app/AppShell.h"
 #include "core/modes/BpmMode.h"
+#include "core/modes/BerlinMode.h"
 #include "support/Fakes.h"
 #include "support/FakeMidiOutput.h"
 
@@ -92,6 +93,72 @@ static void test_bpm_readonly_under_external_clock() {
     TEST_ASSERT_EQUAL_UINT16(before + 5, shell.bpm());   // editable under Internal
 }
 
+// Document-by-test: switching clock source Internal→External mid-note.
+//
+// (a) Internal stopped: setClockBpm(0) → FakeMidiOutput::lastBpm == 0.
+// (b) The sounding note's gate-off is DEFERRED until external pulses arrive
+//     (v1 limitation documented in AppShell::setClockSource comment): the note
+//     keeps sounding immediately after the switch, and NoteOff only arrives once
+//     external Clock messages drive onClockTick().
+// (c) Switching back to Internal resumes: setClockBpm(bpm) → lastBpm == bpm.
+//
+// Setup mirrors test_external_stop_silences_engine in test_berlin_mode.cpp.
+static void test_clock_source_switch_mid_note() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out;
+    berlin.setMidiOutput(&out);
+    shell.setMidiOutput(&out);
+    shell.addMode(&berlin);
+    shell.begin();
+    // Shell starts on Internal clock; begin() implicitly sets up the BPM output.
+    const uint16_t bpm = shell.bpm();   // default 120
+
+    // Prime the first-frame latch absorb (BerlinMode absorbs the first delivery
+    // per latch index after onEnter). Send OFF to consume the absorb, then ON to play.
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // play
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
+
+    // Drive the engine with direct clock ticks (internal path) until a note is
+    // sounding. Step 0 is always active (both generators guarantee it), so the
+    // first onClockTick() call has the gate open. We pump up to 96 ticks to be safe.
+    for (int i = 0; i < 96 && berlin.engine().soundingNote() < 0; ++i)
+        berlin.onClockTick();
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, berlin.engine().soundingNote(),
+        "a note must be sounding before switching clock source");
+
+    // (a) Switch to External: internal clock master must stop (setClockBpm(0)).
+    shell.setClockSource(core::ClockSource::External);
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(0, out.lastBpm,
+        "switching to External must call setClockBpm(0) to stop internal generation");
+
+    // (b) Immediately after the switch the note is still sounding — the gate-off
+    // is deferred until external pulses arrive (v1 limitation).
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, berlin.engine().soundingNote(),
+        "gate-off must be deferred until external clock pulses arrive");
+
+    // Count NoteOffs before feeding external pulses.
+    int noteOffsBefore = 0;
+    for (const auto& ev : out.events) { if (!ev.isOn) ++noteOffsBefore; }
+
+    // Feed external Clock messages through the shell (mirrors the live code path).
+    // Each Clock → AppShell::onMidiIn → mode->onClockTick() → engine_.onClockTick().
+    // The gate timer will fire the NoteOff within gateTicks pulses.
+    core::MidiMessage clk{}; clk.type = core::MidiType::Clock;
+    for (int i = 0; i < 96; ++i) shell.onMidiIn(clk);
+
+    int noteOffsAfter = 0;
+    for (const auto& ev : out.events) { if (!ev.isOn) ++noteOffsAfter; }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(noteOffsBefore, noteOffsAfter,
+        "NoteOff must arrive once external clock pulses drive the gate timer");
+
+    // (c) Switch back to Internal: internal master must resume at the current BPM.
+    shell.setClockSource(core::ClockSource::Internal);
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(bpm, out.lastBpm,
+        "switching back to Internal must call setClockBpm(bpm) to resume internal generation");
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_realtime_types_are_not_channel_voice);
@@ -100,5 +167,6 @@ int main() {
     RUN_TEST(test_external_clock_follows_without_echo);
     RUN_TEST(test_follower_gap_reset);
     RUN_TEST(test_bpm_readonly_under_external_clock);
+    RUN_TEST(test_clock_source_switch_mid_note);
     return UNITY_END();
 }

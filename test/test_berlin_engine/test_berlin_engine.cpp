@@ -4,6 +4,7 @@
 #include "core/BerlinSequence.h"
 #include "core/BerlinEngine.h"
 #include "core/DrunkardWalkGenerator.h"
+#include "core/GatePitchPhasingGenerator.h"
 #include "core/Scale.h"
 #include "core/render/BerlinLayout.h"
 #include "support/FakeMidiOutput.h"
@@ -230,6 +231,92 @@ static void test_roll_range_min_two_octaves_and_contains_notes() {
     TEST_ASSERT_TRUE(hi - lo >= 23);
 }
 
+// Morph 1-99: partial replacement — at least one step re-rolled (differs from
+// the base) and at least one step kept (identical note+active+velocity).
+// Density=100 so every step is active; length=16 gives enough steps that even
+// at morph=50 both "some differ" and "some identical" hold with overwhelming
+// probability for any reasonable seed.
+static void test_morph_mid_range_partial_replace() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    e.setGenerator(&gen); e.setScale(&sc); e.seed(42);
+    core::BerlinParams p;
+    p.length = 16; p.density = 100; p.morph = 100; p.resolution = core::BerlinResolution::Sixteenth;
+    e.setParams(p);
+    e.generate();
+    core::BerlinSequence base = e.sequence();
+    TEST_ASSERT_EQUAL_INT(16, base.length());
+
+    // Now generate with morph=50: some steps should be re-rolled, some kept.
+    p.morph = 50; e.setParams(p); e.generate();
+    const core::BerlinSequence& result = e.sequence();
+    TEST_ASSERT_EQUAL_INT(16, result.length());
+
+    // (a) At least 1 step differs (something re-rolled).
+    int diff = 0, same = 0;
+    for (int i = 0; i < 16; ++i) {
+        const bool stepSame = base.step(i).active   == result.step(i).active &&
+                              base.step(i).note     == result.step(i).note   &&
+                              base.step(i).velocity == result.step(i).velocity;
+        if (stepSame) ++same; else ++diff;
+    }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, diff, "morph=50 must re-roll at least 1 step");
+    // (b) At least 1 step kept (not a full replacement).
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, same, "morph=50 must keep at least 1 step identical");
+}
+
+// Morph length-change mid: base at length=16, then change params to length=8
+// with morph=50. The engine must adopt the candidate's length (8) even though
+// a partial merge is in effect.
+static void test_morph_length_change_mid() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    e.setGenerator(&gen); e.setScale(&sc); e.seed(42);
+    core::BerlinParams p;
+    p.length = 16; p.density = 100; p.morph = 100; p.resolution = core::BerlinResolution::Sixteenth;
+    e.setParams(p);
+    e.generate();
+    TEST_ASSERT_EQUAL_INT(16, e.sequence().length());
+
+    // Shorten to length=8 with partial morph — candidate length = 8.
+    p.length = 8; p.morph = 50; e.setParams(p); e.generate();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(8, e.sequence().length(),
+        "engine must adopt the candidate length even under partial morph");
+}
+
+// Evolve on a Phasing sequence: GatePitchPhasingGenerator with length=8,
+// gateLen=6 realizes lcm(8,6)=24 steps. After one full loop (24 × 6 ticks =
+// 144 ticks), the Evolve splice must have run exactly once in-bounds on the
+// 24-step sequence: loopCount==1, sequence still length 24, and 1-2 steps
+// differ compared to the original (stepDiff counts velocity too, so a re-drawn
+// step is detected even if its note coincidentally matches).
+static void test_evolve_on_phasing_sequence() {
+    core::BerlinEngine e; core::GatePitchPhasingGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    e.setGenerator(&gen); e.setScale(&sc); e.seed(55);
+    core::BerlinParams p;
+    p.length = 8; p.gateLen = 6; p.density = 100;
+    p.resolution = core::BerlinResolution::Sixteenth;  // 6 ticks/step
+    p.behavior = core::BerlinBehavior::Evolve; p.evolveRate = 1;
+    e.setParams(p);
+    e.generate();
+
+    // GatePitchPhasing with P=8, G=6 → lcm=24 realized steps.
+    TEST_ASSERT_EQUAL_INT_MESSAGE(24, e.sequence().length(),
+        "phasing lcm(8,6) must yield a 24-step sequence");
+    core::BerlinSequence base = e.sequence();
+
+    e.play();
+    // One full loop = 24 steps × 6 ticks/step = 144 ticks.
+    const int ticksPerLoop = 24 * 6;
+    for (int i = 0; i < ticksPerLoop; ++i) e.onClockTick();
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, e.loopCount(), "exactly one loop must have completed");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(24, e.sequence().length(), "sequence length must remain 24 after evolve");
+
+    // The splice touched 1 or 2 steps — verify the diff is in that range.
+    const int diff = stepDiff(base, e.sequence());
+    TEST_ASSERT_TRUE_MESSAGE(diff >= 1 && diff <= 2,
+        "evolve on phasing sequence must splice exactly 1-2 steps");
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_resolution_ticks);
@@ -246,5 +333,8 @@ int main() {
     RUN_TEST(test_locked_never_auto_varies);
     RUN_TEST(test_emitstep_kills_overlong_gate_note);
     RUN_TEST(test_roll_range_min_two_octaves_and_contains_notes);
+    RUN_TEST(test_morph_mid_range_partial_replace);
+    RUN_TEST(test_morph_length_change_mid);
+    RUN_TEST(test_evolve_on_phasing_sequence);
     return UNITY_END();
 }
