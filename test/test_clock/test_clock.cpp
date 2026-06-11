@@ -231,6 +231,33 @@ static void test_transport_ignored_unless_receive() {
 
 // Safety under Off + External clock: an incoming Stop still silences the engine
 // (so a tick-scheduled gate-off cannot hang), and nothing is re-emitted.
+// Negative case for the safety rule: under an INTERNAL clock the gate-off
+// arrives on the device's own ticks, so an incoming Stop outside Receive must
+// be ignored entirely — the engine keeps playing and nothing is silenced.
+static void test_stop_safety_not_under_internal_clock() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out;
+    berlin.setMidiOutput(&out);
+    shell.setMidiOutput(&out);
+    shell.addMode(&berlin);
+    shell.begin();
+    shell.setTransportMode(core::TransportMode::Off);
+    // Clock source stays Internal (the default).
+
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});   // absorb first delivery
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});    // play
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
+
+    const int offBefore = static_cast<int>(out.events.size());
+    core::MidiMessage stop{}; stop.type = core::MidiType::Stop;
+    shell.onMidiIn(stop);
+
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());                   // still playing
+    TEST_ASSERT_EQUAL_INT(offBefore, static_cast<int>(out.events.size()));  // no forced NoteOff
+    TEST_ASSERT_EQUAL_INT(0, out.stops);                             // nothing re-emitted
+}
+
 static void test_external_stop_safety_under_off() {
     core::AppShell shell;
     core::BerlinMode berlin(shell);
@@ -273,5 +300,6 @@ int main() {
     RUN_TEST(test_receive_start_continue_stop_drive_berlin);
     RUN_TEST(test_transport_ignored_unless_receive);
     RUN_TEST(test_external_stop_safety_under_off);
+    RUN_TEST(test_stop_safety_not_under_internal_clock);
     return UNITY_END();
 }

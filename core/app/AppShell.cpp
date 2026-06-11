@@ -192,7 +192,9 @@ void AppShell::onMidiIn(const MidiMessage& msg) {
         } else if (msg.type == MidiType::Stop && clockSource_ == ClockSource::External) {
             // Safety (audit N6): a stopping master stops its clock too, so a
             // tick-scheduled gate-off would never fire. Silence immediately;
-            // playback state is otherwise untouched.
+            // playback state is otherwise untouched — including transportState_
+            // (the top bar): under Off/Send the device does not track received
+            // transport, so the bar deliberately keeps showing the local state.
             if (modeCount_ > 0) modes_[activeMode_]->onTransport(Transport::Pause);
         }
         return;
