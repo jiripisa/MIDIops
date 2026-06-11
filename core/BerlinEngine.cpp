@@ -64,11 +64,14 @@ void BerlinEngine::onClockTick() {
     }
 }
 
-void BerlinEngine::generate() {
+void BerlinEngine::generate()     { regenerate(false); }   // Reset/Generate: honours Morph
+void BerlinEngine::generateFull() { regenerate(true);  }   // Live: always a full fresh roll
+
+void BerlinEngine::regenerate(bool full) {
     if (generator_ && scale_) {
         BerlinSequence cand;
         generator_->generate(cand, params_, *scale_, rng_);
-        if (params_.morph >= 100) {
+        if (full || params_.morph >= 100) {
             seq_ = cand;                       // full regeneration
         } else {
             const int n = cand.length();

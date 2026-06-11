@@ -28,7 +28,8 @@ public:
     void play();    // run (emits the current step if starting from silence)
     void pause();   // hold playhead, stop advancing
     void stop();    // rewind to step 0 + all-notes-off
-    void generate();// (re)generate using current params + Morph (Task 4)
+    void generate();    // (re)generate using current params + Morph (Reset/Generate)
+    void generateFull();// (re)generate ignoring Morph (full fresh) — used by Live
 
     void onClockTick();      // advance one 24-PPQN tick
 
@@ -42,6 +43,7 @@ public:
 private:
     void emit(bool isOn, uint8_t note, uint8_t velocity);
     void emitStep(int i);    // fire step i's NoteOn (if active), arm gate
+    void regenerate(bool full);  // shared body of generate()/generateFull()
     void evolve();           // splice 1-2 steps from a fresh candidate (Evolve behavior)
     int  stepLenTicks() const { return berlinResolutionTicks(params_.resolution); }
 

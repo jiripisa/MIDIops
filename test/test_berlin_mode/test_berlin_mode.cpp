@@ -271,6 +271,22 @@ static void test_live_ignores_performance_edit_and_locked_never_regens() {
     TEST_ASSERT_EQUAL_INT(0, berlinSeqDiff(base2, berlin.engine().sequence()));
 }
 
+// Live regenerates FULLY (ignores Morph): a structural edit must take complete
+// effect even at Morph 0 (where a morph-blend would keep the old steps).
+static void test_live_full_regen_ignores_morph() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();                                  // base generated at octaveBase 48
+    berlin.params().behavior = core::BerlinBehavior::Live;
+    berlin.params().morph = 0;                         // a blend would keep the base notes
+
+    const uint8_t before0 = berlin.engine().sequence().step(0).note;   // root in base octave
+    berlin.screen(1).onEncoder(3, +1);                 // Character Enc3: OctaveBase 48 → 60
+    const uint8_t after0 = berlin.engine().sequence().step(0).note;
+    TEST_ASSERT_TRUE(after0 > before0);                // octave shift fully applied (full regen)
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_latch1_play_pause_latch2_stop);
@@ -283,5 +299,6 @@ int main() {
     RUN_TEST(test_algorithm_dispatch);
     RUN_TEST(test_live_regenerates_on_structural_edit);
     RUN_TEST(test_live_ignores_performance_edit_and_locked_never_regens);
+    RUN_TEST(test_live_full_regen_ignores_morph);
     return UNITY_END();
 }

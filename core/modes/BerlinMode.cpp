@@ -19,7 +19,7 @@ void BerlinMode::liveRegen() {
     engine_.setScale(&scale_);
     engine_.setParams(params_);
     applyGenerator();
-    engine_.generate();
+    engine_.generateFull();   // structural edit takes full effect, independent of Morph
 }
 
 void BerlinMode::applyGenerator() {
