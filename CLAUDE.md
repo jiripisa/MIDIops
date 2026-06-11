@@ -133,6 +133,33 @@ commit as the code change. Common triggers:
 If the change is software-only and touches no wiring at all, leave both
 files alone.
 
+## User manual — keep in sync
+
+There is a bilingual end-user manual at the repo root, linked from
+`README.md`:
+
+* `MANUAL.md` — English.
+* `MANUAL.cs.md` — Czech (a faithful translation of the English).
+
+It documents every mode, screen, parameter (name / range / default /
+meaning), the control scheme (Enc1–5, Latch1–3), navigation, the global
+settings, and the simulator key bindings. It MUST stay current as the
+user-facing behaviour evolves. Update BOTH language files in the same commit
+as the code change. Common triggers:
+
+* A parameter is added, removed, renamed, or its range/default changes
+  (e.g. in `core/ArpTypes.h`, `core/BerlinTypes.h`, a mode's screens).
+* A mode or screen is added/removed/reordered, or an encoder/latch is
+  remapped (mode `onRawInput`, `screen()` order, `addMode()` order in the
+  mains).
+* The simulator key bindings change (`platform/host/main.cpp`).
+* Navigation or global-settings behaviour changes (`core/app/AppShell.*`,
+  `core/modes/SettingsMode.*`).
+
+Keep the two language files structurally identical (same sections, tables,
+and rows). If a change is purely internal and changes nothing the user sees
+or touches, leave the manual alone.
+
 ## The "listened channel" knob
 
 There is exactly one source of truth for the listened channel:

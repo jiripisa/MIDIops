@@ -18,6 +18,17 @@ platform/teensy/      Teensy 4.1: ILI9341_t3n + usbMIDI + PJRC Encoder
 platform/host/        macOS:      SDL2        + RtMidi  + keyboard
 ```
 
+## 📖 User manual
+
+Full controls + every parameter, in two languages:
+**[English](MANUAL.md)** · **[Čeština](MANUAL.cs.md)**.
+
+> Note: the screenshots and "Quick start / Hardware / Mapping mode" sections
+> further down this README still describe the earlier chord-trigger prototype.
+> The **manual above** documents the current mode-based firmware
+> (Monitoring · Arp · Berlin · BPM · Settings · Debug); it is the up-to-date
+> reference for using the device.
+
 ## What it looks like
 
 The simulator window is the truth — 320×240 logical pixels scaled 3× on
