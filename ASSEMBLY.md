@@ -12,24 +12,23 @@ constants change.
 ## 0. What you'll end up with
 
 A Teensy 4.1 sitting on a full-size breadboard, driving an ILI9341 2.8"
-TFT display through SPI, with:
-- A latching panel switch (DFRobot DFR0789 #1, "PANEL") — switch ON
-  enters the chord-mapping editor, LED mirrors the state
-- A rotary encoder (KY-040 #1, "Channel") controlling the monitored
-  MIDI channel; shaft button restarts the app (or cycles chord
-  direction in mapping mode)
-- A second rotary encoder (KY-040 #2, "BPM") setting the BPM that the
-  device broadcasts as a MIDI Clock master, plus the chord engine's
-  NoteOn/NoteOff stream, to any DAW listening on the `MIDIops` USB
-  MIDI device; shaft button browses through saved mappings while in
-  mapping mode
-- A third rotary encoder (KY-040 #3, "View") cycling between the
-  device's four display views (Monitor, Big-BPM, Notation, Debug);
-  shaft button reserved for a future "home" action
-- Two extra rotary encoders (KY-040 #4 "Enc4" + KY-040 #5 "Enc5") and
-  two extra DFR0789 latching buttons (BTN2 + BTN3) — all wired up
-  and visible in the Debug view but without app-level actions yet,
-  reserved for future features
+TFT display through SPI, with a five-encoder / three-latch control
+panel. The firmware is a mode-based MIDI instrument (Monitoring / Arp /
+Berlin / BPM / Settings / Debug); the function of each control changes
+with the active mode, so the hardware is wired by physical identity, not
+by a fixed role:
+- Three latching panel switches (DFRobot DFR0789, "Latch1–Latch3") —
+  each latches mechanically and its LED mirrors the state. They drive
+  transport: globally Latch1 = Play/Pause, Latch2 = Stop, Latch3 =
+  Reset, but a capturing mode repurposes them (Arp Hold/Mute/Reset,
+  Berlin Play/Stop/Generate)
+- Four parameter encoders (KY-040, "Enc1–Enc4") — the per-screen knobs;
+  rotate to edit a parameter, press for its secondary action
+- A navigation encoder (KY-040, "Enc5") — rotate to switch screen within
+  a mode, press to open the mode-select overlay (press again to confirm)
+
+Every control is also surfaced in the Debug mode, which is the natural
+bring-up check that the hardware is alive.
 
 ## 1. Tools and parts
 
@@ -37,8 +36,8 @@ Check `HARDWARE.md` for the complete bill of materials. The short list:
 
 - Teensy 4.1 with male headers already soldered along both long edges
 - ILI9341 2.8" SPI display (red PCB, 14-pin header)
-- Three DFR0789 panel switches (PANEL + BTN2 + BTN3)
-- Five KY-040 rotary encoders (Channel + BPM + View + Enc4 + Enc5)
+- Three DFR0789 panel switches (Latch1 + Latch2 + Latch3)
+- Five KY-040 rotary encoders (Enc1 + Enc2 + Enc3 + Enc4 + Enc5)
 - Full-size breadboard (MB-102 or equivalent)
 - About 60 dupont jumper wires (mix of M-M for breadboard rails and
   signal hops, M-F for connecting modules with their own headers).
@@ -160,7 +159,7 @@ Key dos and don'ts:
 - **T_CLK, T_CS, T_DIN, T_DO, T_IRQ are the touch controller — leave
   them disconnected** for milestone 1.
 
-## 6. Wire the mapping switch (DFR0789)
+## 6. Wire the first latch (DFR0789 — Latch1)
 
 The DFR0789 has a 3-wire Gravity connector (`G`, `V`, `S`). It's a
 latching switch — push it once to lock down, push again to release. The
@@ -174,12 +173,12 @@ Three jumpers:
 | `V`        | + rail (3.3 V, powers the LED) |
 | `S`        | Teensy pin **2** |
 
-The firmware mirrors the switch's mechanical position into the
-mapping-mode flag, so the LED on the panel and the chord-mapping
-editor state always match: latched closed = editor active, released =
-back to normal monitoring. See section 7d for the editor workflow.
+The firmware reads the latch level every loop and delivers it to the
+active mode. What Latch1 does depends on that mode — globally it is the
+transport Play/Pause, while a capturing mode repurposes it (Arp Hold,
+Berlin Play). Its LED always tracks the mechanical position.
 
-## 7. Wire the channel encoder (KY-040 #1)
+## 7. Wire the first encoder (KY-040 #1 — Enc1)
 
 Five pins along the bottom edge, labeled `GND, +, SW, DT, CLK` on the
 silkscreen:
@@ -192,21 +191,20 @@ silkscreen:
 | `DT`        | Teensy pin **5** |
 | `CLK`       | Teensy pin **4** |
 
-`SW` triggers the app's "restart" — it re-shows the boot splash and
-clears all the live state without you having to unplug USB. Handy for
-testing the startup look.
+Enc1 is the first per-screen parameter knob: rotation edits the active
+screen's Enc1 parameter and the `SW` press fires its secondary action.
+The exact meaning changes with the mode/screen.
 
-If you turn the knob clockwise and the monitored channel **decreases**
-instead of increases, the easiest fix is to swap the two constructor
-arguments in `platform/teensy/main.cpp` (`TeensyEncoder(...)`) — see the
-comment there. You can also just physically swap `CLK ↔ DT` on the
-breadboard; either way works.
+If you turn the knob clockwise and the value **decreases** instead of
+increases, the easiest fix is to swap the two constructor arguments in
+`platform/teensy/main.cpp` (`TeensyEncoder(...)`) — see the comment
+there. You can also just physically swap `CLK ↔ DT` on the breadboard;
+either way works.
 
-## 7b. Wire the BPM encoder (KY-040 #2)
+## 7b. Wire the second encoder (KY-040 #2 — Enc2)
 
 Identical module as #1. Place it on the **opposite long edge** of the
-Teensy from the channel encoder so the two strips of breadboard don't
-get tangled.
+Teensy from Enc1 so the two strips of breadboard don't get tangled.
 
 | Encoder pin | Goes to |
 |-------------|---------|
@@ -216,27 +214,20 @@ get tangled.
 | `DT`        | Teensy pin **15** |
 | `CLK`       | Teensy pin **14** |
 
-Range 30..300 BPM, default 120, one detent = ±1 BPM. The device sends
-MIDI Clock pulses (24 per quarter note) continuously, so any DAW with
-its tempo source set to `MIDIops` will follow the BPM you set with this
-knob.
-
-`SW` in normal mode is currently a no-op (view cycling moved to the
-dedicated view encoder — see 7c). In mapping mode it browses through
-saved chord mappings.
+Enc2 is the second per-screen parameter knob (rotation + press), role
+assigned per mode/screen.
 
 The MIDI panic (release stuck notes) happens automatically when the
 DAW sends CC 120 (All Sound Off) or CC 123 (All Notes Off) — Ableton
 emits these on transport stop — so a dedicated hardware panic button
 isn't needed.
 
-Same direction-reversal trick applies as the channel encoder.
+Same direction-reversal trick applies as Enc1.
 
-## 7c. Wire the view encoder (KY-040 #3)
+## 7c. Wire the third encoder (KY-040 #3 — Enc3)
 
-Third identical KY-040. Place it next to the BPM encoder on the
-bottom edge of the breadboard so the two "mode" knobs sit together,
-within thumb reach, away from the channel knob.
+Third identical KY-040. Place it next to Enc2 on the bottom edge of the
+breadboard so the two right-edge knobs sit together, within thumb reach.
 
 | Encoder pin | Goes to |
 |-------------|---------|
@@ -246,24 +237,17 @@ within thumb reach, away from the channel knob.
 | `DT`        | Teensy pin **18** |
 | `CLK`       | Teensy pin **17** |
 
-Rotation cycles through three display modes:
-
-1. **Monitor view** — per-channel coloured worms scrolling up from a piano keyboard, with held-note chord names in the header and a chord-queue strip below it.
-2. **Big-BPM focus** — current tempo as one big number with a `BPM` caption.
-3. **Notation view** — a grand staff (treble + bass clef) with every held note drawn as a filled note-head at its correct pitch position, including sharps and ledger lines for notes outside the staff. Held-note names appear below the staff and drift down + fade away when released.
-
-CW rotation advances forward (Monitor → BigBpm → Notation → Monitor),
-CCW goes backward. The `SW` is currently a no-op (reserved for a
-future "home / jump to Monitor view" action).
+Enc3 is the third per-screen parameter knob (rotation + press), role
+assigned per mode/screen.
 
 Same direction-reversal trick applies as the other encoders.
 
-## 7d. Wire the spare encoder #4 (KY-040 #4)
+## 7d. Wire the fourth encoder (KY-040 #4 — Enc4)
 
-Identical KY-040 module to the other three. No app-level action
-attached yet — wired purely so the Debug view can show that the
-hardware is alive, and so a future feature can adopt it without
-re-soldering.
+Identical KY-040 module to the other three. Enc4 is the fourth
+per-screen parameter knob; on screens that don't bind a fourth knob it
+only updates the Debug mode's counters, so it's also a handy hardware
+sanity check.
 
 | Encoder pin | Goes to |
 |-------------|---------|
@@ -273,13 +257,15 @@ re-soldering.
 | `DT`        | Teensy pin **7** |
 | `CLK`       | Teensy pin **6** |
 
-Rotation increments the `ENC4` total in the Debug view; the shaft
-button increments the `ENC4sw` press counter. That's the whole
-behaviour today.
+Rotation increments the `ENC4` total in the Debug mode; the shaft
+button increments the `ENC4sw` press counter.
 
-## 7e. Wire the spare encoder #5 (KY-040 #5)
+## 7e. Wire the fifth encoder (KY-040 #5 — Enc5)
 
-Identical to #4. Surfaces in the Debug view as `ENC5` / `ENC5sw`.
+Identical to the others. Enc5 is the **navigation** knob: rotate to
+switch the screen within the active mode, press to open the mode-select
+overlay (press again to confirm a highlighted mode). It also surfaces in
+the Debug mode as `ENC5` / `ENC5sw`.
 
 | Encoder pin | Goes to |
 |-------------|---------|
@@ -289,50 +275,44 @@ Identical to #4. Surfaces in the Debug view as `ENC5` / `ENC5sw`.
 | `DT`        | Teensy pin **21** |
 | `CLK`       | Teensy pin **20** |
 
-## 7f. Wire the spare latching buttons #2 and #3 (DFR0789 ×2)
+## 7f. Wire the second and third latches (DFR0789 ×2 — Latch2 + Latch3)
 
-Two more DFR0789 modules, same model and pinout as the PANEL switch
-from section 6. They show up in the Debug view as `BTN2` and `BTN3`
-(latch state pill + toggle counter), with no app-level action.
+Two more DFR0789 modules, same model and pinout as Latch1 from section
+6. They show up in the Debug mode as `LATCH2` and `LATCH3` (latch state
+pill + toggle counter); their action depends on the active mode (global
+transport Stop/Reset, or per-mode such as Arp Mute/Reset or Berlin
+Stop/Generate).
 
-| Switch pin | BTN2 → | BTN3 → |
+| Switch pin | Latch2 → | Latch3 → |
 |------------|--------|--------|
 | `G` (GND)  | − rail | − rail |
 | `V` (3.3V) | + rail | + rail |
 | `S` (signal) | Teensy pin **1** (also Serial1 TX — unused) | Teensy pin **23** |
 
-**Watch the split rail.** BTN3 sits next to the BPM/View/Enc5 cluster
+**Watch the split rail.** Latch3 sits next to the Enc2/Enc3/Enc5 cluster
 on the right side of the breadboard, well past the MB-102's middle
 split. If your `−` rail isn't bridged across the split (step 4),
-BTN3 will look "stuck ON, toggles=1" in the Debug view — the `S` pin
+Latch3 will look "stuck ON, toggles=1" in the Debug mode — the `S` pin
 floats HIGH because `G` has nowhere to drain. Same symptom would hit
-BTN2 if its half of the `−` rail is the un-bridged one.
+Latch2 if its half of the `−` rail is the un-bridged one.
 
-## 7g. Use the panel switch for chord-mapping mode
+## 7g. How the latches and encoders behave at runtime
 
-The DFR0789 latching switch (wired in section 6) toggles between
-normal operation (switch DOWN, LED off) and the **chord mapping
-editor** (switch UP, LED on).
+There is no fixed mapping from a control to a function — the active mode
+decides. A quick mental model:
 
-While in mapping mode:
+* **Latches** drive transport. In a non-capturing mode (e.g. Monitoring)
+  Latch1 = Play/Pause, Latch2 = Stop, Latch3 = Reset. A capturing mode
+  repurposes them: **Arp** = Hold / Mute / Reset, **Berlin** = Play /
+  Stop / Generate. The LED on each latch always tracks its mechanical
+  position.
+* **Enc1–Enc4** are the per-screen parameter knobs — rotate to edit,
+  press for a secondary action.
+* **Enc5** navigates: rotate to change screen, press to open the
+  mode-select overlay.
 
-* Send a note on the `MIDIops` MIDI input to capture it as the trigger
-  for the next mapping (or load an existing mapping with that
-  trigger).
-* Rotate the **channel** encoder to cycle through chord types: maj /
-  min / dim / aug / 7 / m7 / maj7.
-* Press the **channel** shaft button to cycle the playback direction:
-  BLOCK / UP / DOWN.
-* Rotate the **BPM** encoder to set the gate length in MIDI ticks
-  (1..96, where 24 = quarter note at 24-PPQN base).
-* Press the **BPM** shaft button to browse to the next saved mapping.
-* Flip the switch back DOWN to exit. All edits auto-save into the
-  engine as you go — there's no separate save action.
-
-Once back in normal mode, any incoming NoteOn matching a mapping's
-trigger plays the chord on the configured output channel. Triggers
-that arrive while a chord is already sounding are queued FIFO and
-play in trigger order.
+To see this for real, the next steps flash the firmware and exercise
+every control from the Debug mode.
 
 ## 8. Pre-power checklist
 
@@ -370,47 +350,41 @@ Before you connect USB:
 4. After a few seconds you should see:
    - A 3-second `MIDIops` synthwave splash with the commit hash and
      build timestamp overlaid at the bottom edge.
-   - Then the live monitor: a dark roll area with the keyboard at the
-     bottom and the header strip on top showing `CH:OMNI` (or whichever
-     channel is selected).
-   - The DFR0789's LED reflects the mapping-mode state — lit when the
-     mapping editor is active, dark when in normal monitoring.
+   - Then the device boots into **Monitoring** mode: a dark roll area
+     with the keyboard at the bottom and the top bar showing the mode +
+     screen name.
+   - Each latch's LED tracks its mechanical position (lit when latched
+     closed).
 
-## 10. Smoke test
+## 10. Bring-up checklist
 
-- Turn the **channel** encoder clockwise: the header should cycle
-  `OMNI → 1 → 2 …`. Counter-clockwise reverses, stopping at `OMNI`.
-- Press the channel-encoder shaft button: the splash should re-appear
-  for 3 seconds, then resume the normal view in OMNI mode with the
-  keyboard and roll empty.
-- Turn the **BPM** encoder: the number in the top-right corner of the
-  header should change by 1 BPM per detent (range 30..300). In Ableton,
-  set the tempo source to `MIDIops` and confirm the project tempo
-  follows what's showing on the display.
-- Turn the **view** encoder: the screen should cycle through Monitor,
-  Big-BPM (giant tempo number), Notation (grand staff), and **Debug**
-  (per-control telemetry).
-- In the **Debug view**, exercise every knob and button:
-  - Rotate Channel / BPM / View / Enc4 / Enc5 → the corresponding
-    `total` and `last` columns update, and the row briefly highlights
-    yellow for 500 ms.
-  - Press Channel-SW / BPM-SW / View-SW / Enc4-SW / Enc5-SW → the
-    `press #` counter increments.
-  - Flip the PANEL / BTN2 / BTN3 latches → the `ON`/`off` pill
-    toggles and the row highlights briefly.
-  - If a button is "stuck ON, toggles=1, never changes", suspect a
-    GND wiring problem (most often the MB-102 split rail — see
-    step 4).
-- Toggle the panel switch UP: the screen should show the synthwave
-  `PRESS A NOTE / TO MAPPING` prompt. Send any NoteOn from your DAW
-  (or from the simulator) and the editor view appears with that note
-  pre-filled as the trigger. Toggle the switch DOWN to exit.
-- Send MIDI from your Mac (Ableton via the IAC Driver routed to
-  `MIDIops`, or the simulator's keyboard injection): coloured worms
-  scroll up from the keyboard, keys light up under held notes, chord
-  names appear in the header, and — if you've defined a mapping — the
-  configured chord plays out on the configured output channel,
-  visible in the monitor view as gray outline (ghost) worms.
+Work through these in order — Debug mode first, since it's the natural
+way to confirm every control is wired before trusting the musical modes.
+
+- **Monitoring + MIDI.** With the device in Monitoring, send MIDI from
+  your Mac (Ableton via the IAC Driver routed to `MIDIops`, or the
+  simulator's keyboard injection): coloured worms scroll up from the
+  keyboard and keys light up under held notes.
+- **Navigation.** Rotate **Enc5** — the screen should change within the
+  current mode. Press **Enc5** — the mode-select overlay opens; rotate
+  Enc5 to highlight a mode and press again to enter it.
+- **Debug mode — exercise every control.** Open the overlay and enter
+  **Debug**. Then:
+  - Rotate Enc1 / Enc2 / Enc3 / Enc4 / Enc5 → the matching `total` and
+    `last` columns update and the row briefly highlights yellow.
+  - Press Enc1-SW … Enc5-SW → the `press #` counter increments.
+  - Flip Latch1 / Latch2 / Latch3 → the `ON`/`off` pill toggles and the
+    row highlights briefly.
+  - If a latch is "stuck ON, toggles=1, never changes", suspect a GND
+    wiring problem (most often the MB-102 split rail — see step 4).
+- **Arp.** Enter **Arp** mode, hold a chord on the `MIDIops` input, and
+  flip **Latch1** (Hold) — an arpeggio should play out on the MIDI-out
+  channel. Latch2 mutes, Latch3 restarts from the first step.
+- **Berlin.** Enter **Berlin** mode and flip **Latch3** (Generate) — a
+  new sequence is generated; flip **Latch1** (Play) to hear it run.
+- **BPM.** Enter **BPM** mode and turn **Enc1** — the large tempo number
+  changes (range 30..300). In Ableton, set the tempo source to `MIDIops`
+  and confirm the project tempo follows the display (Internal clock).
 
 ## 11. When something doesn't work
 
@@ -425,17 +399,17 @@ Before you connect USB:
   `tft.begin()`).
 - **Knob direction reversed.** Swap the constructor arguments in
   `platform/teensy/main.cpp` (one-line fix, no rewiring).
-- **A DFR0789 latching button looks "stuck ON" in the Debug view
+- **A DFR0789 latch looks "stuck ON" in the Debug mode
   (toggles=1 at boot, never changes).** The module's `G` pin has no
   electrical path to Teensy `GND`. Most common cause: the MB-102's
   middle rail split wasn't bridged (step 4). Quick check: multimeter
   continuity from the module's `G` screw terminal to a Teensy `GND`
   pin should beep — if it doesn't, the rails are split. Less common:
   cold solder joint on the `G` jumper.
-- **A KY-040 reports noisy or no rotation in the Debug view.**
+- **A KY-040 reports noisy or no rotation in the Debug mode.**
   Same root cause family: `+` not reaching the module's on-board
   pull-ups, or `GND` missing. Continuity-check both rails.
-- **Mapping switch toggles the wrong way.** Check the polarity. The
+- **A latch toggles the wrong way.** Check the polarity. The
   `TeensyButton` constructor in `platform/teensy/main.cpp` defaults to
   `activeHigh = true` for the DFR0789; if your latching switch has the
   inverse wiring, pass `false`.

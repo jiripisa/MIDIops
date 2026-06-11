@@ -1,11 +1,11 @@
 # MIDIops — project notes for Claude
 
-A hardware MIDI chord trigger / monitor for the Teensy 4.1 + 2.8"
-ILI9341 display. Current state: incoming NoteOn → mapped to a chord
-(maj/min/dim/aug/7/m7/maj7, BLOCK or arpeggiated up/down), played out
-on a per-mapping output channel. Triggers queue FIFO so chords never
-overlap. Three views (monitor / big-BPM / notation) plus a full
-mapping editor on the device.
+A mode-based hardware MIDI instrument for the Teensy 4.1 + 2.8"
+ILI9341 display. It runs a set of modes — Monitoring / Arp / Berlin /
+BPM / Settings / Debug — on an `AppShell` + `Mode`/`Screen` runtime,
+driven by a unified 24-PPQN clock that is either the internal master or
+a followed external MIDI clock. The same `core/` is built alongside a
+macOS SDL/RtMidi simulator so behaviour can be developed off-hardware.
 
 ## The architectural rule (do not break this)
 
@@ -42,30 +42,45 @@ Both environments live in `platformio.ini`. `build_src_filter` enforces the
 
 ## Current scope
 
-* **Monitor view** — per-channel coloured worms scrolling up from a
-  4-octave keyboard. Engine-played notes appear as gray rectangular
-  outlines (ghost notes) layered on top. Header shows channel filter +
-  BPM + held-note chord names; queue strip below shows the chord engine's
-  playback list.
-* **Big-BPM view** — current MIDI Clock tempo, large.
-* **Notation view** — grand staff with rolling note heads + stems,
-  held-note names below (drift down + fade after release), held-chord
-  name above.
-* **Mapping mode** — flip the latching panel switch ON. Capture a
-  trigger by pressing a note; configure chord type / gate ticks /
-  direction / output channel with the encoders. Auto-saves to the
-  chord engine. Up to 16 mappings.
-* **Splash + mapping-prompt artwork** — full-screen 320×240 RGB565
-  bitmaps blitted from auto-generated headers
-  (`core/splash_image.h`, `core/mapping_prompt_image.h`). Regenerated
-  from PNG via `scripts/build_splash_image.py`.
+The six modes (boot order = `addMode()` order in the mains):
 
-Three rotary encoders are wired:
-  * Channel encoder on pins 3 (SW), 4 (CLK), 5 (DT).
-  * BPM encoder on pins 14 (CLK), 15 (DT), 16 (SW).
-  * View encoder on pins 17 (CLK), 18 (DT), 19 (SW).
+* **Monitoring** — incoming MIDI visualised as per-channel coloured
+  worms scrolling up from a keyboard, plus a notation screen; held-note
+  chord names in the header.
+* **Arp** — arpeggiator. Hold notes, configure pattern/octaves/gate per
+  screen; Latch1 = Hold, Latch2 = Mute, Latch3 = Reset.
+* **Berlin** — generative Berlin-School sequencer (see the spec
+  reference below); Latch1 = Play, Latch2 = Stop, Latch3 = Generate.
+* **BPM** — large tempo display; Enc1 sets BPM (read-only while the
+  clock source is External).
+* **Settings** — global settings on two screens (MIDI: out channel /
+  in channel / clock source; Scale: scale type / root).
+* **Debug** — live telemetry for every encoder and latch; for bring-up.
 
-Latching front-panel switch (DFR0789) on pin 2 drives mapping mode.
+Control scheme (roles are assigned at runtime by the active mode/screen,
+not by the pin names):
+  * **Enc1–Enc4** — the per-screen parameter knobs (rotate to edit,
+    press for the screen's secondary action).
+  * **Enc5** — rotate to switch screen within a mode; press to open the
+    mode-select overlay (rotate to pick a mode, press to confirm).
+  * **Latch1–Latch3** — transport, with per-mode meaning. Globally
+    (non-capturing modes) Latch1 = Play/Pause, Latch2 = Stop, Latch3 =
+    Reset; capturing modes (Arp, Berlin) repurpose them as listed above.
+
+Global settings (in Settings mode): scale type + root, MIDI out channel,
+MIDI in channel (0 = OMNI), and clock source (Internal / External).
+
+* **Splash artwork** — full-screen 320×240 RGB565 bitmap blitted from an
+  auto-generated header (`core/splash_image.h`). Regenerated from PNG via
+  `scripts/build_splash_image.py`.
+
+The physical panel (pins per `platform/teensy/main.cpp`):
+  * **Five KY-040 encoders** Enc1–Enc5 — Enc1 4/5/3, Enc2 14/15/16,
+    Enc3 17/18/19, Enc4 6/7/0, Enc5 20/21/22 (CLK/DT/SW).
+  * **Three DFR0789 latches** — Latch1 pin 2, Latch2 pin 1, Latch3 pin 23.
+
+Roles are assigned at runtime by the modes (see the control scheme
+above); the pin names describe physical identity only.
 
 ## Where future milestones plug in
 
@@ -74,14 +89,11 @@ don't require restructuring — only new files in `core/` and matching
 implementations under `platform/teensy/` and `platform/host/`.
 
 Likely next steps:
-  * **Persistence** of mappings to flash so they survive a power
-    cycle (Teensy has 7+ MB free).
-  * **More chord types** in `ChordEngine::ChordType` + interval
-    tables in `core/ChordEngine.cpp`.
-  * **Transport** (Start / Continue / Stop) wired to one of the
-    encoder shaft buttons or a future panel button.
-  * **Per-mapping output channel editor** — currently the editor
-    knobs only cover type / gate / direction.
+  * **Persistence** of settings + mode parameters to flash so they
+    survive a power cycle (Teensy has 7+ MB free).
+  * **More scales / Berlin generator options** in `core/Scale.*` and
+    `core/BerlinTypes.h`.
+  * **More Arp patterns** in `core/ArpTypes.h` + `core/ArpEngine.cpp`.
 
 ## Reference: Berlin School mode
 
@@ -106,7 +118,7 @@ and parameters — consult it whenever working on that mode.
   it natively; the SDL backend declares its texture with
   `SDL_PIXELFORMAT_RGB565` so no conversion is needed.
 * MIDI channels in `core::MidiMessage` are stored 1..16 (never 0..15), with
-  `0` reserved as the sentinel for OMNI in `MidiMonitorApp::channel_`.
+  `0` reserved as the sentinel for OMNI in `AppShell::midiInChannel_`.
 
 ## Hardware documentation — keep in sync
 
@@ -160,13 +172,12 @@ Keep the two language files structurally identical (same sections, tables,
 and rows). If a change is purely internal and changes nothing the user sees
 or touches, leave the manual alone.
 
-## The "listened channel" knob
+## The MIDI-in channel filter
 
-There is exactly one source of truth for the listened channel:
+The global MIDI-in channel filter lives in `AppShell::midiInChannel_`
+(`0` = OMNI, the default; `1..16` for a single channel). It is edited at
+runtime in **Settings → MIDI** with Enc2 — no rebuild needed. Both targets
+share the same `core/` state.
 
-```cpp
-// core/MidiMonitorApp.h
-static constexpr uint8_t kDefaultChannel = 0;  // 0 = OMNI, 1..16
-```
-
-Change this value, rebuild, done — both targets pick it up.
+(The old compile-time `kDefaultChannel` constant and the `MidiMonitorApp`
+class no longer exist — that legacy chord-trigger app has been removed.)
