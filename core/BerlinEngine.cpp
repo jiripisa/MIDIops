@@ -20,7 +20,13 @@ void BerlinEngine::emitStep(int i) {
     stepTicks_ = 0;
     if (!s.active) return;
     emit(true, s.note, s.velocity);
-    gate_.arm(s.note, s.gateTicks);
+    // Gate is a LIVE performance parameter: derive it from the current params
+    // (like ArpEngine does) instead of the gateTicks baked at generation time.
+    // Turning the Gate knob is audible immediately in every behavior, and the
+    // gate always matches the current resolution (no stale baked values). The
+    // baked step gateTicks remain in the sequence for the piano-roll widths.
+    const int gateTicks = stepLenTicks() * params_.gatePercent / 100;
+    gate_.arm(s.note, gateTicks);   // arm() clamps to >= 1
 }
 
 void BerlinEngine::play() {

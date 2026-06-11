@@ -319,6 +319,33 @@ static void test_evolve_on_phasing_sequence() {
 
 // silence() flushes a sounding note (NoteOff) without moving the playhead or
 // changing the playing state — used by external transport Pause / Stop safety.
+// Gate is a LIVE performance parameter: the engine derives the gate length at
+// each step from the current params (stepLen * gatePercent / 100), not from
+// the gateTicks baked into the sequence at generation time. Changing the Gate
+// knob mid-playback therefore audibly shortens/lengthens notes immediately.
+static void test_gate_param_applies_live() {
+    core::BerlinEngine e; FakeMidiOutput out; e.setOutput(&out);
+    seedTwoStep(e);                                   // Eighth → stepLen 12 ticks
+    core::BerlinParams p; p.resolution = core::BerlinResolution::Eighth; p.length = 2;
+    p.gatePercent = 50;                               // gate = 12*50/100 = 6 ticks
+    e.setParams(p);
+    e.play();                                         // NoteOn(60), gate armed
+
+    for (int i = 0; i < 6; ++i) e.onClockTick();
+    TEST_ASSERT_EQUAL_INT(1, countOff(out));          // 50% gate closed at tick 6
+
+    p.gatePercent = 90;                               // live change: gate = 10 ticks
+    e.setParams(p);
+    for (int i = 0; i < 6; ++i) e.onClockTick();      // tick 12: step 1 NoteOn(67)
+    TEST_ASSERT_EQUAL_INT(2, countOn(out));
+    TEST_ASSERT_EQUAL_INT(1, countOff(out));
+
+    for (int i = 0; i < 9; ++i) e.onClockTick();      // tick 21: 90% gate still open
+    TEST_ASSERT_EQUAL_INT(1, countOff(out));
+    e.onClockTick();                                  // tick 22: gate (10) elapses
+    TEST_ASSERT_EQUAL_INT(2, countOff(out));
+}
+
 static void test_silence_flushes_note_without_moving_playhead() {
     core::BerlinEngine e; FakeMidiOutput out; e.setOutput(&out);
     seedTwoStep(e); e.play();                          // step 0 fires NoteOn
@@ -357,6 +384,7 @@ int main() {
     RUN_TEST(test_morph_mid_range_partial_replace);
     RUN_TEST(test_morph_length_change_mid);
     RUN_TEST(test_evolve_on_phasing_sequence);
+    RUN_TEST(test_gate_param_applies_live);
     RUN_TEST(test_silence_flushes_note_without_moving_playhead);
     return UNITY_END();
 }

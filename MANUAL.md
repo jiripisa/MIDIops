@@ -170,7 +170,7 @@ stays visible on all four — only the top parameter row changes).
 
 | Knob | Parameter | Range | Default | Meaning |
 |---|---|---|---|---|
-| Enc1 | **Gate** | 40–99 % | 55 | Note length within a step. |
+| Enc1 | **Gate** | 40–99 % | 55 | Note length within a step. Applies live while playing. |
 | Enc2 | **Tension** | 0–100 % | 30 | Low = pitches hug the root/fifth (safe); high = more adventurous. |
 | Enc3 | **Octave base** | C1–C5 | C3 | The lowest octave of the voice. |
 | Enc4 | **Octave range** | 1–3 | 2 | How many octaves the notes may span. |
@@ -216,9 +216,10 @@ stays visible on all four — only the top parameter row changes).
   every **Evolve rate** loops. Generate still rolls a whole new pattern.
 - **Live** — editing a *structural* parameter (Algorithm, Length, Resolution,
   Density, Tension, Octave base/range, Scatter/GateLen) **regenerates
-  immediately**, so you hear the change as you turn the knob. *Performance*
-  knobs (Gate, Velocity, Humanize, Accent) and Morph/Evolve rate apply on the
-  next Generate.
+  immediately**, so you hear the change as you turn the knob. **Gate applies
+  live in every behavior** (it shapes the playing notes without re-rolling
+  them); Velocity, Humanize, Accent and Morph/Evolve rate apply on the next
+  Generate.
 
 **Transport (latches):**
 

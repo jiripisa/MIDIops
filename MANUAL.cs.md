@@ -170,7 +170,7 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
 
 | Knob | Parametr | Rozsah | Výchozí | Význam |
 |---|---|---|---|---|
-| Enc1 | **Gate** | 40–99 % | 55 | Délka noty v rámci kroku. |
+| Enc1 | **Gate** | 40–99 % | 55 | Délka noty v rámci kroku. Funguje živě při přehrávání. |
 | Enc2 | **Tension** | 0–100 % | 30 | Nízká = tóny se drží root/kvinty (bezpečné); vysoká = odvážnější. |
 | Enc3 | **Octave base** | C1–C5 | C3 | Nejnižší oktáva hlasu. |
 | Enc4 | **Octave range** | 1–3 | 2 | Přes kolik oktáv se noty rozprostřou. |
@@ -216,8 +216,9 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
   se změní 1–2 kroky. Generate stále vytvoří úplně nový vzor.
 - **Live** — úprava *strukturního* parametru (Algorithm, Length, Resolution,
   Density, Tension, Octave base/range, Scatter/GateLen) **okamžitě regeneruje**,
-  takže změnu slyšíš při otáčení knobu. *Performance* knoby (Gate, Velocity,
-  Humanize, Accent) a Morph/Evolve rate se projeví až při dalším Generate.
+  takže změnu slyšíš při otáčení knobu. **Gate funguje živě v každém chování**
+  (tvaruje hrající noty bez jejich přegenerování); Velocity, Humanize, Accent
+  a Morph/Evolve rate se projeví až při dalším Generate.
 
 **Transport (páčky):**
 

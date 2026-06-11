@@ -2,6 +2,7 @@
 
 #include <cstdio>
 
+#include "core/BerlinGen.h"           // berlinGateTicks (live gate re-stamp)
 #include "core/Display.h"
 #include "core/MidiOutput.h"
 #include "core/render/BerlinLayout.h" // drawBerlinParamCell, drawBerlinParamDividers, drawBerlinPianoRoll
@@ -153,7 +154,19 @@ void BerlinMode::CharacterScreen::onEncoder(int index, int delta) {
     bool structural = false;
     switch (index) {
         case 1: { int v = p.gatePercent + delta;     if (v < 40) v = 40; if (v > 99) v = 99;
-                  p.gatePercent = static_cast<uint8_t>(v); } break;
+                  p.gatePercent = static_cast<uint8_t>(v);
+                  // Gate applies LIVE: the engine derives the gate from the
+                  // current params at each step; re-stamping the baked
+                  // per-step gateTicks keeps the piano-roll widths in sync.
+                  mode_.engine_.setParams(p);
+                  BerlinSequence& seq = mode_.engine_.sequenceMut();
+                  const int g = berlinGateTicks(p);
+                  for (int i = 0; i < seq.length(); ++i) {
+                      if (seq.step(i).active) {
+                          seq.step(i).gateTicks = static_cast<uint16_t>(g);
+                      }
+                  }
+                } break;
         case 2: { int v = p.tension + delta * 5;     if (v < 0) v = 0;  if (v > 100) v = 100;
                   p.tension = static_cast<uint8_t>(v); structural = true; } break;
         case 3: { int v = p.octaveBase + delta * 12; if (v < 24) v = 24; if (v > 72) v = 72;
