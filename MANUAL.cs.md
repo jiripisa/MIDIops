@@ -1,0 +1,285 @@
+# MIDIops — Uživatelský manuál
+
+*Jazyky: [English](MANUAL.md) · **Čeština***
+
+MIDIops je hardwarový MIDI nástroj postavený na Teensy 4.1 s 2,8" (320×240)
+displejem. Běží v něm několik **módů** — MIDI monitor, **arpeggiátor**
+respektující stupnici, generativní **Berlin-School sekvencer**, zobrazení
+velkého tempa, **nastavení** a **debug**. Stejný software běží i v macOS
+simulátoru (`make sim`), takže vše v tomto manuálu platí pro reálné zařízení
+i simulátor.
+
+Manuál vysvětluje každé ovládání a každý parametr. Pro zapojení a postup stavby
+viz [`HARDWARE.md`](HARDWARE.md) a [`ASSEMBLY.md`](ASSEMBLY.md).
+
+---
+
+## 1. Ovládání v kostce
+
+Na předním panelu je **pět rotačních enkodérů** (Enc1–Enc5, každý je i tlačítko)
+a **tři páčkové (latching) spínače** (Latch1–Latch3).
+
+| Ovládání | Funkce |
+|---|---|
+| **Enc1–Enc4** (otáčení) | Editují čtyři parametry aktuální obrazovky (jeden knob na buňku, zleva doprava). |
+| **Enc1–Enc4** (stisk) | Rezervováno (v běžných módech zatím bez funkce). |
+| **Enc5** (otáčení) | **Přepínání obrazovek** v rámci módu. |
+| **Enc5** (stisk) | Otevře **překryv pro výběr módu** (viz §3). |
+| **Latch1–Latch3** | **Transport.** Význam závisí na aktivním módu (viz jednotlivé módy). |
+
+Klávesy simulátoru: Enc1 = `1`/`2`/`3` (vlevo/stisk/vpravo), Enc2 = `4`/`5`/`6`,
+Enc3 = `7`/`8`/`9`, Enc4 = `0`/`-`/`=`, Enc5 = `Q`/`W`/`E`. Latch1 = `Space`,
+Latch2 = `Backspace`, Latch3 = `Return` (každá klávesa páčku **přepne**). Noty
+zahraješ klávesami `z x c v b n m` (bílé klávesy C4–B4); `Shift`+`1…9` volí
+kanál, na který se noty pošlou; `Esc` ukončí.
+
+---
+
+## 2. Displej
+
+Vždy je nahoře **10pixelová horní lišta**:
+
+```
+Berlin  -  structure (1/4)        ♩120  ▶
+```
+
+Ukazuje **název módu**, **aktuální obrazovku** a její pořadí
+(`1/4` = obrazovka 1 ze 4), **tempo (BPM)** a **stav transportu**.
+
+Většina parametrových obrazovek zobrazuje mřížku **buněk**, každá je jeden
+parametr: malý **název** nad velkou **hodnotou**. Vizualizační obrazovky (worms,
+notace, piano-roll) vyplňují plochu pod horní lištou.
+
+---
+
+## 3. Pohyb mezi módy a obrazovkami
+
+- **Přepnout obrazovku** (v rámci módu): otoč **Enc5**. Obrazovky se cyklí
+  dokola.
+- **Přepnout mód**: stiskni **Enc5** pro otevření **překryvu výběru módu**, otoč
+  **Enc5** pro zvýraznění módu, dalším stiskem **Enc5** do něj vstoupíš. Překryv
+  se po pár sekundách bez vstupu sám zavře. Dokud je otevřený, páčky se ignorují.
+
+Zařízení startuje v **Monitoringu**. Pořadí módů: **Monitoring · Arp · Berlin ·
+BPM · Settings · Debug**.
+
+---
+
+## 4. Globální pojmy
+
+Několik nastavení je **globálních** — sdílí je všechny módy (hlavně Arp a
+Berlin). Měníš je v **Settings** a **BPM**:
+
+- **Stupnice a Root** (Settings → Scale): hudební stupnice a tónální centrum.
+  Každá generovaná/arpeggiovaná nota se do této stupnice kvantizuje. Změna
+  ovlivní Arp i Berlin.
+- **Tempo (BPM)** (mód BPM): rychlost clocku pro všechny clock-řízené módy.
+  Rozsah **30–300**, výchozí **120**.
+- **Zdroj clocku** (Settings → MIDI): **Internal** (clock generuje zařízení)
+  nebo **External** (zařízení následuje příchozí MIDI clock 24 PPQN a zobrazuje
+  následované tempo).
+- **MIDI Out kanál** (Settings → MIDI): kanál, na který se posílají noty
+  Arp/Berlin. Rozsah **1–16**, výchozí **1**.
+- **MIDI In kanál** (Settings → MIDI): z jakého kanálu se přijímají příchozí
+  noty. **OMNI (0)** přijímá všechny kanály; **1–16** filtruje na jeden.
+
+Ve vizualizacích je **kanál 1 zelený**; ostatní kanály mají vlastní barvy, aby
+byl vstup a výstup hned čitelný.
+
+---
+
+## 5. Módy
+
+### 5.1 Monitoring
+
+Sledování příchozích MIDI not v reálném čase. Bez parametrů — jen dvě zobrazení:
+
+| Obrazovka | Co ukazuje |
+|---|---|
+| **worms** | Barevné „žížaly" podle kanálu, stoupající z klaviatury, dokud jsou noty drženy. |
+| **notes** | Notový zápis posledních příchozích not. |
+
+Páčky tu fungují jako **globální transport** (Play/Pause · Stop · Reset), který
+při interním clocku posílá MIDI Start/Stop/Continue.
+
+### 5.2 Arp — arpeggiátor
+
+Arpeggiátor respektující stupnici. Drž nebo pošli noty; engine je přehraje jako
+arpeggio na **MIDI Out kanál**, zamčené na clock. Noty se řadí do **FIFO**
+fronty, takže se nikdy nepřekrývají.
+
+**Obrazovky:** `params1` · `params2` · `worms` · `notes`.
+
+**Obrazovka `params1`:**
+
+| Knob | Parametr | Rozsah | Výchozí | Význam |
+|---|---|---|---|---|
+| Enc1 | **Steps** | 1–16 | 3 | Počet kroků v jednom cyklu arpeggia. |
+| Enc2 | **Rate** | 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32 | 1/16 | Délka kroku v notových hodnotách. |
+| Enc3 | **Gate** | 10–100 % | 80 | Jak dlouho nota zní v rámci kroku (krátké = staccato). |
+| Enc4 | **Direction** | Up, Down, UpDown, DownUp, Random | Up | Pořadí, ve kterém se tóny akordu hrají. |
+
+**Obrazovka `params2`:**
+
+| Knob | Parametr | Rozsah | Výchozí | Význam |
+|---|---|---|---|---|
+| Enc1 | **Octave** | −2…+2 | 0 | Transpozice arpeggia v oktávách. |
+| Enc2 | **Swing** | 50–75 % | 50 | Zpoždění každého druhého kroku pro swing (50 = rovně). |
+| Enc3 | **Velocity** | Fixed, Follow, Accent | Fixed | Pevná úroveň, podle vstupu, nebo s akcenty. |
+| Enc4 | *(stav)* | — | — | Ukazuje stav **Hold** a **Mute** (jen pro čtení). |
+
+Obrazovky `worms` a `notes` vizualizují **odchozí** arpeggio.
+
+**Transport (páčky):**
+
+| Latch | Funkce |
+|---|---|
+| **Latch1 — Hold** | ON = drží/opakuje aktuální notu donekonečna; OFF = každou notu z fronty zahraje jednou a posune se dál. |
+| **Latch2 — Mute** | ON = přestane posílat noty (sekvence běží potichu dál); OFF = zase zní. |
+| **Latch3 — Reset** | Restartuje arpeggio od prvního kroku. |
+
+### 5.3 Berlin — generativní sekvencer
+
+Jednohlasý generativní sekvencer ve stylu Berlin School. **Vygeneruje** krátkou
+smyčkovou sekvenci jedním ze tří algoritmů a přehrává ji na clock. Přehrávání
+řídíš páčkami a hudbu tvaruješ čtyřmi parametrovými obrazovkami. Dole na každé
+obrazovce je **piano-roll** aktuální sekvence s **klaviaturou vlevo**: každá nota
+má svůj řádek, klávesy použité v sekvenci jsou označené malou šedou tečkou a
+**klávesa právě hrající noty zešedne**, jak playhead postupuje.
+
+**Obrazovky:** `structure` · `character` · `dynamics` · `behavior` (piano-roll
+zůstává na všech čtyřech — mění se jen horní řádek parametrů).
+
+**Obrazovka `structure`:**
+
+| Knob | Parametr | Rozsah | Výchozí | Význam |
+|---|---|---|---|---|
+| Enc1 | **Algorithm** | Walk, Phase, Degree | Walk | Metoda generování (viz níže). |
+| Enc2 | **Length** | 3–16 | 16 | Počet kroků smyčky. |
+| Enc3 | **Resolution** | 8th, 16th | 8th | Mřížka kroků (8th = klidnější, 16th = hustší). |
+| Enc4 | **Density** | 0–100 % | 50 | Kolik kroků hraje notu vs. pauzu. |
+
+**Obrazovka `character`:**
+
+| Knob | Parametr | Rozsah | Výchozí | Význam |
+|---|---|---|---|---|
+| Enc1 | **Gate** | 40–99 % | 55 | Délka noty v rámci kroku. |
+| Enc2 | **Tension** | 0–100 % | 30 | Nízká = tóny se drží root/kvinty (bezpečné); vysoká = odvážnější. |
+| Enc3 | **Octave base** | C1–C5 | C3 | Nejnižší oktáva hlasu. |
+| Enc4 | **Octave range** | 1–3 | 2 | Přes kolik oktáv se noty rozprostřou. |
+
+**Obrazovka `dynamics`:**
+
+| Knob | Parametr | Rozsah | Výchozí | Význam |
+|---|---|---|---|---|
+| Enc1 | **Velocity** | 1–126 | 100 | Základní velocity not. |
+| Enc2 | **Humanize** | 0–30 | 20 | Náhodné ± kolísání velocity na notu. |
+| Enc3 | **Accent** | 0–27 | 20 | Přídavek velocity na akcentovaných notách (1. doba, root noty). |
+| Enc4 | **Scatter / GateLen** *(kontextové)* | Walk: 1–7 · Phase: 3–16 | 3 / 6 | **Scatter** (Walk): velikost kroku melodického bloudění. **GateLen** (Phase): délka gate seznamu. U Degree prázdné. |
+
+**Obrazovka `behavior`:**
+
+| Knob | Parametr | Rozsah | Výchozí | Význam |
+|---|---|---|---|---|
+| Enc1 | **Behavior** | Lock, Evolve, Live | Lock | Jak se sekvence mění v čase (viz níže). |
+| Enc2 | **Morph** | 0–100 % | 100 | Jak moc se regenerace liší od aktuální sekvence: 0 % ≈ stejná, 100 % = úplně nová. |
+| Enc3 | **Evolve rate** | 1–8 | 4 | (Evolve) počet smyček mezi automatickými variacemi. |
+| Enc4 | — | — | — | Nevyužito. |
+
+**Algoritmy (Enc1 na `structure`):**
+
+- **Walk** (Drunkard's Walk) — bloudivá melodie: každá nota udělá malý náhodný
+  krok (až **Scatter**) od předchozí, vždy ve stupnici.
+- **Phase** (Gate/Pitch Phasing) — seznam výšek (délka = **Length**) a seznam
+  gate (délka = **GateLen**) různých délek běží proti sobě a tvoří dlouhý,
+  pomalu se vyvíjející vzor, který „zní náhodně, ale není".
+- **Degree** (Degree-Weighted) — každá nota se volí samostatně, vážená ke
+  konsonantním stupňům (root/kvinta); **Tension** tuto preferenci zplošťuje.
+
+**Chování (Enc1 na `behavior`):**
+
+- **Lock** — sekvence se točí beze změny; tvoje úpravy parametrů se projeví až
+  při dalším **Generate** (Latch3).
+- **Evolve** — za hraní se sekvence pomalu mění: každých **Evolve rate** smyček
+  se změní 1–2 kroky. Generate stále vytvoří úplně nový vzor.
+- **Live** — úprava *strukturního* parametru (Algorithm, Length, Resolution,
+  Density, Tension, Octave base/range, Scatter/GateLen) **okamžitě regeneruje**,
+  takže změnu slyšíš při otáčení knobu. *Performance* knoby (Gate, Velocity,
+  Humanize, Accent) a Morph/Evolve rate se projeví až při dalším Generate.
+
+**Transport (páčky):**
+
+| Latch | Funkce |
+|---|---|
+| **Latch1 — Play/Pause** | Poloha páčky = hraje/pauza. Pauza drží playhead na místě. |
+| **Latch2 — Stop** | Každé přepnutí přetočí na krok 1 a utiší notu. |
+| **Latch3 — Generate** | Každé přepnutí vygeneruje novou sekvenci (s intenzitou **Morph**). |
+
+> U páčkového spínače „každé přepnutí" znamená jednu akci, ať přepneš nahoru nebo
+> dolů — jeden stisk tedy regeneruje jednou.
+
+### 5.4 BPM
+
+Velké zobrazení tempa. **Enc1** nastavuje globální **BPM** (30–300, výchozí 120).
+Když je zdroj clocku **External**, tempo je jen pro čtení a následuje příchozí
+clock.
+
+### 5.5 Settings
+
+Globální nastavení, na dvou obrazovkách.
+
+**Obrazovka `midi`:**
+
+| Knob | Parametr | Rozsah | Výchozí | Význam |
+|---|---|---|---|---|
+| Enc1 | **MIDI Out kanál** | 1–16 | 1 | Kanál, na který se posílají noty Arp/Berlin. |
+| Enc2 | **MIDI In kanál** | OMNI, 1–16 | OMNI | Přijímat noty ze všech kanálů (OMNI) nebo jen z jednoho. |
+| Enc3 | **Clock** | Internal, External | Internal | Generovat clock, nebo následovat externí. |
+
+**Obrazovka `scale`:**
+
+| Knob | Parametr | Rozsah | Výchozí | Význam |
+|---|---|---|---|---|
+| Enc1 | **Scale** | Major, Minor, Aug, Dim, Pent+, Pent− | Major | Stupnice, do které se kvantizují všechny noty. |
+| Enc2 | **Root** | C … B | C | Tónální centrum. |
+
+### 5.6 Debug
+
+Diagnostická obrazovka ukazující živou aktivitu každého enkodéru a páčky (počty
+otoček, poslední delta, počty stisků, stav páček). Užitečné pro ověření
+hardwaru. Nedávno změněné řádky se zvýrazní, takže vidíš, který ovladač se hnul.
+Bez MIDI výstupu.
+
+---
+
+## 6. Clock: interní vs. externí
+
+- **Internal** (výchozí): zařízení je clock master. Posílá MIDI Clock (24 PPQN)
+  plus Start/Continue/Stop a Arp/Berlin z něj běží. Tempo nastav v módu **BPM**.
+- **External**: zařízení následuje příchozí MIDI Clock. Arp/Berlin postupují s
+  každým příchozím pulzem, zobrazené BPM následuje externí tempo a zařízení
+  **negeneruje** vlastní clock. Přepnutím zpět na Internal se obnoví.
+
+---
+
+## 7. Rychlý přehled kláves simulátoru
+
+| Klávesy | Ovládání |
+|---|---|
+| `1` `2` `3` | Enc1 — vlevo / stisk / vpravo |
+| `4` `5` `6` | Enc2 — vlevo / stisk / vpravo |
+| `7` `8` `9` | Enc3 — vlevo / stisk / vpravo |
+| `0` `-` `=` | Enc4 — vlevo / stisk / vpravo |
+| `Q` `W` `E` | Enc5 — vlevo / stisk / vpravo (přepínání obrazovek / překryv módů) |
+| `Space` | Latch1 (přepnout) |
+| `Backspace` | Latch2 (přepnout) |
+| `Return` | Latch3 (přepnout) |
+| `z x c v b n m` | Zahrát noty C4–B4 |
+| `Shift`+`1…9` | Nastavit kanál, na který se zahrané noty pošlou |
+| `Esc` | Ukončit |
+
+---
+
+*Tento manuál se udržuje v synchronu s firmwarem. Pokud něco zde nesouhlasí se
+zařízením, zdrojem pravdy je kód v `core/` a `platform/teensy/main.cpp` — prosím
+nahlas nebo oprav nesrovnalost.*

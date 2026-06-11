@@ -109,6 +109,19 @@ static int countActiveDiff(const core::BerlinSequence& a, const core::BerlinSequ
     return d;
 }
 
+// Like countActiveDiff but also counts a velocity change. The Evolve test uses
+// this so a re-rolled step is detected even if its note coincidentally matches
+// the base (a fresh candidate step always re-draws a humanized velocity), making
+// the test independent of the RNG seed.
+static int stepDiff(const core::BerlinSequence& a, const core::BerlinSequence& b) {
+    int d = 0; int n = a.length() < b.length() ? a.length() : b.length();
+    for (int i = 0; i < n; ++i)
+        if (a.step(i).active   != b.step(i).active ||
+            a.step(i).note     != b.step(i).note   ||
+            a.step(i).velocity != b.step(i).velocity) ++d;
+    return d;
+}
+
 static void test_generate_fills_via_generator() {
     core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
     e.setGenerator(&gen); e.setScale(&sc); e.seed(11);
@@ -132,6 +145,42 @@ static void test_morph_0_keeps_base_100_replaces() {
 
     p.morph = 100; e.setParams(p); e.generate();
     TEST_ASSERT_TRUE(countActiveDiff(base, e.sequence()) > 0);  // morph 100 → differs
+}
+
+static void clocksB(core::BerlinEngine& e, int n) { for (int i = 0; i < n; ++i) e.onClockTick(); }
+
+static void test_evolve_varies_a_few_steps_each_n_loops() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    e.setGenerator(&gen); e.setScale(&sc); e.seed(31);
+    core::BerlinParams p;
+    p.length = 4; p.density = 100; p.resolution = core::BerlinResolution::Sixteenth; // 6 ticks/step
+    p.behavior = core::BerlinBehavior::Evolve; p.evolveRate = 1;
+    e.setParams(p);
+    e.generate();
+    core::BerlinSequence base = e.sequence();
+
+    e.play();
+    const int ticksPerLoop = 4 * 6;
+    clocksB(e, ticksPerLoop);
+    TEST_ASSERT_EQUAL_INT(1, e.loopCount());
+    // stepDiff counts velocity changes too, so this holds for any seed: exactly
+    // the 1-2 spliced steps differ (a fresh candidate step re-draws velocity).
+    const int diff = stepDiff(base, e.sequence());
+    TEST_ASSERT_TRUE(diff >= 1 && diff <= 2);
+}
+
+static void test_locked_never_auto_varies() {
+    core::BerlinEngine e; core::DrunkardWalkGenerator gen; core::Scale sc(core::Scale::Type::Minor, 0);
+    e.setGenerator(&gen); e.setScale(&sc); e.seed(31);
+    core::BerlinParams p;
+    p.length = 4; p.density = 100; p.resolution = core::BerlinResolution::Sixteenth;
+    p.behavior = core::BerlinBehavior::Locked;
+    e.setParams(p);
+    e.generate();
+    core::BerlinSequence base = e.sequence();
+    e.play();
+    clocksB(e, 4 * 6 * 5);
+    TEST_ASSERT_EQUAL_INT(0, countActiveDiff(base, e.sequence()));
 }
 
 static void test_roll_range_min_two_octaves_and_contains_notes() {
@@ -167,6 +216,8 @@ int main() {
     RUN_TEST(test_pause_holds_and_stop_rewinds);
     RUN_TEST(test_generate_fills_via_generator);
     RUN_TEST(test_morph_0_keeps_base_100_replaces);
+    RUN_TEST(test_evolve_varies_a_few_steps_each_n_loops);
+    RUN_TEST(test_locked_never_auto_varies);
     RUN_TEST(test_roll_range_min_two_octaves_and_contains_notes);
     return UNITY_END();
 }
