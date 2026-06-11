@@ -63,6 +63,7 @@ Screen& ArpMode::screen(int i) {
 
 void ArpMode::onEnter() {
     engine_.setEcho(&ArpMode::echoThunk, this);
+    for (int i = 0; i < 4; ++i) latchSynced_[i] = false;  // re-absorb first delivery per index
 }
 
 void ArpMode::onExit() {
@@ -80,10 +81,21 @@ void ArpMode::onMidiIn(const MidiMessage& msg) {
 
 void ArpMode::onRawInput(const RawInput& in) {
     if (in.kind != RawInput::Kind::Latch) return;
+    if (in.index < 1 || in.index > 3) return;
+    // The shell delivers the latch LEVEL every main-loop frame. Latch1 (Hold)
+    // and Latch2 (Mute) are LEVEL-driven — their meaning is the switch position.
+    // Latch3 (Reset) is a momentary action and fires on the RISING edge only,
+    // so a held-ON switch does not zero step timing every frame. The first
+    // delivery per index after onEnter() is absorbed (record level, no edge
+    // action) so entering with a switch ON does not fire a phantom reset.
+    const bool firstDelivery = !latchSynced_[in.index];
+    const bool rising = in.on && !lastLatch_[in.index];
+    lastLatch_[in.index] = in.on;
+    latchSynced_[in.index] = true;
     switch (in.index) {
-        case 1: params_.latch = in.on;          break;  // Hold follows switch position
-        case 2: engine_.setMuted(in.on);        break;  // Mute follows switch position
-        case 3: if (in.on) engine_.reset();     break;  // Reset on rising edge
+        case 1: params_.latch = in.on;   break;  // Hold follows switch position (level)
+        case 2: engine_.setMuted(in.on); break;  // Mute follows switch position (level)
+        case 3: if (!firstDelivery && rising) engine_.reset(); break;  // Reset on rising edge
         default: break;
     }
 }

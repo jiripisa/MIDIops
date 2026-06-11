@@ -48,39 +48,4 @@ int16_t MidiMessage::pitchBendValue() const {
     return static_cast<int16_t>(raw - 8192);
 }
 
-std::string MidiMessage::format() const {
-    char buf[48];
-    switch (type) {
-        case MidiType::NoteOn:
-            std::snprintf(buf, sizeof(buf), "[%2u] NOTEON  %-4s V%u",
-                          channel, noteName(data1).c_str(), data2);
-            break;
-        case MidiType::NoteOff:
-            std::snprintf(buf, sizeof(buf), "[%2u] NOTEOFF %-4s V%u",
-                          channel, noteName(data1).c_str(), data2);
-            break;
-        case MidiType::PolyAftertouch:
-            std::snprintf(buf, sizeof(buf), "[%2u] POLYAT  %-4s %u",
-                          channel, noteName(data1).c_str(), data2);
-            break;
-        case MidiType::ControlChange:
-            std::snprintf(buf, sizeof(buf), "[%2u] CC #%-3u V%u",
-                          channel, data1, data2);
-            break;
-        case MidiType::ProgramChange:
-            std::snprintf(buf, sizeof(buf), "[%2u] PROG %u", channel, data1);
-            break;
-        case MidiType::ChannelAftertouch:
-            std::snprintf(buf, sizeof(buf), "[%2u] CHAT %u", channel, data1);
-            break;
-        case MidiType::PitchBend:
-            std::snprintf(buf, sizeof(buf), "[%2u] BEND %+d", channel, pitchBendValue());
-            break;
-        default:
-            std::snprintf(buf, sizeof(buf), "[%2u] ? %u %u", channel, data1, data2);
-            break;
-    }
-    return std::string(buf);
-}
-
 } // namespace core

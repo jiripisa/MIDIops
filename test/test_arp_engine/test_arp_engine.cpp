@@ -325,6 +325,55 @@ static void test_direction_random_no_immediate_repeat() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: Random must not be a fixed repeating permutation for power-of-two len (N4).
+//
+// The old LCG used randState_ % seqLen_; the low bits of a mod-2^32 LCG have a
+// short period (2^k for the low k bits), so for seqLen_=8 the index stream
+// repeated with period 8 → the second cycle of 8 was identical to the first.
+// Using the high bits (randState_ >> 16) % seqLen_ breaks the short cycle.
+//
+// steps=8 (seqLen_=8, a power of two), latch=true, collect 17 NoteOns.
+// With the old low-bit LCG the index stream settles into a fixed period-8 cycle,
+// so the window noteOns[1..8] is identical to noteOns[9..16]. The high-bit LCG
+// breaks that short cycle. Deterministic via the engine's fixed initial randState_.
+// ---------------------------------------------------------------------------
+static void test_random_not_fixed_permutation_pow2_len() {
+    core::ArpParams p;
+    p.steps         = 8;
+    p.rate          = core::ArpRate::Sixteenth;
+    p.gatePercent   = 80;
+    p.direction     = core::ArpDirection::Random;
+    p.velocityMode  = core::ArpVelocityMode::Fixed;
+    p.fixedVelocity = 100;
+    p.swingPercent  = 50;
+    p.latch         = true;  // loop forever so we can collect many steps
+    g_eng->setParams(p);
+
+    const int kStep = core::arpRateTicks(p.rate);  // Sixteenth = 6
+
+    g_eng->noteOn(60, 100);  // step0 fires immediately
+    for (int i = 1; i < 24; ++i) clocks(*g_eng, kStep);
+
+    std::vector<uint8_t> noteOns;
+    for (auto& e : g_out->events) { if (e.isOn) noteOns.push_back(e.note); }
+    TEST_ASSERT_TRUE(noteOns.size() >= 24);
+
+    // Old low-bit LCG settles into a fixed period-8 cycle for seqLen_=8 (a power
+    // of two): somewhere in the stream an 8-note window repeats verbatim 8 steps
+    // later. Scan for ANY such phase — its presence proves the short cycle.
+    bool foundPeriod8 = false;
+    for (int k = 0; k + 16 <= (int)noteOns.size(); ++k) {
+        bool match = true;
+        for (int i = 0; i < 8; ++i) {
+            if (noteOns[k + i] != noteOns[k + 8 + i]) { match = false; break; }
+        }
+        if (match) { foundPeriod8 = true; break; }
+    }
+    TEST_ASSERT_FALSE_MESSAGE(foundPeriod8,
+        "Random must not settle into a fixed period-8 permutation for power-of-two length");
+}
+
+// ---------------------------------------------------------------------------
 // Test: Velocity=Fixed — all steps emit fixedVelocity
 // ---------------------------------------------------------------------------
 static void test_velocity_fixed() {
@@ -582,60 +631,57 @@ static void test_direction_downup_latch() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Swing delays odd steps.
-// bpm=120, Quarter=24 ticks/step, swingPercent=75.
-// swing offset = (75-50)*24/100 = 6 ticks.
+// Test: Tempo-neutral swing (N3). A swung pair must sum to 2*base — no drift.
+// rate Eighth → base=12 ticks/step, swingPercent=75 → s=(75-50)*12/100=3.
 //
-// Step 0 fires at tick 0 (stepCount_=0, even → no swing).
-// Step 1 fires at tick 24 (stepCount_=1, odd → swing on step 2's boundary):
-//   step 2's boundary = 24 + (24+6) = 54 ticks.
-// Step 2 fires at tick 54 (not 48).
+// EVEN steps (downbeat) hold longer: base + s = 15 ticks.
+// ODD  steps (off-beat) are shortened: base - s = 9 ticks.
+//   step0 boundary at tick 15 (even, +s).
+//   step1 boundary 9 ticks later → tick 24 = 2*base (no drift).
 //
-// The cycle completes at step 2 (the 3rd step, index 2) when the engine goes idle.
-// We verify: at tick 48 note 67 NOT yet present; at tick 54 note 67 IS present.
-// Use latch=true so the engine keeps looping and we can measure the delay.
+// We verify:
+//   step1 (note 64) fires at tick 15, NOT yet at tick 14.
+//   step2 (note 67) fires at tick 24, NOT yet at tick 23.
+//   over 4 steps total elapsed ticks == 4*base (explicit no-drift assertion).
+// Use latch=true so the engine keeps looping and we can measure the timeline.
 // ---------------------------------------------------------------------------
-static void test_swing_delays_odd_steps() {
+static void test_swing_is_tempo_neutral() {
     core::ArpParams p;
     p.steps         = 3;
-    p.rate          = core::ArpRate::Quarter;  // 24 ticks/step
+    p.rate          = core::ArpRate::Eighth;  // 12 ticks/step
     p.gatePercent   = 50;
     p.direction     = core::ArpDirection::Up;
     p.velocityMode  = core::ArpVelocityMode::Fixed;
     p.fixedVelocity = 100;
-    p.swingPercent  = 75;  // odd-step delay = (75-50)*24/100 = 6 ticks
-    p.latch         = true;  // keep looping so we can observe swing
+    p.swingPercent  = 75;  // s = (75-50)*12/100 = 3
+    p.latch         = true;  // keep looping so we can observe the timeline
     g_eng->setParams(p);
 
-    const int kStep  = core::arpRateTicks(p.rate);                   // 24
-    const int kSwing = (p.swingPercent - 50) * kStep / 100;          // 6
+    const int base = core::arpRateTicks(p.rate);            // 12
+    const int s    = (p.swingPercent - 50) * base / 100;    // 3
 
-    g_eng->noteOn(60, 100);  // step 0 fires immediately (stepCount_=0 is even)
+    auto has = [&](uint8_t note) {
+        for (auto& e : g_out->events) { if (e.isOn && e.note == note) return true; }
+        return false;
+    };
 
-    clocks(*g_eng, kStep);   // tick 24: step 1 (note 64) fires; stepCount_=1 → swing pushes step2
+    g_eng->noteOn(60, 100);  // step0 (note 60) fires immediately
 
-    // Count NoteOns so far: 2 (notes 60 and 64)
-    {
-        int countOn = 0;
-        for (auto& e : g_out->events) { if (e.isOn) ++countOn; }
-        TEST_ASSERT_EQUAL_INT(2, countOn);
-    }
+    // step0 is EVEN → boundary at base + s = 15. One tick short: no step1 yet.
+    clocks(*g_eng, base + s - 1);               // tick 14
+    TEST_ASSERT_FALSE_MESSAGE(has(64), "step1 must not fire before tick 15");
+    clocks(*g_eng, 1);                          // tick 15
+    TEST_ASSERT_TRUE_MESSAGE(has(64), "step1 (note 64) must fire at tick 15");
 
-    // tick 48: un-swung boundary for step 2, but swing pushed it to tick 54
-    clocks(*g_eng, kStep);
-    {
-        bool has67 = false;
-        for (auto& e : g_out->events) { if (e.isOn && e.note == 67) has67 = true; }
-        TEST_ASSERT_FALSE(has67);  // note 67 should not have fired yet
-    }
+    // step1 is ODD → boundary base - s = 9 later → absolute tick 24 = 2*base.
+    clocks(*g_eng, (base - s) - 1);             // tick 23
+    TEST_ASSERT_FALSE_MESSAGE(has(67), "step2 must not fire before tick 24");
+    clocks(*g_eng, 1);                          // tick 24
+    TEST_ASSERT_TRUE_MESSAGE(has(67), "step2 (note 67) must fire at tick 24 (no drift)");
 
-    // tick 54: swing boundary — note 67 must now be present
-    clocks(*g_eng, kSwing);
-    {
-        bool has67 = false;
-        for (auto& e : g_out->events) { if (e.isOn && e.note == 67) has67 = true; }
-        TEST_ASSERT_TRUE(has67);
-    }
+    // No-drift: a full pair (2 steps) elapses exactly 2*base ticks; 4 steps == 4*base.
+    // We have so far driven 24 ticks for 2 boundaries (steps 1 and 2) = 2*base. Good.
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2 * base, 24, "two swung steps must sum to 2*base");
 }
 
 // ---------------------------------------------------------------------------
@@ -1207,6 +1253,60 @@ static void test_latch_latest_wins() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: stale latch-pending must not resurrect a note the user never re-pressed (N5).
+//
+// Scenario (steps=3, C major Up):
+//   Hold ON, noteOn(A=60) → A loops (60,64,67).
+//   noteOn(B=72) → stored as latch pending replacement (B never installed yet).
+//   Hold OFF (latch=false) → engine finishes current cycle and idles.
+//     BUG: latchHasPending_ survives idle.
+//   Later, Hold OFF, noteOn(C=67) → one-shot cycle of 67,71,74.
+//   Hold ON (latch=true) mid-cycle.
+//   At C's cycle boundary the stale pending (B) must NOT replace C.
+//
+// Assert: B's root (72) never plays after C starts.
+// ---------------------------------------------------------------------------
+static void test_stale_latch_pending_does_not_resurrect() {
+    core::ArpParams p = makeStdParams();
+    p.latch = true;
+    g_eng->setParams(p);
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
+
+    // A=60 loops.
+    g_eng->noteOn(60, 100);     // 60
+    clocks(*g_eng, kStep);      // 64
+    g_eng->noteOn(72, 100);     // B=72 → latch pending (NOT yet installed)
+    // Toggle Hold OFF immediately, BEFORE the latch boundary can install B, so
+    // the stale pending survives into idle (the bug's precondition).
+    p.latch = false;
+    g_eng->setParams(p);
+    clocks(*g_eng, kStep);      // 67 (cycle1 boundary deferred, non-latch path)
+    clocks(*g_eng, kStep);      // boundary resolves → qPop A → idle
+    TEST_ASSERT_FALSE_MESSAGE(g_eng->isPlaying(),
+        "engine must idle after latch toggled off");
+
+    int cStart = (int)g_out->events.size();
+
+    // Now press C=67 with Hold OFF (one-shot), then toggle Hold ON mid-cycle.
+    g_eng->noteOn(67, 100);     // C's step0 = 67
+    clocks(*g_eng, kStep);      // C step1 = 71
+    p.latch = true;
+    g_eng->setParams(p);        // Hold ON mid-cycle
+    clocks(*g_eng, kStep);      // C step2 = 74 (cycle boundary deferred)
+    clocks(*g_eng, kStep);      // boundary resolves — stale pending must NOT install B
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
+
+    // After C starts, note 72 (B's root) must never appear.
+    for (int i = cStart; i < (int)g_out->events.size(); ++i) {
+        if (g_out->events[i].isOn) {
+            TEST_ASSERT_NOT_EQUAL_MESSAGE(72, g_out->events[i].note,
+                "stale latch pending (B=72) must not resurrect after C starts");
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Test: push more notes than kQueueCap (16) — no crash, no stuck note.
 //
 // Notes beyond capacity are silently dropped by qPush.  We push 20 staccato
@@ -1347,6 +1447,47 @@ static void test_mute_suppresses_noteon_keeps_off_and_echo() {
     }
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, newNoteOns2,
         "NoteOn must resume in out after unmute");
+}
+
+// ---------------------------------------------------------------------------
+// Test: Mute must not emit orphan NoteOffs (Minor finding).
+//
+// (a) Mute ON before the note ever plays → its NoteOn is suppressed, so the
+//     wire must see NEITHER a NoteOn NOR the matching NoteOff for that note.
+// (b) Mute engaged mid-note (NoteOn already sent) → the NoteOff MUST still reach
+//     the wire (covered by test_mute_suppresses_noteon_keeps_off_and_echo).
+//
+// Echo (visualization) is unaffected; we only assert on the wire (g_out).
+// ---------------------------------------------------------------------------
+static void test_mute_before_play_emits_no_orphan_noteoff() {
+    core::ArpParams p;
+    p.steps         = 1;
+    p.rate          = core::ArpRate::Quarter;
+    p.gatePercent   = 80;
+    p.direction     = core::ArpDirection::Up;
+    p.velocityMode  = core::ArpVelocityMode::Fixed;
+    p.fixedVelocity = 100;
+    p.swingPercent  = 50;
+    p.latch         = true;  // loop so the gate NoteOff would otherwise fire
+    g_eng->setParams(p);
+
+    const int kStep = core::arpRateTicks(p.rate);  // Quarter = 24
+
+    g_eng->setMuted(true);     // mute BEFORE the note plays
+    g_eng->noteOn(60, 100);    // NoteOn suppressed on the wire
+
+    // Drive across the gate and a full step so any orphan NoteOff would appear.
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
+
+    // The wire must contain NO events for note 60 at all (neither on nor off).
+    int on60 = 0, off60 = 0;
+    for (auto& e : g_out->events) {
+        if (e.note == 60) { if (e.isOn) ++on60; else ++off60; }
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, on60, "muted-before-play: no NoteOn on the wire");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, off60,
+        "muted-before-play: no orphan NoteOff on the wire (NoteOn was suppressed)");
 }
 
 // ---------------------------------------------------------------------------
@@ -1573,6 +1714,7 @@ int main() {
     RUN_TEST(test_direction_updown);
     RUN_TEST(test_direction_updown_latch);
     RUN_TEST(test_direction_random_no_immediate_repeat);
+    RUN_TEST(test_random_not_fixed_permutation_pow2_len);
     RUN_TEST(test_velocity_fixed);
     RUN_TEST(test_velocity_follow_input);
     RUN_TEST(test_velocity_accent);
@@ -1581,7 +1723,7 @@ int main() {
     RUN_TEST(test_downup_single_step_no_crash);
     RUN_TEST(test_direction_downup);
     RUN_TEST(test_direction_downup_latch);
-    RUN_TEST(test_swing_delays_odd_steps);
+    RUN_TEST(test_swing_is_tempo_neutral);
     // Bug 2: TDD — new one-shot model tests (must FAIL before implementation)
     RUN_TEST(test_holdoff_plays_one_cycle_then_idle);
     RUN_TEST(test_holdoff_after_latch_stops);
@@ -1595,8 +1737,10 @@ int main() {
     // Queue edge cases + recursion-depth coverage
     RUN_TEST(test_steps1_many_staccato_no_stuck_note);
     RUN_TEST(test_latch_latest_wins);
+    RUN_TEST(test_stale_latch_pending_does_not_resurrect);
     RUN_TEST(test_queue_full_no_crash);
     RUN_TEST(test_mute_suppresses_noteon_keeps_off_and_echo);
+    RUN_TEST(test_mute_before_play_emits_no_orphan_noteoff);
     // Timing bug fix: promotion/replacement must start at the next step boundary
     RUN_TEST(test_promotion_starts_next_boundary_not_same_tick);
     RUN_TEST(test_latch_replacement_starts_next_boundary_not_same_tick);

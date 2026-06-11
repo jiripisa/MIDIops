@@ -2,6 +2,8 @@
 
 #include "core/BerlinSequence.h"
 #include "core/Display.h"
+#include "core/render/KeyLayout.h"
+#include "core/render/ParamGrid.h"
 
 namespace core {
 
@@ -14,8 +16,8 @@ constexpr int kBerlinRollH    = 240 - kBerlinRollTop;               // 150
 
 inline void drawBerlinParamCell(Display& d, int col, const char* name, const char* value) {
     const int x = col * kBerlinCellW;
-    d.drawText(x + 4, kBerlinParamTop + 6,  name,  color::Gray,  color::Black, 1);
-    d.drawText(x + 4, kBerlinParamTop + 24, value, color::White, color::Black, 2);
+    drawParamCellAt(d, x, kBerlinParamTop, name, value, /*pad=*/4, /*nameDy=*/6,
+                    /*valueDy=*/24, /*valueSize=*/2);
 }
 
 inline void drawBerlinParamDividers(Display& d) {
@@ -28,10 +30,7 @@ inline void drawBerlinParamDividers(Display& d) {
 constexpr int kBerlinKbW = 26;
 
 inline bool berlinIsBlackKey(int note) {
-    switch (((note % 12) + 12) % 12) {
-        case 1: case 3: case 6: case 8: case 10: return true;
-        default: return false;
-    }
+    return isBlackPc(((note % 12) + 12) % 12);
 }
 
 // Octave-snapped pitch range for the roll/keyboard: whole octaves (C..B),

@@ -53,6 +53,9 @@ void RtMidiOutput::setClockBpm(uint16_t bpm) {
             clockRunning_.store(false);
             if (clockThread_.joinable()) clockThread_.join();
         }
+        // Drop any pending ticks so switching back to Internal later doesn't
+        // replay them as a phantom burst.
+        clockTicks_.store(0, std::memory_order_relaxed);
         return;
     }
     // 24 PPQN.
@@ -66,14 +69,25 @@ void RtMidiOutput::setClockBpm(uint16_t bpm) {
 }
 
 void RtMidiOutput::clockThreadFunc() {
-    // Accumulated target time so the clock doesn't drift even if
-    // sleep_until overshoots a little.
+    // Accumulated target time so the clock doesn't drift even if the sleep
+    // overshoots a little (nextTick += period preserves the cadence).
     auto nextTick = std::chrono::steady_clock::now();
     while (clockRunning_.load()) {
         const auto period =
             std::chrono::microseconds(clockPeriodUs_.load());
         nextTick += period;
-        std::this_thread::sleep_until(nextTick);
+        // Sleep toward nextTick in small chunks, re-checking clockRunning_ each
+        // chunk, so a stop()+join() returns promptly instead of stalling the UI
+        // for up to a full period (≈83 ms at 30 BPM).
+        constexpr auto kChunk = std::chrono::milliseconds(5);
+        while (clockRunning_.load()) {
+            const auto now = std::chrono::steady_clock::now();
+            if (now >= nextTick) break;
+            const auto remaining = nextTick - now;
+            std::this_thread::sleep_for(remaining < kChunk ? remaining : kChunk);
+        }
+        // Re-check before emitting so we don't send one extra 0xF8 after stop.
+        if (!clockRunning_.load()) break;
         sendByte(0xF8);
         clockTicks_.fetch_add(1, std::memory_order_relaxed);
     }

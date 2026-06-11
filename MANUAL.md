@@ -57,8 +57,9 @@ piano-roll) fill the area below the top bar.
 - **Switch screen** (within a mode): rotate **Enc5**. Screens wrap around.
 - **Switch mode**: press **Enc5** to open the **mode-select overlay**, rotate
   **Enc5** to highlight a mode, press **Enc5** again to enter it. The overlay
-  closes by itself after a few seconds of no input. While it is open, the
-  latches are ignored.
+  closes by itself after a few seconds of no input. While the overlay is open
+  the latches do not drive the global transport, but the active mode's own latch
+  functions (e.g. Berlin Generate) still apply.
 
 The device boots into **Monitoring**. Modes, in order: **Monitoring · Arp ·
 Berlin · BPM · Settings · Debug**.
@@ -262,6 +263,8 @@ moved. No MIDI output.
 - **External**: the device follows incoming MIDI Clock. Arp/Berlin advance on
   each incoming pulse, the displayed BPM follows the external tempo, and the
   device does **not** generate its own clock. Switch back to Internal to resume.
+  When following an external clock, an incoming MIDI **Stop** silences the
+  playing engine immediately, so notes are not left hanging when the DAW stops.
 
 ---
 

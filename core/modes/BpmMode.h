@@ -21,6 +21,9 @@ private:
         explicit BpmScreen(AppServices& s) : svc_(s) {}
         const char* name() const override { return "tempo"; }
         void onEncoder(int index, int delta) override {
+            // Under an external clock the BPM is followed, not set — ignore edits
+            // (matches the manual: BPM is read-only when the clock is External).
+            if (svc_.clockSource() == ClockSource::External) return;
             if (index == 1) {
                 int v = static_cast<int>(svc_.bpm()) + delta;
                 if (v < 30)  v = 30;

@@ -32,6 +32,12 @@ void TeensyMidiOutput::setClockBpm(uint16_t bpm) {
     if (bpm == 0) {
         g_clockTimer.end();
         g_currentBpm = 0;
+        // Drop any ticks the ISR queued but the main loop hasn't drained yet,
+        // so switching back to Internal later doesn't replay them as a phantom
+        // burst. Guarded because the ISR writes g_clockTicks.
+        noInterrupts();
+        g_clockTicks = 0;
+        interrupts();
         return;
     }
 
@@ -54,18 +60,52 @@ void TeensyMidiOutput::setClockBpm(uint16_t bpm) {
     g_currentBpm = bpm;
 }
 
-void TeensyMidiOutput::sendStart()    { usbMIDI.sendRealTime(usbMIDI.Start);    }
-void TeensyMidiOutput::sendContinue() { usbMIDI.sendRealTime(usbMIDI.Continue); }
-void TeensyMidiOutput::sendStop()     { usbMIDI.sendRealTime(usbMIDI.Stop);     }
+// --------------------------------------------------------------------------
+// usbMIDI TX race (N2)
+//
+// clockIsr() (above) sends a Clock byte from an IntervalTimer ISR while the
+// main loop concurrently sends Start/Continue/Stop/NoteOn/NoteOff. The Teensy
+// core's usb_midi_write_packed() mutates tx_head/tx_available with NO IRQ
+// guard, so an ISR firing in the middle of a main-loop send can interleave and
+// corrupt the buffer — dropping a NoteOff or garbling the stream.
+//
+// On this single-core MCU the ISR already runs atomically with respect to the
+// main loop; the race is one-sided (only the ISR can preempt the main loop, not
+// vice-versa). So we close it by making every main-loop send atomic w.r.t. the
+// ISR: wrap the full send (including any implicit flush) in noInterrupts()/
+// interrupts(). The clock keeps its low-jitter ISR-driven timing untouched.
+// --------------------------------------------------------------------------
+
+void TeensyMidiOutput::sendStart() {
+    noInterrupts();
+    usbMIDI.sendRealTime(usbMIDI.Start);
+    interrupts();
+}
+
+void TeensyMidiOutput::sendContinue() {
+    noInterrupts();
+    usbMIDI.sendRealTime(usbMIDI.Continue);
+    interrupts();
+}
+
+void TeensyMidiOutput::sendStop() {
+    noInterrupts();
+    usbMIDI.sendRealTime(usbMIDI.Stop);
+    interrupts();
+}
 
 void TeensyMidiOutput::sendNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
     if (channel < 1 || channel > 16) return;
+    noInterrupts();
     usbMIDI.sendNoteOn(note, velocity, channel);
+    interrupts();
 }
 
 void TeensyMidiOutput::sendNoteOff(uint8_t channel, uint8_t note) {
     if (channel < 1 || channel > 16) return;
+    noInterrupts();
     usbMIDI.sendNoteOff(note, 0, channel);
+    interrupts();
 }
 
 uint32_t TeensyMidiOutput::consumeClockTicks() {

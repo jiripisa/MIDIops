@@ -11,8 +11,8 @@ commit. See `ASSEMBLY.md` for the step-by-step build walkthrough.
 |--:|-----------|------------|-------|-----------------|
 | 1 | Teensy 4.1 microcontroller | PJRC Teensy 4.1 | ARM Cortex-M7 600 MHz, headers pre-soldered | PJRC, distributors |
 | 2 | 2.8" TFT SPI display | ILI9341, "2.8 TFT SPI 240x320 V1.2" red PCB | 240x320, integrated XPT2046 touch (unused) and SD slot (unused) | AliExpress / Botland |
-| 3 | Latching panel switch with LED (×3) | DFRobot DFR0789 Gravity LED Switch | Set of 5 colors. First one (PANEL) enters / leaves the chord-mapping editor; second + third (BTN2, BTN3) are wired but unmapped — visible in the Debug view. LED on each mirrors its mechanical state | DFRobot, distributors |
-| 4 | Rotary encoder with push button (×5) | Keyes KY-040 | 30 detents/rev, 4 quadrature transitions per detent, integrated SW. Channel (#1), BPM (#2), View (#3) are wired with real actions; #4 and #5 are wired but unmapped — visible in the Debug view | Generic Arduino kit module |
+| 3 | Latching panel switch with LED (×3) | DFRobot DFR0789 Gravity LED Switch | Set of 5 colors. Three are used as Latch1–Latch3; their role is assigned at runtime by the active mode (global transport Play/Stop/Reset, or per-mode meaning such as Arp Hold/Mute/Reset, Berlin Play/Stop/Generate). All three are visible in the Debug view. LED on each mirrors its mechanical state | DFRobot, distributors |
+| 4 | Rotary encoder with push button (×5) | Keyes KY-040 | 30 detents/rev, 4 quadrature transitions per detent, integrated SW. Five are used as Enc1–Enc5; Enc1–Enc4 are the per-screen parameter knobs and Enc5 drives screen/mode navigation. All five are visible in the Debug view | Generic Arduino kit module |
 | 5 | Full-size breadboard | MB-102 (830 tie points) | Two halves with center channel + 4 power rails. **The power rails on the MB-102 are split in the middle** — see "Power and signal levels" below | Any electronics shop |
 | 6 | Dupont jumper wires | M-M and M-F, ~15 cm | Need ~60: 9 for display, 3 per DFR0789 × 3, 5 per encoder × 5, 4 for power-rail bridging (split halves on both edges), a few spares | Any electronics shop |
 | 7 | USB-Micro cable | Data-capable | Power + flashing + USB-MIDI from the Teensy to the Mac | Any |
@@ -26,30 +26,30 @@ This is the single source of truth. The pin numbers come from
 |-----------:|------|--------------|-----------|---------------|
 | 3.3V       | Power supply (multiple pins) | Breadboard + rail | OUT (regulator) | — |
 | GND        | Ground (multiple pins) | Breadboard − rail | — | — |
-| 2          | Mapping-mode switch signal | DFR0789 `SW` | IN, INPUT_PULLUP, **active HIGH** (latched closed = mapping editor active) | `kPinMonitorButton` |
-| 3          | Channel encoder shaft button | KY-040 #1 `SW` | IN, INPUT_PULLUP, **active LOW** | `kPinEncoderSw` |
-| 4          | Channel encoder A (clock) | KY-040 #1 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinEncoderClk` |
-| 5          | Channel encoder B (data) | KY-040 #1 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinEncoderDt` |
+| 2          | Latch1 signal | DFR0789 `SW` | IN, INPUT_PULLUP, **active HIGH** (latched closed = ON) — transport latch, role assigned per mode at runtime | `kPinLatch1` |
+| 3          | Enc1 shaft button | KY-040 #1 `SW` | IN, INPUT_PULLUP, **active LOW** — per-screen press action | `kPinEnc1Sw` |
+| 4          | Enc1 A (clock) | KY-040 #1 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc1Clk` |
+| 5          | Enc1 B (data) | KY-040 #1 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc1Dt` |
 | 8          | Display reset | ILI9341 `RESET` | OUT | `kPinTftRst` |
 | 9          | Display data/command | ILI9341 `DC` (a.k.a. `RS`) | OUT | `kPinTftDc` |
 | 10         | Display chip select | ILI9341 `CS` | OUT | `kPinTftCs` |
 | 11         | SPI MOSI (hardware) | ILI9341 `SDI`/`MOSI` | OUT | (Arduino fixed) |
 | 12         | SPI MISO (hardware) | ILI9341 `SDO`/`MISO` | IN  | (Arduino fixed; optional) |
 | 13         | SPI clock (hardware) | ILI9341 `SCK` | OUT | (Arduino fixed) |
-| 14         | BPM encoder A (clock) | KY-040 #2 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinBpmEncoderClk` |
-| 15         | BPM encoder B (data)  | KY-040 #2 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinBpmEncoderDt`  |
-| 16         | BPM encoder shaft button | KY-040 #2 `SW` | IN, INPUT_PULLUP, **active LOW** — in normal mode reserved (no-op); in mapping mode cycles through saved chord mappings | `kPinBpmEncoderSw`  |
-| 17         | View encoder A (clock) | KY-040 #3 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinViewEncoderClk` |
-| 18         | View encoder B (data)  | KY-040 #3 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinViewEncoderDt`  |
-| 19         | View encoder shaft button | KY-040 #3 `SW` | IN, INPUT_PULLUP, **active LOW** — currently reserved (no-op), planned "home / reset to Monitor view" | `kPinViewEncoderSw`  |
-| 0          | Encoder #4 shaft button | KY-040 #4 `SW`  | IN, INPUT_PULLUP, **active LOW** — wired but unmapped; surfaced in the Debug view. Pin 0 is also Serial1 RX (unused). | `kPinEnc4Sw`  |
-| 6          | Encoder #4 A (clock) | KY-040 #4 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc4Clk` |
-| 7          | Encoder #4 B (data)  | KY-040 #4 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc4Dt`  |
-| 20         | Encoder #5 A (clock) | KY-040 #5 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc5Clk` |
-| 21         | Encoder #5 B (data)  | KY-040 #5 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc5Dt`  |
-| 22         | Encoder #5 shaft button | KY-040 #5 `SW` | IN, INPUT_PULLUP, **active LOW** — wired but unmapped; surfaced in the Debug view | `kPinEnc5Sw` |
-| 1          | Latching button #2 signal | DFR0789 `SW` | IN, INPUT_PULLUP, **active HIGH** — wired but unmapped; surfaced in the Debug view as BTN2. Pin 1 is also Serial1 TX (unused). | `kPinLatch2` |
-| 23         | Latching button #3 signal | DFR0789 `SW` | IN, INPUT_PULLUP, **active HIGH** — wired but unmapped; surfaced in the Debug view as BTN3 | `kPinLatch3` |
+| 14         | Enc2 A (clock) | KY-040 #2 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc2Clk` |
+| 15         | Enc2 B (data)  | KY-040 #2 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc2Dt`  |
+| 16         | Enc2 shaft button | KY-040 #2 `SW` | IN, INPUT_PULLUP, **active LOW** — per-screen press action | `kPinEnc2Sw`  |
+| 17         | Enc3 A (clock) | KY-040 #3 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc3Clk` |
+| 18         | Enc3 B (data)  | KY-040 #3 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc3Dt`  |
+| 19         | Enc3 shaft button | KY-040 #3 `SW` | IN, INPUT_PULLUP, **active LOW** — per-screen press action | `kPinEnc3Sw`  |
+| 0          | Enc4 shaft button | KY-040 #4 `SW`  | IN, INPUT_PULLUP, **active LOW** — per-screen press action. Pin 0 is also Serial1 RX (unused). | `kPinEnc4Sw`  |
+| 6          | Enc4 A (clock) | KY-040 #4 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc4Clk` |
+| 7          | Enc4 B (data)  | KY-040 #4 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc4Dt`  |
+| 20         | Enc5 A (clock) | KY-040 #5 `CLK` | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc5Clk` |
+| 21         | Enc5 B (data)  | KY-040 #5 `DT`  | IN, INPUT_PULLUP, interrupt-driven | `kPinEnc5Dt`  |
+| 22         | Enc5 shaft button | KY-040 #5 `SW` | IN, INPUT_PULLUP, **active LOW** — opens the mode-select overlay / confirms | `kPinEnc5Sw` |
+| 1          | Latch2 signal | DFR0789 `SW` | IN, INPUT_PULLUP, **active HIGH** — transport latch, role assigned per mode. Pin 1 is also Serial1 TX (unused). | `kPinLatch2` |
+| 23         | Latch3 signal | DFR0789 `SW` | IN, INPUT_PULLUP, **active HIGH** — transport latch, role assigned per mode | `kPinLatch3` |
 
 That's the full set of long-edge GPIOs the device will use. Adding
 a 9th input would require soldering a header to one of the bottom
@@ -63,17 +63,18 @@ constants at the top of `platform/teensy/main.cpp`.
 
 Physical breadboard layout:
 
-* **Edge A (left, pins 0–12)** — top to bottom: `Enc4 SW` (0), `BTN2 S`
-  (1), `PANEL S` (2), `Channel SW/CLK/DT` (3–5), `Enc4 CLK/DT` (6–7),
+* **Edge A (left, pins 0–12)** — top to bottom: `Enc4 SW` (0), `Latch2 S`
+  (1), `Latch1 S` (2), `Enc1 SW/CLK/DT` (3–5), `Enc4 CLK/DT` (6–7),
   display `RST/DC/CS/MOSI/MISO/SCK` (8–13).
-* **Edge B (right, pins 13–23)** — bottom to top: `BPM CLK/DT/SW`
-  (14–16), `View CLK/DT/SW` (17–19), `Enc5 CLK/DT/SW` (20–22),
-  `BTN3 S` (23).
+* **Edge B (right, pins 13–23)** — bottom to top: `Enc2 CLK/DT/SW`
+  (14–16), `Enc3 CLK/DT/SW` (17–19), `Enc5 CLK/DT/SW` (20–22),
+  `Latch3 S` (23).
 
-The two "mode" encoders (BPM + View) sit together on the right edge
-so they're within thumb reach; the channel encoder is on the left
-edge so it doesn't crowd them. Enc4 + Enc5 + BTN2 + BTN3 are the
-debug-only spares — they fill the remaining long-edge pins.
+Enc2 + Enc3 sit together on the right edge so they're within thumb
+reach; Enc1 is on the left edge so it doesn't crowd them. Enc4, Enc5,
+Latch2 and Latch3 fill the remaining long-edge pins. All controls are
+physically identical and role-neutral — the active mode decides what
+each one does at runtime, so any of them may carry a real action.
 
 ## Module wiring
 
@@ -99,15 +100,16 @@ VCC  GND  CS  RESET  DC  SDI(MOSI)  SCK  LED  SDO(MISO)  T_CLK  T_CS  T_DIN  T_D
 | **SDO** / **MISO** | Teensy pin 12 | Optional for the basic monitor (no read-back). Keep wired if you may add the on-board SD slot or XPT2046 touch later |
 | **T_CLK**, **T_CS**, **T_DIN**, **T_DO**, **T_IRQ** | leave disconnected | XPT2046 touch controller — unused in milestone 1 |
 
-### DFRobot DFR0789 Gravity LED switch (chord-mapping mode)
+### DFRobot DFR0789 Gravity LED switch (Latch1)
 
 Three-pin Gravity connector on the back. The switch latches mechanically:
 push it once to lock down (LED on), push it again to release (LED off).
 With Teensy's INPUT_PULLUP the signal is **HIGH when latched closed** and
-LOW when latched open. The firmware mirrors the switch's mechanical
-state into `MidiMonitorApp::mappingMode_`, so the panel LED and the
-chord-mapping editor are always in sync: LED on = editor visible,
-LED off = normal monitoring.
+LOW when latched open. The latch level is polled every loop and delivered
+to the active mode through `AppShell::onLatch(1, …)`; the panel LED tracks
+the mechanical state. What the latch does depends on the active mode (a
+global transport Play/Pause for non-capturing modes, or a per-mode action
+such as Arp Hold or Berlin Play).
 
 | Switch pin | Goes to |
 |------------|---------|
@@ -115,7 +117,7 @@ LED off = normal monitoring.
 | **V** (3.3V) | + rail (powers the built-in LED) |
 | **S** (signal) | Teensy pin 2 |
 
-### KY-040 #1 — Channel encoder
+### KY-040 #1 — Enc1
 
 Five-pin header along the bottom edge of the module: `GND, +, SW, DT, CLK`
 (read left-to-right with the shaft facing you).
@@ -124,65 +126,61 @@ Five-pin header along the bottom edge of the module: `GND, +, SW, DT, CLK`
 |-------------|---------|-------|
 | **GND** | − rail | |
 | **+** | 3.3V rail | Powers the on-board 10 kΩ pull-ups on CLK and DT |
-| **SW** | Teensy pin 3 | Active-LOW momentary push button (press in on the shaft) — in normal mode fires `MidiMonitorApp::restart()` so you can replay the boot splash without unplugging; in mapping mode cycles the edit's chord direction (BLOCK / UP / DOWN) |
+| **SW** | Teensy pin 3 | Active-LOW momentary push button (press in on the shaft) — fires the active screen's Enc1 press action |
 | **DT** | Teensy pin 5 | Quadrature data line |
 | **CLK** | Teensy pin 4 | Quadrature clock line |
 
-If clockwise rotation decreases the channel instead of increasing it, swap
+If clockwise rotation decreases the value instead of increasing it, swap
 the constructor argument order in `platform/teensy/main.cpp`
-(`TeensyEncoder(kPinEncoderDt, kPinEncoderClk)` ↔ `(kPinEncoderClk, kPinEncoderDt)`).
+(`TeensyEncoder(kPinEnc1Dt, kPinEnc1Clk)` ↔ `(kPinEnc1Clk, kPinEnc1Dt)`).
 No rewiring required.
 
-### KY-040 #2 — BPM encoder
+### KY-040 #2 — Enc2
 
 Same module as #1 (identical pinout on the silkscreen). Sits on the
-opposite long edge of the Teensy from the channel encoder.
+opposite long edge of the Teensy from Enc1.
 
 | Encoder pin | Goes to | Notes |
 |-------------|---------|-------|
 | **GND** | − rail | |
 | **+** | 3.3V rail | |
-| **SW** | Teensy pin 16 | Active-LOW. In normal mode currently reserved (no-op — view cycling was moved to the dedicated view encoder). In mapping mode browses through saved chord mappings. The MIDI panic (release stuck notes) happens automatically on CC 120 / CC 123. |
+| **SW** | Teensy pin 16 | Active-LOW — fires the active screen's Enc2 press action. |
 | **DT** | Teensy pin 15 | |
 | **CLK** | Teensy pin 14 | |
 
-Range: 30..300 BPM, clamped at both ends. One detent = ±1 BPM. The MIDI
-Clock master always runs — there is no transport start/stop yet — so
-downstream gear that follows clock will lock to whatever BPM is showing
-in the header.
+Rotation and press both drive the active screen's Enc2 parameter; the
+role changes per mode/screen. The MIDI panic (release stuck notes)
+happens automatically on CC 120 / CC 123.
 
 Direction reversed? Swap the constructor arguments in
-`platform/teensy/main.cpp` exactly as for the channel encoder.
+`platform/teensy/main.cpp` exactly as for Enc1.
 
-### KY-040 #3 — View encoder
+### KY-040 #3 — Enc3
 
 Third KY-040, identical module to the other two. Sits on the bottom
-edge of the breadboard next to the BPM encoder so the two "mode"
-knobs are within thumb reach.
+edge of the breadboard next to Enc2 so the two right-edge knobs are
+within thumb reach.
 
 | Encoder pin | Goes to | Notes |
 |-------------|---------|-------|
 | **GND** | − rail | |
 | **+** | 3.3V rail | |
-| **SW** | Teensy pin 19 | Active-LOW. Currently reserved (no-op); planned "home / jump to Monitor view" action. |
+| **SW** | Teensy pin 19 | Active-LOW — fires the active screen's Enc3 press action. |
 | **DT** | Teensy pin 18 | Quadrature data line. |
 | **CLK** | Teensy pin 17 | Quadrature clock line. |
 
-Rotation cycles the display through **Monitor → BigBpm → Notation →
-Debug → Monitor**. CW advances forward, CCW goes backward. One detent =
-±1 view. No-op while the panel switch is ON (the mapping editor
-re-purposes both other encoders, but the view encoder is simply
-ignored in that mode).
+Rotation and press both drive the active screen's Enc3 parameter; the
+role changes per mode/screen.
 
 Direction reversed? Swap the constructor arguments in
-`platform/teensy/main.cpp` exactly as for the channel encoder.
+`platform/teensy/main.cpp` exactly as for Enc1.
 
-### KY-040 #4 — Spare encoder (debug-only)
+### KY-040 #4 — Enc4
 
-Fourth KY-040, identical module. Wired up but no app-level action
-attached yet; rotation and shaft button only update the Debug view's
-`ENC4` and `ENC4sw` rows (last-delta, total, press count, age
-highlight).
+Fourth KY-040, identical module. Rotation and press drive the active
+screen's Enc4 parameter (a screen that exposes a fourth knob); on
+screens with no Enc4 binding the rotation only updates the Debug view's
+`ENC4` / `ENC4sw` rows (last-delta, total, press count, age highlight).
 
 | Encoder pin | Goes to | Notes |
 |-------------|---------|-------|
@@ -192,28 +190,30 @@ highlight).
 | **DT** | Teensy pin 7 | Quadrature data line. |
 | **CLK** | Teensy pin 6 | Quadrature clock line. |
 
-### KY-040 #5 — Spare encoder (debug-only)
+### KY-040 #5 — Enc5
 
-Fifth KY-040, identical module. Same role as #4 — purely a debug
-target until a real action is assigned. Surfaces in the Debug view
-as `ENC5` and `ENC5sw`.
+Fifth KY-040, identical module. Enc5 is the navigation knob: rotation
+switches the screen within the active mode, and the shaft button opens
+the mode-select overlay (press again to confirm a highlighted mode). It
+also surfaces in the Debug view as `ENC5` / `ENC5sw`.
 
 | Encoder pin | Goes to | Notes |
 |-------------|---------|-------|
 | **GND** | − rail | |
 | **+** | 3.3V rail | |
-| **SW** | Teensy pin 22 | Active-LOW. |
+| **SW** | Teensy pin 22 | Active-LOW — opens / confirms the mode-select overlay. |
 | **DT** | Teensy pin 21 | Quadrature data line. |
 | **CLK** | Teensy pin 20 | Quadrature clock line. |
 
-### DFR0789 #2 + #3 — Spare latching buttons (debug-only)
+### DFR0789 #2 + #3 — Latch2 + Latch3
 
-Two extra DFR0789 latches, same module as the PANEL switch in section
-"DFRobot DFR0789 Gravity LED switch". Wired but unmapped; their
-latched state + toggle counter shows up as `BTN2` / `BTN3` in the
-Debug view.
+Two extra DFR0789 latches, same module as Latch1 in section
+"DFRobot DFR0789 Gravity LED switch (Latch1)". Their role is assigned
+per mode at runtime (global transport Stop/Reset, or per-mode actions
+such as Arp Mute/Reset or Berlin Stop/Generate); latched state + toggle
+counter also show up as `LATCH2` / `LATCH3` in the Debug view.
 
-| Switch pin | BTN2 goes to | BTN3 goes to |
+| Switch pin | Latch2 goes to | Latch3 goes to |
 |------------|---------------|---------------|
 | **G** (GND) | − rail | − rail |
 | **V** (3.3V) | + rail (powers the LED) | + rail |
@@ -243,7 +243,7 @@ the button looks "stuck ON, never toggles" in the Debug view.
   cue is a tiny break in the coloured stripe printed along the rail.
   Anything plugged into the half that doesn't have a wire back to the
   Teensy gets no power / no ground. Symptom on the DFR0789 wired past
-  the split: `S` reads HIGH forever, BTN row in Debug view shows
+  the split: `S` reads HIGH forever, the LATCH row in the Debug view shows
   toggles=1 (single boot transition) and never changes. Fix: bridge
   the two halves with a single jumper across the split — once on `+`,
   once on `−`, on each long edge of the board.
@@ -261,24 +261,24 @@ module it terminates at:
                   │       Teensy 4.1         │
                   │           [USB]          │
                   │   GND     ────     VIN   │
-   Enc4  SW   <-- │   0                23    │ --> BTN3  S
-   BTN2  S    <-- │   1                22    │ --> Enc5  SW
-   PANEL S    <-- │   2                21    │ --> Enc5  DT
-   Ch    SW   <-- │   3                20    │ --> Enc5  CLK
-   Ch    CLK  <-- │   4                19    │ --> View  SW
-   Ch    DT   <-- │   5                18    │ --> View  DT
-   Enc4  CLK  <-- │   6                17    │ --> View  CLK
-   Enc4  DT   <-- │   7                16    │ --> BPM   SW
-   TFT   RST  --> │   8                15    │ --> BPM   DT
-   TFT   DC   --> │   9                14    │ --> BPM   CLK
-   TFT   CS   --> │  10                13    │ --> TFT   SCK
-   TFT   MOSI --> │  11                12    │ <-- TFT   MISO
+   Enc4   SW  <-- │   0                23    │ --> Latch3 S
+   Latch2 S   <-- │   1                22    │ --> Enc5  SW
+   Latch1 S   <-- │   2                21    │ --> Enc5  DT
+   Enc1   SW  <-- │   3                20    │ --> Enc5  CLK
+   Enc1   CLK <-- │   4                19    │ --> Enc3  SW
+   Enc1   DT  <-- │   5                18    │ --> Enc3  DT
+   Enc4   CLK <-- │   6                17    │ --> Enc3  CLK
+   Enc4   DT  <-- │   7                16    │ --> Enc2  SW
+   TFT    RST --> │   8                15    │ --> Enc2  DT
+   TFT    DC  --> │   9                14    │ --> Enc2  CLK
+   TFT    CS  --> │  10                13    │ --> TFT   SCK
+   TFT    MOSI--> │  11                12    │ <-- TFT   MISO
                   │   3.3V    ────    GND    │
                   └──────────────────────────┘
 ```
 
 `-->` = Teensy drives the line (output). `<--` = Teensy reads the
-line (input). `Ch` = KY-040 #1 (channel encoder).
+line (input). `Enc1` = KY-040 #1.
 
 **Rebuild map.** If the wiring gets pulled apart, this is the table
 to put back together — one row per Teensy GPIO that's actually used,
@@ -289,11 +289,11 @@ top of edge A to bottom of edge B:
 | `GND` (any) | breadboard `−` rail (left half) + jumper to `−` rail (right half) — bridge the MB-102 split |
 | `3.3V` (any) | breadboard `+` rail (left half) + jumper to `+` rail (right half) — bridge the MB-102 split |
 | 0   | KY-040 #4 (Enc4) — `SW` |
-| 1   | DFR0789 #2 (BTN2) — `S` |
-| 2   | DFR0789 #1 (PANEL) — `S` |
-| 3   | KY-040 #1 (Channel) — `SW` |
-| 4   | KY-040 #1 (Channel) — `CLK` |
-| 5   | KY-040 #1 (Channel) — `DT` |
+| 1   | DFR0789 #2 (Latch2) — `S` |
+| 2   | DFR0789 #1 (Latch1) — `S` |
+| 3   | KY-040 #1 (Enc1) — `SW` |
+| 4   | KY-040 #1 (Enc1) — `CLK` |
+| 5   | KY-040 #1 (Enc1) — `DT` |
 | 6   | KY-040 #4 (Enc4) — `CLK` |
 | 7   | KY-040 #4 (Enc4) — `DT` |
 | 8   | ILI9341 — `RESET` |
@@ -302,16 +302,16 @@ top of edge A to bottom of edge B:
 | 11  | ILI9341 — `SDI` / `MOSI` (hardware SPI, fixed pin) |
 | 12  | ILI9341 — `SDO` / `MISO` (hardware SPI, fixed pin; optional) |
 | 13  | ILI9341 — `SCK` (hardware SPI, fixed pin) |
-| 14  | KY-040 #2 (BPM) — `CLK` |
-| 15  | KY-040 #2 (BPM) — `DT` |
-| 16  | KY-040 #2 (BPM) — `SW` |
-| 17  | KY-040 #3 (View) — `CLK` |
-| 18  | KY-040 #3 (View) — `DT` |
-| 19  | KY-040 #3 (View) — `SW` |
+| 14  | KY-040 #2 (Enc2) — `CLK` |
+| 15  | KY-040 #2 (Enc2) — `DT` |
+| 16  | KY-040 #2 (Enc2) — `SW` |
+| 17  | KY-040 #3 (Enc3) — `CLK` |
+| 18  | KY-040 #3 (Enc3) — `DT` |
+| 19  | KY-040 #3 (Enc3) — `SW` |
 | 20  | KY-040 #5 (Enc5) — `CLK` |
 | 21  | KY-040 #5 (Enc5) — `DT` |
 | 22  | KY-040 #5 (Enc5) — `SW` |
-| 23  | DFR0789 #3 (BTN3) — `S` |
+| 23  | DFR0789 #3 (Latch3) — `S` |
 
 On top of the per-pin signal wires, **every KY-040 and every DFR0789
 needs both `+` (to the 3.3 V rail) and `GND` (to the `−` rail)**.

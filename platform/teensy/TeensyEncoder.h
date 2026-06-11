@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include "core/Encoder.h"
+#include "core/EncoderInput.h"
 
 class Encoder;   // forward decl from PJRC Encoder library
 

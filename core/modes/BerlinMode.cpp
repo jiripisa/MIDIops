@@ -44,6 +44,7 @@ void BerlinMode::onEnter() {
     engine_.setParams(params_);
     engine_.setOutChannel(svc_.midiOutChannel());
     applyGenerator();
+    for (int i = 0; i < 4; ++i) latchSynced_[i] = false;  // re-absorb first delivery per index
     if (!engine_.sequence().step(0).active) engine_.generate();  // ensure something to show/play
 }
 
@@ -63,12 +64,21 @@ void BerlinMode::onRawInput(const RawInput& in) {
     // position is the run state). Stop and Generate are momentary actions on a
     // latching switch, so they fire on EITHER flip (up or down) — one toggle =
     // one action, instead of needing an off-then-on to re-trigger.
+    // First delivery per index after onEnter() is absorbed: record the level so
+    // a stale shadow across mode re-entry cannot fire a phantom flip action that
+    // (for Latch3) would regenerate and destroy a Locked sequence. Latch1 is
+    // LEVEL-driven (the switch position IS the run state), so it still adopts
+    // the switch position on the sync frame; Latch2/Latch3 (flip-triggered) take
+    // no action on that frame.
+    const bool firstDelivery = !latchSynced_[in.index];
     const bool changed = in.on != lastLatch_[in.index];
     lastLatch_[in.index] = in.on;
+    latchSynced_[in.index] = true;
+    const bool flip = changed && !firstDelivery;
     switch (in.index) {
         case 1: in.on ? engine_.play() : engine_.pause(); break;  // Play/Pause (level)
-        case 2: if (changed) engine_.stop();              break;  // Stop (any flip)
-        case 3: if (changed) { engine_.setParams(params_); applyGenerator(); engine_.generate(); } break;  // Reset/Generate (any flip)
+        case 2: if (flip) engine_.stop();                 break;  // Stop (any flip)
+        case 3: if (flip) { engine_.setParams(params_); applyGenerator(); engine_.generate(); } break;  // Reset/Generate (any flip)
     }
 }
 

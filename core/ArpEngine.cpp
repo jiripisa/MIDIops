@@ -14,15 +14,21 @@ namespace core {
 
 int ArpEngine::stepLenTicks(int stepCount) const {
     // Base step length in 24-PPQN clock ticks.
-    int base = arpRateTicks(params_.rate);
+    const int base = arpRateTicks(params_.rate);
 
-    // Swing: lengthen odd steps so the following step lands later.
-    // Mirrors the ms version: odd steps (stepCount odd) get an extra
-    // (swingPercent - 50) * base / 100 ticks. Never negative.
-    if (params_.swingPercent != 50 && (stepCount & 1)) {
-        int swing = (static_cast<int>(params_.swingPercent) - 50) * base / 100;
-        if (swing < 0) swing = 0;
-        base += swing;
+    // Tempo-neutral swing: the downbeat (even step) holds longer, delaying the
+    // off-beat (odd step) which is shortened by the same amount. A pair sums to
+    // 2*base, so there is no cumulative drift against a synced clock.
+    //   s = (swingPercent - 50) * base / 100, clamped >= 0.
+    //   even step → base + s ; odd step → base - s (min 1).
+    if (params_.swingPercent != 50) {
+        int s = (static_cast<int>(params_.swingPercent) - 50) * base / 100;
+        if (s < 0) s = 0;
+        if ((stepCount & 1) == 0) {
+            return base + s;
+        }
+        int len = base - s;
+        return len < 1 ? 1 : len;
     }
     return base;
 }
@@ -75,6 +81,7 @@ void ArpEngine::noteOn(uint8_t note, uint8_t velocity) {
     if (!active_) {
         qCount_ = 0;
         qHead_  = 0;
+        latchHasPending_ = false;   // clear any stale latch pending from a prior session
         cyclePending_ = false;
         qPush(note, velocity);
         initSeqFromHead();
@@ -95,12 +102,9 @@ void ArpEngine::noteOff(uint8_t /*note*/) {
 void ArpEngine::onClockTick() {
     // Fire the gate NoteOff once the current note has been sounding for its
     // gate duration (in clock ticks).
-    if (noteSounding_) {
-        ++noteAge_;
-        if (noteAge_ >= gateTicks_) {
-            emit(false, soundingNote_, 0);
-            noteSounding_ = false;
-        }
+    if (gate_.sounding()) {
+        const uint8_t n = gate_.note();
+        if (gate_.tick()) emit(false, n, 0);
     }
 
     // Advance the step counter; cross the step boundary when the current step
@@ -113,11 +117,12 @@ void ArpEngine::onClockTick() {
 }
 
 void ArpEngine::stop() {
-    if (noteSounding_) {
-        emit(false, soundingNote_, 0);
-        noteSounding_ = false;
+    if (gate_.sounding()) {
+        emit(false, gate_.note(), 0);
+        gate_.clear();
     }
     active_           = false;
+    noteOnSent_       = false;
     qCount_           = 0;
     qHead_            = 0;
     latchHasPending_  = false;
@@ -125,14 +130,13 @@ void ArpEngine::stop() {
     cyclePending_     = false;
     stepTicks_        = 0;
     curStepLen_       = 0;
-    gateTicks_        = 0;
-    noteAge_          = 0;
 }
 
 void ArpEngine::reset() {
     stepCount_        = 0;
     activeCycleSteps_ = 0;
     cyclePending_     = false;
+    latchHasPending_  = false;
     stepTicks_        = 0;
     udDir_ = +1;
     if (params_.direction == ArpDirection::Down) {
@@ -151,8 +155,12 @@ void ArpEngine::reset() {
 
 void ArpEngine::emit(bool isOn, uint8_t note, uint8_t velocity) {
     if (out_) {
-        if (isOn) { if (!muted_) out_->sendNoteOn(outChannel_, note, velocity); }
-        else      out_->sendNoteOff(outChannel_, note);
+        if (isOn) {
+            if (!muted_) { out_->sendNoteOn(outChannel_, note, velocity); noteOnSent_ = true; }
+            else         { noteOnSent_ = false; }   // suppressed: no matching wire NoteOff later
+        } else {
+            if (noteOnSent_) out_->sendNoteOff(outChannel_, note);   // only if its NoteOn went out
+        }
     }
     if (echo_) echo_(echoUser_, isOn, outChannel_, note, velocity);
 }
@@ -182,7 +190,7 @@ void ArpEngine::initSeqFromHead() {
 
 void ArpEngine::beginStep() {
     // --- 1. Kill the previous sounding note (its step has ended). ---
-    if (noteSounding_) { emit(false, soundingNote_, 0); noteSounding_ = false; }
+    if (gate_.sounding()) { emit(false, gate_.note(), 0); gate_.clear(); }
 
     // --- 2. If the previous step completed a cycle, resolve the boundary now —
     //        AFTER the last note has had its full step slot. ---
@@ -190,7 +198,7 @@ void ArpEngine::beginStep() {
         cyclePending_ = false;
         if (!params_.latch) {
             qPop();                                         // remove the finished note
-            if (qCount_ == 0) { active_ = false; return; } // queue empty → idle
+            if (qCount_ == 0) { active_ = false; latchHasPending_ = false; return; } // queue empty → idle
             initSeqFromHead();                              // next queued note → step 0
         } else if (latchHasPending_) {
             latchHasPending_ = false;
@@ -203,22 +211,19 @@ void ArpEngine::beginStep() {
     }
 
     // --- 3. Guard. ---
-    if (seqLen_ <= 0 || qCount_ == 0) { active_ = false; return; }
+    if (seqLen_ <= 0 || qCount_ == 0) { active_ = false; latchHasPending_ = false; return; }
 
     // --- 4. Emit current step. ---
     uint8_t note = seq_[seqPos_];
     uint8_t vel  = velocityForStep(seqPos_);
     emit(true, note, vel);
-    soundingNote_ = note;
-    noteSounding_ = true;
 
     // Tick bookkeeping for the new step. Gate is computed from the un-swung
     // base step length (mirrors the ms version: gate = stepMs * gate% / 100,
     // where stepMs was the base step length without the swing shift).
-    int stepLen = arpRateTicks(params_.rate);
-    gateTicks_  = stepLen * params_.gatePercent / 100;
-    if (gateTicks_ < 1) gateTicks_ = 1;
-    noteAge_    = 0;
+    int stepLen   = arpRateTicks(params_.rate);
+    int gateTicks = stepLen * params_.gatePercent / 100;
+    gate_.arm(note, gateTicks);   // arm() clamps gateTicks to >= 1
 
     // Length of this step (with swing on odd steps) determines the next boundary.
     curStepLen_ = stepLenTicks(stepCount_);
@@ -273,9 +278,12 @@ int ArpEngine::nextSeqIndex() {
         }
 
         case ArpDirection::Random: {
-            // LCG: no immediate repeat
+            // LCG: no immediate repeat. Use the HIGH bits — the low bits of a
+            // mod-2^32 LCG have a short period (the low k bits cycle with period
+            // 2^k), which produces a fixed repeating permutation for power-of-two
+            // sequence lengths. The high bits do not have that defect.
             randState_ = randState_ * 1664525u + 1013904223u;
-            int next = static_cast<int>(randState_ % static_cast<uint32_t>(seqLen_));
+            int next = static_cast<int>((randState_ >> 16) % static_cast<uint32_t>(seqLen_));
             if (seqLen_ > 1 && next == seqPos_) {
                 next = (next + 1) % seqLen_;
             }

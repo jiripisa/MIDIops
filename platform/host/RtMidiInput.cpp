@@ -2,14 +2,23 @@
 
 #include <RtMidi.h>
 
+#include <cstddef>
 #include <cstdio>
 #include <utility>
+
+namespace {
+// Upper bound on the input queue depth (see callback notes).
+constexpr std::size_t kMaxQueue = 1024;
+}  // namespace
 
 RtMidiInput::RtMidiInput(std::string portName)
     : portName_(std::move(portName)) {}
 
 RtMidiInput::~RtMidiInput() {
     if (midi_) {
+        // Cancel the callback before closing the port so an in-flight CoreMIDI
+        // callback cannot race the dying queue_/mu_.
+        try { midi_->cancelCallback(); } catch (...) {}
         try { midi_->closePort(); } catch (...) {}
     }
 }
@@ -69,6 +78,10 @@ void RtMidiInput::rtMidiCallback(double /*timestamp*/,
             core::MidiMessage rtMsg;
             rtMsg.type = rtType;
             std::lock_guard<std::mutex> lock(self->mu_);
+            // Bound the queue: only grows unbounded if the UI loop is blocked and
+            // stops draining; dropping the oldest entry bounds memory (may drop
+            // messages in that degenerate case) instead of growing without limit.
+            if (self->queue_.size() >= kMaxQueue) self->queue_.pop_front();
             self->queue_.push_back(rtMsg);
             return;
         }
@@ -100,6 +113,8 @@ void RtMidiInput::rtMidiCallback(double /*timestamp*/,
 
     {
         std::lock_guard<std::mutex> lock(self->mu_);
+        // See the realtime branch above: bound the queue by dropping the oldest.
+        if (self->queue_.size() >= kMaxQueue) self->queue_.pop_front();
         self->queue_.push_back(msg);
     }
 }

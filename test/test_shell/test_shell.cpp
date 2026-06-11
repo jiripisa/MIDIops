@@ -122,6 +122,7 @@ static void test_latch1_toggles_play_pause_and_sends_realtime() {
     shell.addMode(&a);
     shell.setMidiOutput(&out);
     shell.begin();
+    shell.onLatch(1, false);                 // prime: first delivery per index is absorbed
     shell.onLatch(1, true);                  // Play (rising)
     TEST_ASSERT_EQUAL_INT(1, out.starts);
     TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Transport::Play), static_cast<int>(a.transports.back()));
@@ -139,6 +140,8 @@ static void test_latch2_stop_latch3_reset() {
     shell.addMode(&a);
     shell.setMidiOutput(&out);
     shell.begin();
+    shell.onLatch(2, false);                 // prime: absorb first delivery for index 2
+    shell.onLatch(3, false);                 // prime: absorb first delivery for index 3
     shell.onLatch(2, true);
     TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Transport::Stop), static_cast<int>(a.transports.back()));
     shell.onLatch(3, true);
@@ -185,9 +188,72 @@ static void test_non_capturing_mode_sends_global_transport() {
     shell.addMode(&fm);
     shell.begin();
 
+    shell.onLatch(1, false);                 // prime: absorb first delivery for index 1
     shell.onLatch(1, true);
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, out.starts,
         "non-capturing mode: MIDI Start must be sent");
+}
+
+// ---------------------------------------------------------------------------
+// test_boot_with_latch_on_no_phantom_transport (N7)
+//   On hardware the shell receives the latch LEVEL every main-loop frame. A
+//   switch that is physically ON at boot must NOT fire a phantom MIDI Start on
+//   the first frame (lastLatchOn_ starts false, so the first delivery looks
+//   like an edge unless the first delivery is absorbed). A subsequent REAL
+//   change (off → on) DOES Play.
+// ---------------------------------------------------------------------------
+static void test_boot_with_latch_on_no_phantom_transport() {
+    core::AppShell shell;
+    FakeMidiOutput out;
+    FakeMode a("mon", 1);   // non-capturing
+    shell.setMidiOutput(&out);
+    shell.addMode(&a);
+    shell.begin();
+
+    // Latch1 physically ON, delivered every frame from boot.
+    for (int i = 0; i < 5; ++i) shell.onLatch(1, true);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, out.starts,
+        "boot-with-ON: first-frame absorb means no phantom Start");
+
+    // A real change: release then re-assert → genuine rising edge → Play.
+    shell.onLatch(1, false);
+    shell.onLatch(1, true);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, out.starts,
+        "a real off→on edge after absorb must Play");
+}
+
+// ---------------------------------------------------------------------------
+// test_leave_capturing_mode_no_phantom_transport (N7)
+//   Hold Latch1 ON in a capturing mode (shell suppresses global transport but
+//   never updates its shadow). Switch via the overlay to a non-capturing mode
+//   while the latch is still held ON across frames → the shell must NOT see a
+//   false edge and fire a phantom Start.
+// ---------------------------------------------------------------------------
+static void test_leave_capturing_mode_no_phantom_transport() {
+    core::AppShell shell;
+    FakeMidiOutput out;
+    FakeMode cap("arp", 1);   // capturing
+    cap.capturesTransport_ = true;
+    FakeMode mon("mon", 1);   // non-capturing
+    shell.setMidiOutput(&out);
+    shell.addMode(&cap);
+    shell.addMode(&mon);
+    shell.begin();            // active = cap (index 0)
+
+    // Latch1 held ON while in the capturing mode — shell suppresses transport.
+    for (int i = 0; i < 5; ++i) shell.onLatch(1, true);
+    TEST_ASSERT_EQUAL_INT(0, out.starts);
+
+    // Switch to the non-capturing mode via the overlay.
+    shell.onEncoderSw(5);          // open overlay
+    shell.onEncoderKnob(5, +1);    // select index 1 (mon)
+    shell.onEncoderSw(5);          // confirm → enterMode(1)
+    TEST_ASSERT_EQUAL_INT(1, shell.activeModeIndex());
+
+    // Keep delivering the held-ON level — must NOT fire a phantom Start.
+    for (int i = 0; i < 5; ++i) shell.onLatch(1, true);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, out.starts,
+        "leaving a capturing mode with latch held ON must not phantom-Play");
 }
 
 static void test_render_draws_top_bar_with_mode_and_screen() {
@@ -224,6 +290,27 @@ static void test_debug_mode_counts_raw_input() {
     shell.render(d);
     TEST_ASSERT_TRUE(d.drewText("ENC5"));
     TEST_ASSERT_TRUE(d.drewText("LATCH2"));
+}
+
+// ---------------------------------------------------------------------------
+// test_debug_mode_latch_counts_flips_not_frames (Minor)
+//   On hardware the shell delivers the latch LEVEL every main-loop frame, so a
+//   per-frame counter spins uselessly. The Debug latch counter must count only
+//   state CHANGES (flips). Deliver Latch2 ON 3×, then OFF 2× = exactly 2 flips.
+// ---------------------------------------------------------------------------
+static void test_debug_mode_latch_counts_flips_not_frames() {
+    core::AppShell shell;
+    core::DebugMode dbg;
+    shell.addMode(&dbg);
+    shell.begin();
+    for (int i = 0; i < 3; ++i) shell.onLatch(2, true);   // 1 flip (off→on)
+    for (int i = 0; i < 2; ++i) shell.onLatch(2, false);  // 1 flip (on→off)
+    StubDisplay d;
+    shell.render(d);
+    TEST_ASSERT_TRUE_MESSAGE(d.drewText("LATCH2  #2"),
+        "Debug latch counter must count flips (2), not frames (5)");
+    TEST_ASSERT_FALSE_MESSAGE(d.drewText("LATCH2  #5"),
+        "Debug latch counter must not count every frame");
 }
 
 static void test_bpm_mode_enc1_adjusts_tempo() {
@@ -312,9 +399,12 @@ int main() {
     RUN_TEST(test_latch2_stop_latch3_reset);
     RUN_TEST(test_capturing_mode_skips_global_transport);
     RUN_TEST(test_non_capturing_mode_sends_global_transport);
+    RUN_TEST(test_boot_with_latch_on_no_phantom_transport);
+    RUN_TEST(test_leave_capturing_mode_no_phantom_transport);
     RUN_TEST(test_render_draws_top_bar_with_mode_and_screen);
     RUN_TEST(test_render_overlay_lists_modes);
     RUN_TEST(test_debug_mode_counts_raw_input);
+    RUN_TEST(test_debug_mode_latch_counts_flips_not_frames);
     RUN_TEST(test_bpm_mode_enc1_adjusts_tempo);
     RUN_TEST(test_bpm_clamps);
     RUN_TEST(test_shell_scale_defaults_cmajor_and_sets);

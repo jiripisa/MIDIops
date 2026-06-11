@@ -12,20 +12,21 @@ void BerlinEngine::emit(bool isOn, uint8_t note, uint8_t velocity) {
 }
 
 void BerlinEngine::emitStep(int i) {
+    if (gate_.sounding()) {
+        emit(false, gate_.note(), 0);
+        gate_.clear();
+    }
     const BerlinStep& s = seq_.step(i);
     stepTicks_ = 0;
     if (!s.active) return;
     emit(true, s.note, s.velocity);
-    noteSounding_ = true;
-    soundingNote_ = s.note;
-    gateTicks_    = s.gateTicks < 1 ? 1 : s.gateTicks;
-    noteAge_      = 0;
+    gate_.arm(s.note, s.gateTicks);
 }
 
 void BerlinEngine::play() {
     if (playing_) return;
     playing_ = true;
-    if (!noteSounding_) emitStep(playhead_);   // start promptly from silence
+    if (!gate_.sounding()) emitStep(playhead_);   // start promptly from silence
 }
 
 void BerlinEngine::pause() {
@@ -34,17 +35,16 @@ void BerlinEngine::pause() {
 
 void BerlinEngine::stop() {
     playing_ = false;
-    if (noteSounding_) { emit(false, soundingNote_, 0); noteSounding_ = false; }
+    if (gate_.sounding()) { emit(false, gate_.note(), 0); gate_.clear(); }
     playhead_  = 0;
     stepTicks_ = 0;
-    noteAge_   = 0;
     loopCount_ = 0;
 }
 
 void BerlinEngine::onClockTick() {
-    if (noteSounding_) {
-        ++noteAge_;
-        if (noteAge_ >= gateTicks_) { emit(false, soundingNote_, 0); noteSounding_ = false; }
+    if (gate_.sounding()) {
+        const uint8_t n = gate_.note();
+        if (gate_.tick()) emit(false, n, 0);
     }
     if (!playing_) return;
     ++stepTicks_;
@@ -82,10 +82,9 @@ void BerlinEngine::regenerate(bool full) {
             seq_.setLength(n);
         }
     }
-    if (noteSounding_) { emit(false, soundingNote_, 0); noteSounding_ = false; }
+    if (gate_.sounding()) { emit(false, gate_.note(), 0); gate_.clear(); }
     playhead_  = 0;
     stepTicks_ = 0;
-    noteAge_   = 0;
     loopCount_ = 0;
 }
 

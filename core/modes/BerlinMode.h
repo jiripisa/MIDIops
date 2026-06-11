@@ -28,6 +28,11 @@ public:
     void onEnter() override;
     void onExit()  override { engine_.stop(); }   // silence any sounding note on leave
     void onClockTick() override { engine_.onClockTick(); }
+    // External transport Stop must silence + rewind the engine, since under an
+    // external clock the gate-off normally fired in onClockTick() never arrives
+    // once the upstream clock stops. Start/Continue do not auto-play here —
+    // external transport driving playback start is out of scope.
+    void onTransport(Transport t) override { if (t == Transport::Stop) engine_.stop(); }
     void onRawInput(const RawInput& in) override;
     bool capturesTransport() const override { return true; }
     void update(uint32_t nowMs) override;
@@ -48,7 +53,8 @@ private:
     BerlinEngine          engine_;
     BerlinParams          params_{};
     Scale                 scale_{};
-    bool                  lastLatch_[4] = {false, false, false, false};  // index 1..3 edge-detect
+    bool                  lastLatch_[4]   = {false, false, false, false};  // index 1..3 edge-detect
+    bool                  latchSynced_[4] = {false, false, false, false};  // first-frame absorb after onEnter
 
     void applyGenerator();   // point the engine at the generator for params_.algorithm
 

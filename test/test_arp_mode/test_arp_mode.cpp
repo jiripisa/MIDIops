@@ -251,6 +251,49 @@ static void test_reset_via_latch3() {
 }
 
 // ---------------------------------------------------------------------------
+// test_arp_latch3_reset_is_edge_triggered (N8)
+//   On hardware the shell delivers the Latch3 LEVEL every main-loop frame.
+//   Latch3 (Reset) must fire on the RISING edge only — not every frame while
+//   the switch sits ON, which would zero step timing faster than clock ticks
+//   arrive and freeze the arp. We start the arp playing, then deliver
+//   {Latch,3,0,true} on every frame interleaved with clock ticks, and assert
+//   the arp still advances (new NoteOns keep appearing).
+// ---------------------------------------------------------------------------
+static void test_arp_latch3_reset_is_edge_triggered() {
+    core::AppShell shell;
+    core::ArpMode  arp(shell);
+    FakeMidiOutput out;
+
+    arp.setMidiOutput(&out);
+    shell.setMidiOutput(&out);
+    shell.addMode(&arp);
+    shell.begin();
+
+    shell.tick(0);
+    arp.onMidiIn(makeNoteOn(60, 100));   // step 0 fires immediately
+
+    // First Latch3 delivery after entry is absorbed (no reset); start counting.
+    arp.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});
+    out.events.clear();
+
+    const int stepTicks = core::arpRateTicks(core::ArpRate::Sixteenth);  // 6
+    int noteOns = 0;
+    // Mirror the hardware main loop: onLatch fires EVERY frame and one clock
+    // tick is drained per frame. If Reset were level-triggered it would zero
+    // the step-tick accumulator every frame, the boundary would never be
+    // crossed, and the arp would freeze. Run for several steps' worth of frames.
+    for (int frame = 0; frame < stepTicks * 4; ++frame) {
+        arp.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});  // held ON
+        out.pendingTicks = 1;
+        shell.tick(static_cast<uint32_t>(frame + 1));
+        for (const auto& ev : out.events) if (ev.isOn) ++noteOns;
+        out.events.clear();
+    }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, noteOns,
+        "Latch3 held ON must not freeze the arp — it advances on clock ticks");
+}
+
+// ---------------------------------------------------------------------------
 // test_arp_mode_exit_silences_engine
 //   onExit() calls engine_.stop() — engine is no longer playing after mode exit.
 // ---------------------------------------------------------------------------
@@ -375,6 +418,7 @@ int main() {
     RUN_TEST(test_hold_via_latch1);
     RUN_TEST(test_mute_via_latch2);
     RUN_TEST(test_reset_via_latch3);
+    RUN_TEST(test_arp_latch3_reset_is_edge_triggered);
     RUN_TEST(test_arp_uses_settings_out_channel);
     RUN_TEST(test_arp_ticks_from_internal_clock);
     return UNITY_END();

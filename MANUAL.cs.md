@@ -58,7 +58,9 @@ notace, piano-roll) vyplňují plochu pod horní lištou.
   dokola.
 - **Přepnout mód**: stiskni **Enc5** pro otevření **překryvu výběru módu**, otoč
   **Enc5** pro zvýraznění módu, dalším stiskem **Enc5** do něj vstoupíš. Překryv
-  se po pár sekundách bez vstupu sám zavře. Dokud je otevřený, páčky se ignorují.
+  se po pár sekundách bez vstupu sám zavře. Dokud je překryv otevřený, páčky
+  neovládají globální transport, ale vlastní funkce páček aktivního módu
+  (např. Berlin Generate) stále platí.
 
 Zařízení startuje v **Monitoringu**. Pořadí módů: **Monitoring · Arp · Berlin ·
 BPM · Settings · Debug**.
@@ -259,6 +261,8 @@ Bez MIDI výstupu.
 - **External**: zařízení následuje příchozí MIDI Clock. Arp/Berlin postupují s
   každým příchozím pulzem, zobrazené BPM následuje externí tempo a zařízení
   **negeneruje** vlastní clock. Přepnutím zpět na Internal se obnoví.
+  Při následování externího clocku příchozí MIDI **Stop** okamžitě umlčí hrající
+  engine, takže při zastavení DAW nezůstanou viset žádné noty.
 
 ---
 

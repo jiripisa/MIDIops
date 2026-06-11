@@ -9,14 +9,16 @@ namespace core {
 // enough pulses have been seen.
 class ClockFollower {
 public:
-    void reset() { count_ = 0; haveFirst_ = false; bpm_ = 0; firstMs_ = 0; }
+    void reset() { count_ = 0; haveFirst_ = false; bpm_ = 0; firstMs_ = 0; lastPulseMs_ = 0; }
     // Call on each incoming Clock pulse with a monotonic ms timestamp.
     void onPulse(uint32_t nowMs);
     uint16_t bpm() const { return bpm_; }   // 0 until known
 private:
-    static constexpr int kWindow = 24;      // one beat
+    static constexpr int      kWindow = 24;       // one beat
+    static constexpr uint32_t kGapMs  = 500;      // pulse spacing far beyond 30 BPM (~83 ms)
     bool     haveFirst_ = false;
     uint32_t firstMs_ = 0;
+    uint32_t lastPulseMs_ = 0;
     int      count_ = 0;
     uint16_t bpm_ = 0;
 };

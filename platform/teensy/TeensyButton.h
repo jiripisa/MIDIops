@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include "core/Button.h"
+#include "core/ButtonInput.h"
 
 // Reads the debounced state of a button wired to a Teensy GPIO pin.
 // Always uses INPUT_PULLUP internally; the `activeHigh` constructor flag
