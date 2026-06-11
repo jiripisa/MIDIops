@@ -9,6 +9,8 @@ namespace core {
 
 enum class ClockSource : uint8_t { Internal = 0, External = 1 };
 
+enum class TransportMode : uint8_t { Off = 0, Send, Receive, kCount };
+
 // Global services the shell exposes to modes. Grows over time (settings,
 // scale, note state). Plan 1: tempo + transport read/control.
 class AppServices {
@@ -26,6 +28,12 @@ public:
     virtual void     setMidiInChannel(uint8_t ch) = 0;
     virtual ClockSource clockSource() const = 0;
     virtual void     setClockSource(ClockSource s) = 0;
+    virtual TransportMode transportMode() const = 0;
+    virtual void          setTransportMode(TransportMode m) = 0;
+    // A capturing mode reports its local transport action. The shell mirrors
+    // transportState_ (top bar) and emits MIDI transport when mode == Send.
+    // Does NOT call back into the mode's onTransport (the mode already acted).
+    virtual void          notifyLocalTransport(Transport t) = 0;
 };
 
 } // namespace core

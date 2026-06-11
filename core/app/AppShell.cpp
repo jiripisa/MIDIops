@@ -110,26 +110,31 @@ void AppShell::onLatch(int index, bool on) {
     }
 }
 
-void AppShell::applyTransport(Transport t) {
+void AppShell::notifyLocalTransport(Transport t) {
+    const bool send = out_ != nullptr && transportMode_ == TransportMode::Send;
     switch (t) {
         case Transport::Play:
-            if (out_) {
+            if (send) {
                 if (transportState_ == TransportState::Paused) out_->sendContinue();
                 else out_->sendStart();
             }
             transportState_ = TransportState::Playing;
             break;
         case Transport::Pause:
-            if (out_) out_->sendStop();
+            if (send) out_->sendStop();
             transportState_ = TransportState::Paused;
             break;
         case Transport::Stop:
         case Transport::Reset:
-            if (out_) out_->sendStop();
+            if (send) out_->sendStop();
             transportState_ = TransportState::Stopped;
             break;
     }
     transport_ = t;
+}
+
+void AppShell::applyTransport(Transport t) {
+    notifyLocalTransport(t);
     if (modeCount_ > 0) modes_[activeMode_]->onTransport(t);
 }
 

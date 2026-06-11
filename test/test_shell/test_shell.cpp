@@ -256,6 +256,45 @@ static void test_leave_capturing_mode_no_phantom_transport() {
         "leaving a capturing mode with latch held ON must not phantom-Play");
 }
 
+// ---------------------------------------------------------------------------
+// test_global_latch_transport_gated_by_mode
+//   The global Latch1 Play still updates the playback state (mode notified),
+//   but emits a MIDI Start only when TransportMode == Send. Under Off and
+//   Receive nothing reaches the wire.
+// ---------------------------------------------------------------------------
+static void test_global_latch_transport_gated_by_mode() {
+    // Off: state changes, no Start on the wire.
+    {
+        core::AppShell shell;
+        FakeMidiOutput out;
+        FakeMode a("mon", 1);          // non-capturing
+        shell.setMidiOutput(&out);
+        shell.addMode(&a);
+        shell.begin();
+        shell.setTransportMode(core::TransportMode::Off);
+        shell.onLatch(1, false);       // prime: absorb first delivery
+        shell.onLatch(1, true);        // Play
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, out.starts, "Off: no MIDI Start");
+        TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Transport::Play),
+                              static_cast<int>(a.transports.back()));  // mode still notified
+    }
+    // Receive: state changes, no Start on the wire.
+    {
+        core::AppShell shell;
+        FakeMidiOutput out;
+        FakeMode a("mon", 1);
+        shell.setMidiOutput(&out);
+        shell.addMode(&a);
+        shell.begin();
+        shell.setTransportMode(core::TransportMode::Receive);
+        shell.onLatch(1, false);       // prime
+        shell.onLatch(1, true);        // Play
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, out.starts, "Receive: no MIDI Start");
+        TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Transport::Play),
+                              static_cast<int>(a.transports.back()));
+    }
+}
+
 static void test_render_draws_top_bar_with_mode_and_screen() {
     core::AppShell shell;
     FakeMode a("mon", 2);
@@ -401,6 +440,7 @@ int main() {
     RUN_TEST(test_non_capturing_mode_sends_global_transport);
     RUN_TEST(test_boot_with_latch_on_no_phantom_transport);
     RUN_TEST(test_leave_capturing_mode_no_phantom_transport);
+    RUN_TEST(test_global_latch_transport_gated_by_mode);
     RUN_TEST(test_render_draws_top_bar_with_mode_and_screen);
     RUN_TEST(test_render_overlay_lists_modes);
     RUN_TEST(test_debug_mode_counts_raw_input);

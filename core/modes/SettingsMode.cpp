@@ -29,6 +29,14 @@ const char* clockName(core::ClockSource s) {
     return s == core::ClockSource::External ? "Ext" : "Int";
 }
 
+const char* transportName(core::TransportMode m) {
+    switch (m) {
+        case core::TransportMode::Send:    return "Send";
+        case core::TransportMode::Receive: return "Recv";
+        default:                           return "Off";
+    }
+}
+
 } // namespace
 
 namespace core {
@@ -62,6 +70,11 @@ void SettingsMode::MidiScreen::onEncoder(int index, int delta) {
                                         : ClockSource::Internal);
             break;
         }
+        case 4: {
+            if (delta != 0)
+                svc_.setTransportMode(cycleEnum(svc_.transportMode(), delta));
+            break;
+        }
         default:
             break;
     }
@@ -89,7 +102,8 @@ void SettingsMode::MidiScreen::render(Display& d) const {
     // Cell (0,1): clock source
     drawParamCell(d, 0, 1, "CLOCK", clockName(svc_.clockSource()));
 
-    // Cell (1,1): intentionally left empty
+    // Cell (1,1): transport mode
+    drawParamCell(d, 1, 1, "TRNSPT", transportName(svc_.transportMode()));
 }
 
 // ---------------------------------------------------------------------------
