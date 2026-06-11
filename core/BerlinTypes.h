@@ -17,7 +17,7 @@ inline int berlinResolutionTicks(BerlinResolution r) {
 // they come from global Settings (AppServices::scale()). Tempo is global too.
 struct BerlinParams {
     BerlinAlgorithm  algorithm        = BerlinAlgorithm::DrunkardWalk;
-    uint8_t          length           = 16;   // 3..16 steps
+    uint8_t          length           = 16;   // 3..32 steps (BerlinSequence::kMaxSteps)
     BerlinResolution resolution       = BerlinResolution::Eighth;
     uint8_t          density          = 50;   // 0..100 % active steps
     uint8_t          gatePercent      = 55;   // 40..99

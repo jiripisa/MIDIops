@@ -108,10 +108,10 @@ static void test_structure_screen_edits_and_clamps() {
     core::BerlinMode berlin(shell);
     core::Screen& s = berlin.screen(0);
 
-    // Length clamps 3..16
-    for (int i = 0; i < 30; ++i) s.onEncoder(2, +1);
-    TEST_ASSERT_EQUAL_INT(16, berlin.params().length);
-    for (int i = 0; i < 30; ++i) s.onEncoder(2, -1);
+    // Length clamps 3..32
+    for (int i = 0; i < 40; ++i) s.onEncoder(2, +1);
+    TEST_ASSERT_EQUAL_INT(32, berlin.params().length);
+    for (int i = 0; i < 40; ++i) s.onEncoder(2, -1);
     TEST_ASSERT_EQUAL_INT(3, berlin.params().length);
 
     // Density clamps 0..100 (step = 5)

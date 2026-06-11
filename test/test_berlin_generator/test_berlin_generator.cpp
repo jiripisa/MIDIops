@@ -194,6 +194,29 @@ static void test_phasing_repeats_pitch_by_period() {
         TEST_ASSERT_EQUAL_UINT8(seq.step(i % P).note, seq.step(i).note);
 }
 
+// Length now goes up to 32 (the full BerlinSequence capacity): a 32-step Walk
+// materializes all 32 steps in scale, and Phasing's pitch list follows Length
+// (P=32 with G=6 → lcm 96 capped at 32, pitch[i % 32] = the list itself).
+static void test_length_32_supported() {
+    core::Scale scale(core::Scale::Type::Minor, 0);
+
+    core::DrunkardWalkGenerator walk;
+    core::BerlinParams p = baseParams(); p.length = 32; p.density = 100;
+    core::BerlinSequence seq; core::BerlinRng rng; rng.seed(13);
+    walk.generate(seq, p, scale, rng);
+    TEST_ASSERT_EQUAL_INT(32, seq.length());
+    for (int i = 0; i < seq.length(); ++i)
+        if (seq.step(i).active) TEST_ASSERT_TRUE(scale.contains(seq.step(i).note));
+
+    core::GatePitchPhasingGenerator phase;
+    core::BerlinParams q = baseParams(); q.length = 32; q.gateLen = 6; q.density = 100;
+    core::BerlinSequence seq2; core::BerlinRng rng2; rng2.seed(13);
+    phase.generate(seq2, q, scale, rng2);
+    TEST_ASSERT_EQUAL_INT(32, seq2.length());          // lcm(32,6)=96 → capped 32
+    for (int i = 0; i < seq2.length(); ++i)
+        if (seq2.step(i).active) TEST_ASSERT_TRUE(scale.contains(seq2.step(i).note));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_walk_starts_on_root_and_stays_in_scale);
@@ -207,5 +230,6 @@ int main() {
     RUN_TEST(test_phasing_length_is_capped_lcm);
     RUN_TEST(test_phasing_in_scale_and_capped);
     RUN_TEST(test_phasing_repeats_pitch_by_period);
+    RUN_TEST(test_length_32_supported);
     return UNITY_END();
 }

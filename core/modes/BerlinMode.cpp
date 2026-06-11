@@ -97,7 +97,7 @@ void BerlinMode::StructureScreen::onEncoder(int index, int delta) {
     BerlinParams& p = mode_.params_;
     switch (index) {
         case 1: p.algorithm = cycleEnum(p.algorithm, delta); break;
-        case 2: { int v = p.length + delta; if (v < 3) v = 3; if (v > 16) v = 16;
+        case 2: { int v = p.length + delta; if (v < 3) v = 3; if (v > 32) v = 32;
                   p.length = static_cast<uint8_t>(v); } break;
         case 3: p.resolution = cycleEnum(p.resolution, delta); break;
         case 4: { int v = p.density + delta * 5; if (v < 0) v = 0; if (v > 100) v = 100;

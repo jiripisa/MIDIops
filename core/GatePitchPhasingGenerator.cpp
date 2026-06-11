@@ -9,15 +9,20 @@ static int gcdInt(int a, int b) { while (b) { int t = a % b; a = b; b = t; } ret
 
 void GatePitchPhasingGenerator::generate(BerlinSequence& out, const BerlinParams& p,
                                          const Scale& scale, BerlinRng& rng) {
-    auto clampLen = [](int v) { return v < 1 ? 1 : (v > 16 ? 16 : v); };
-    const int P = clampLen(p.length);
-    const int G = clampLen(p.gateLen);
+    // Pitch list follows the Length param (up to the sequence capacity);
+    // the gate list keeps its own 3..16 editor range.
+    auto clampP = [](int v) {
+        return v < 1 ? 1 : (v > BerlinSequence::kMaxSteps ? BerlinSequence::kMaxSteps : v);
+    };
+    auto clampG = [](int v) { return v < 1 ? 1 : (v > 16 ? 16 : v); };
+    const int P = clampP(p.length);
+    const int G = clampG(p.gateLen);
 
     const uint8_t baseRoot = berlinBaseRoot(scale, p);
     const int gate = berlinGateTicks(p);
 
     // PITCH list (root-heavy). pitch[0] = root.
-    uint8_t pitch[16];
+    uint8_t pitch[BerlinSequence::kMaxSteps];
     for (int k = 0; k < P; ++k)
         pitch[k] = (k == 0) ? baseRoot : berlinDegreeWeightedNote(scale, baseRoot, p, rng);
 

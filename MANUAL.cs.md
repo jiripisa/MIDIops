@@ -157,7 +157,7 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
 | Knob | Parametr | Rozsah | Výchozí | Význam |
 |---|---|---|---|---|
 | Enc1 | **Algorithm** | Walk, Phase, Degree | Walk | Metoda generování (viz níže). |
-| Enc2 | **Length** | 3–16 | 16 | Počet kroků smyčky. |
+| Enc2 | **Length** | 3–32 | 16 | Počet kroků smyčky. |
 | Enc3 | **Resolution** | 8th, 16th | 8th | Mřížka kroků (8th = klidnější, 16th = hustší). |
 | Enc4 | **Density** | 0–100 % | 50 | Kolik kroků hraje notu vs. pauzu. |
 

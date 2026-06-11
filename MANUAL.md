@@ -157,7 +157,7 @@ stays visible on all four — only the top parameter row changes).
 | Knob | Parameter | Range | Default | Meaning |
 |---|---|---|---|---|
 | Enc1 | **Algorithm** | Walk, Phase, Degree | Walk | Generation method (see below). |
-| Enc2 | **Length** | 3–16 | 16 | Steps in the loop. |
+| Enc2 | **Length** | 3–32 | 16 | Steps in the loop. |
 | Enc3 | **Resolution** | 8th, 16th | 8th | Step grid (8th = calmer, 16th = busier). |
 | Enc4 | **Density** | 0–100 % | 50 | How many steps play a note vs. rest. |
 
