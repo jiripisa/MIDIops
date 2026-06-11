@@ -80,7 +80,6 @@ static void test_latch3_resync_on_reentry() {
 
     // Latch3 ON once → one generate (and syncs the shadow ON for index 3).
     berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});
-    core::BerlinSequence kept = berlin.engine().sequence();
 
     // Leave and re-enter — onEnter() must clear the per-index sync flags so the
     // first delivery is absorbed regardless of the stale ON shadow.
