@@ -46,6 +46,9 @@ public:
     void     setMidiInChannel(uint8_t ch) override { if (ch <= 16) midiInChannel_ = ch; }
     ClockSource clockSource() const override { return clockSource_; }
     void     setClockSource(ClockSource s) override;
+    TransportMode transportMode() const override { return transportMode_; }
+    void     setTransportMode(TransportMode m) override { transportMode_ = m; }
+    void     notifyLocalTransport(Transport t) override;
 
     // Inspectors for tests.
     int activeModeIndex() const { return activeMode_; }
@@ -71,6 +74,7 @@ private:
     uint8_t        midiOutChannel_ = 1;
     uint8_t        midiInChannel_  = 0;     // OMNI
     ClockSource    clockSource_    = ClockSource::Internal;
+    TransportMode  transportMode_  = TransportMode::Send;
     ClockFollower  clockFollower_;
     // transportState_ is the authoritative playback state (used from the
     // transport task on); transport_ holds the last command issued.

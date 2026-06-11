@@ -56,6 +56,15 @@ void BerlinMode::update(uint32_t /*nowMs*/) {
     engine_.setOutChannel(svc_.midiOutChannel());
 }
 
+void BerlinMode::onTransport(Transport t) {
+    switch (t) {
+        case Transport::Play:  engine_.play();  break;
+        case Transport::Pause: engine_.silence(); engine_.pause(); break;
+        case Transport::Reset:
+        case Transport::Stop:  engine_.stop();  break;
+    }
+}
+
 void BerlinMode::onRawInput(const RawInput& in) {
     if (in.kind != RawInput::Kind::Latch) return;     // encoders go via Screen
     if (in.index < 1 || in.index > 3) return;
@@ -76,9 +85,21 @@ void BerlinMode::onRawInput(const RawInput& in) {
     latchSynced_[in.index] = true;
     const bool flip = changed && !firstDelivery;
     switch (in.index) {
-        case 1: in.on ? engine_.play() : engine_.pause(); break;  // Play/Pause (level)
-        case 2: if (flip) engine_.stop();                 break;  // Stop (any flip)
-        case 3: if (flip) { engine_.setParams(params_); applyGenerator(); engine_.generate(); } break;  // Reset/Generate (any flip)
+        case 1:  // Play/Pause (level). Emit MIDI transport only on a real flip,
+                 // so the every-frame level delivery cannot spam Start/Stop and
+                 // the first-frame sync adoption stays silent.
+            in.on ? engine_.play() : engine_.pause();
+            if (flip) svc_.notifyLocalTransport(in.on ? Transport::Play : Transport::Pause);
+            break;
+        case 2:  // Stop (any flip)
+            if (flip) {
+                engine_.stop();
+                svc_.notifyLocalTransport(Transport::Stop);
+            }
+            break;
+        case 3:  // Reset/Generate (any flip) — no transport emission
+            if (flip) { engine_.setParams(params_); applyGenerator(); engine_.generate(); }
+            break;
     }
 }
 

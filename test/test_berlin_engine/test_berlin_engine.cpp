@@ -317,6 +317,27 @@ static void test_evolve_on_phasing_sequence() {
         "evolve on phasing sequence must splice exactly 1-2 steps");
 }
 
+// silence() flushes a sounding note (NoteOff) without moving the playhead or
+// changing the playing state — used by external transport Pause / Stop safety.
+static void test_silence_flushes_note_without_moving_playhead() {
+    core::BerlinEngine e; FakeMidiOutput out; e.setOutput(&out);
+    seedTwoStep(e); e.play();                          // step 0 fires NoteOn
+    for (int i = 0; i < 12; ++i) e.onClockTick();      // advance to step 1 (still playing)
+    const int playheadBefore = e.playhead();
+    const bool playingBefore = e.isPlaying();
+    const int offBefore = countOff(out);
+
+    e.silence();
+    TEST_ASSERT_EQUAL_INT(offBefore + 1, countOff(out));    // a NoteOff arrived
+    TEST_ASSERT_EQUAL_INT(playheadBefore, e.playhead());    // playhead unchanged
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(playingBefore),
+                          static_cast<int>(e.isPlaying())); // playing unchanged
+    TEST_ASSERT_EQUAL_INT(-1, e.soundingNote());            // gate cleared
+
+    e.silence();                                            // no note → no extra NoteOff
+    TEST_ASSERT_EQUAL_INT(offBefore + 1, countOff(out));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_resolution_ticks);
@@ -336,5 +357,6 @@ int main() {
     RUN_TEST(test_morph_mid_range_partial_replace);
     RUN_TEST(test_morph_length_change_mid);
     RUN_TEST(test_evolve_on_phasing_sequence);
+    RUN_TEST(test_silence_flushes_note_without_moving_playhead);
     return UNITY_END();
 }

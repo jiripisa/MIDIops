@@ -84,6 +84,11 @@ Berlin). Měníš je v **Settings** a **BPM**:
   Arp/Berlin. Rozsah **1–16**, výchozí **1**.
 - **MIDI In kanál** (Settings → MIDI): z jakého kanálu se přijímají příchozí
   noty. **OMNI (0)** přijímá všechny kanály; **1–16** filtruje na jeden.
+- **Transport** (Settings → MIDI): **Send** (výchozí) = zařízení vysílá MIDI
+  Start/Continue/Stop, aby ho DAW mohl sledovat; **Recv** = zařízení následuje
+  příchozí MIDI transport (Start = hraje od začátku, Continue = pokračuje,
+  Stop = zastaví a utiší); **Off** = ani neposílá, ani nenásleduje. Nastavení
+  je nezávislé na nastavení zdroje clocku.
 
 Ve vizualizacích je **kanál 1 zelený**; ostatní kanály mají vlastní barvy, aby
 byl vstup a výstup hned čitelný.
@@ -102,7 +107,7 @@ Sledování příchozích MIDI not v reálném čase. Bez parametrů — jen dv�
 | **notes** | Notový zápis posledních příchozích not. |
 
 Páčky tu fungují jako **globální transport** (Play/Pause · Stop · Reset), který
-při interním clocku posílá MIDI Start/Stop/Continue.
+posílá MIDI Start/Stop/Continue, je-li **Transport** nastaven na **Send**.
 
 ### 5.2 Arp — arpeggiátor
 
@@ -225,6 +230,10 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
 > U páčkového spínače „každé přepnutí" znamená jednu akci, ať přepneš nahoru nebo
 > dolů — jeden stisk tedy regeneruje jednou.
 
+> Je-li **Transport = Send**, Latch1 a Latch2 také vysílají MIDI Start/Continue/Stop,
+> aby připojený DAW následoval přehrávání zařízení: Latch1 ON posílá Start (nebo
+> Continue při obnovení po pauze); Latch2 Stop posílá Stop.
+
 ### 5.4 BPM
 
 Velké zobrazení tempa. **Enc1** nastavuje globální **BPM** (30–300, výchozí 120).
@@ -242,6 +251,7 @@ Globální nastavení, na dvou obrazovkách.
 | Enc1 | **MIDI Out kanál** | 1–16 | 1 | Kanál, na který se posílají noty Arp/Berlin. |
 | Enc2 | **MIDI In kanál** | OMNI, 1–16 | OMNI | Přijímat noty ze všech kanálů (OMNI) nebo jen z jednoho. |
 | Enc3 | **Clock** | Internal, External | Internal | Generovat clock, nebo následovat externí. |
+| Enc4 | **Transport** | Off, Send, Recv | Send | Send = vysílat Start/Continue/Stop (zařízení je transport master); Recv = následovat příchozí transport; Off = ani jedno. |
 
 **Obrazovka `scale`:**
 
@@ -259,15 +269,29 @@ Bez MIDI výstupu.
 
 ---
 
-## 6. Clock: interní vs. externí
+## 6. Clock a Transport
+
+**Zdroj clocku** (Settings → MIDI, Enc3) a **Transport** (Settings → MIDI, Enc4) jsou nezávislá nastavení.
 
 - **Internal** (výchozí): zařízení je clock master. Posílá MIDI Clock (24 PPQN)
-  plus Start/Continue/Stop a Arp/Berlin z něj běží. Tempo nastav v módu **BPM**.
+  a Arp/Berlin z něj běží. Tempo nastav v módu **BPM**.
 - **External**: zařízení následuje příchozí MIDI Clock. Arp/Berlin postupují s
   každým příchozím pulzem, zobrazené BPM následuje externí tempo a zařízení
   **negeneruje** vlastní clock. Přepnutím zpět na Internal se obnoví.
-  Při následování externího clocku příchozí MIDI **Stop** okamžitě umlčí hrající
-  engine, takže při zastavení DAW nezůstanou viset žádné noty.
+
+**Transport** řídí, zda se MIDI Start/Continue/Stop posílají nebo následují, nezávisle na zdroji clocku:
+
+- **Send** (výchozí): zařízení vysílá MIDI transportní zprávy. Globální páčky
+  (v nezachycujících módech) a Latch1/Latch2 v Berlinu posílají Start, Continue
+  nebo Stop, aby připojený DAW sledoval přehrávání zařízení.
+- **Recv**: zařízení následuje příchozí MIDI transport. Start hraje od začátku;
+  Continue obnoví z uložené pozice; Stop zastaví a okamžitě utiší hranou notu.
+  Zprávy jsou zpracovány a nejsou dál přeposílány.
+- **Off**: zařízení ani neposílá, ani nenásleduje transportní zprávy.
+
+**Bezpečnost (vždy aktivní):** při **externím** zdroji clocku příchozí MIDI Stop
+vždy okamžitě utiší hranou notu — bez ohledu na nastavení Transportu — protože
+DAW zastavující clock by notu nikdy nezavřel přes naplánovaný gate-off.
 
 ---
 

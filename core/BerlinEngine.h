@@ -28,6 +28,7 @@ public:
     // Transport.
     void play();    // run (emits the current step if starting from silence)
     void pause();   // hold playhead, stop advancing
+    void silence(); // NoteOff a sounding note; playhead + playing state untouched
     void stop();    // rewind to step 0 + all-notes-off
     void generate();    // (re)generate using current params + Morph (Reset/Generate)
     void generateFull();// (re)generate ignoring Morph (full fresh) — used by Live

@@ -159,6 +159,135 @@ static void test_clock_source_switch_mid_note() {
         "switching back to Internal must call setClockBpm(bpm) to resume internal generation");
 }
 
+// Receive: incoming Start/Continue/Stop drive Berlin playback, consumed (never
+// re-emitted). Start plays from step 0; Stop pauses + silences keeping position;
+// Continue resumes from the held position.
+static void test_receive_start_continue_stop_drive_berlin() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out;
+    berlin.setMidiOutput(&out);
+    shell.setMidiOutput(&out);
+    shell.addMode(&berlin);
+    shell.begin();
+    shell.setTransportMode(core::TransportMode::Receive);   // INTERNAL clock (default)
+
+    auto countOn  = [&] { int n = 0; for (auto& e : out.events) if (e.isOn) ++n; return n; };
+    auto countOff = [&] { int n = 0; for (auto& e : out.events) if (!e.isOn) ++n; return n; };
+
+    // Incoming Start → Reset+Play: engine plays from step 0 and fires its NoteOn.
+    core::MidiMessage start{}; start.type = core::MidiType::Start;
+    shell.onMidiIn(start);
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
+    TEST_ASSERT_EQUAL_INT(0, berlin.engine().playhead());
+    TEST_ASSERT_GREATER_THAN(0, countOn());                 // step 0 NoteOn emitted
+
+    // Advance via the internal-clock tick path (pendingTicks + tick) one pulse
+    // at a time until the playhead has moved off step 0 AND a note is sounding,
+    // so the upcoming Stop has a note to silence.
+    for (int i = 0; i < 96 &&
+         (berlin.engine().playhead() == 0 || berlin.engine().soundingNote() < 0); ++i) {
+        out.pendingTicks = 1;
+        shell.tick(1000 + i);
+    }
+    TEST_ASSERT_GREATER_THAN(0, berlin.engine().playhead());
+    TEST_ASSERT_GREATER_OR_EQUAL(0, berlin.engine().soundingNote());
+    const int heldPlayhead = berlin.engine().playhead();
+
+    // Incoming Stop → Pause: not playing, an immediate NoteOff, playhead kept.
+    const int offBefore = countOff();
+    core::MidiMessage stop{}; stop.type = core::MidiType::Stop;
+    shell.onMidiIn(stop);
+    TEST_ASSERT_FALSE(berlin.engine().isPlaying());
+    TEST_ASSERT_GREATER_THAN(offBefore, countOff());        // silenced immediately
+    TEST_ASSERT_GREATER_THAN(0, berlin.engine().playhead());
+    TEST_ASSERT_EQUAL_INT(heldPlayhead, berlin.engine().playhead());
+
+    // Incoming Continue → Play from the held position (not rewound to 0).
+    core::MidiMessage cont{}; cont.type = core::MidiType::Continue;
+    shell.onMidiIn(cont);
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
+    TEST_ASSERT_EQUAL_INT(heldPlayhead, berlin.engine().playhead());
+
+    // Nothing was re-emitted downstream: Receive consumes transport.
+    TEST_ASSERT_EQUAL_INT(0, out.starts + out.continues + out.stops);
+}
+
+// Under Send (default), incoming transport is ignored and nothing is re-emitted.
+static void test_transport_ignored_unless_receive() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out;
+    berlin.setMidiOutput(&out);
+    shell.setMidiOutput(&out);
+    shell.addMode(&berlin);
+    shell.begin();                                          // default Send, Internal clock
+
+    core::MidiMessage start{}; start.type = core::MidiType::Start;
+    shell.onMidiIn(start);
+    TEST_ASSERT_FALSE(berlin.engine().isPlaying());         // Berlin stays stopped
+    TEST_ASSERT_EQUAL_INT(0, out.starts + out.continues + out.stops);  // nothing re-emitted
+}
+
+// Safety under Off + External clock: an incoming Stop still silences the engine
+// (so a tick-scheduled gate-off cannot hang), and nothing is re-emitted.
+// Negative case for the safety rule: under an INTERNAL clock the gate-off
+// arrives on the device's own ticks, so an incoming Stop outside Receive must
+// be ignored entirely — the engine keeps playing and nothing is silenced.
+static void test_stop_safety_not_under_internal_clock() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out;
+    berlin.setMidiOutput(&out);
+    shell.setMidiOutput(&out);
+    shell.addMode(&berlin);
+    shell.begin();
+    shell.setTransportMode(core::TransportMode::Off);
+    // Clock source stays Internal (the default).
+
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});   // absorb first delivery
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});    // play
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
+
+    const int offBefore = static_cast<int>(out.events.size());
+    core::MidiMessage stop{}; stop.type = core::MidiType::Stop;
+    shell.onMidiIn(stop);
+
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());                   // still playing
+    TEST_ASSERT_EQUAL_INT(offBefore, static_cast<int>(out.events.size()));  // no forced NoteOff
+    TEST_ASSERT_EQUAL_INT(0, out.stops);                             // nothing re-emitted
+}
+
+static void test_external_stop_safety_under_off() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out;
+    berlin.setMidiOutput(&out);
+    shell.setMidiOutput(&out);
+    shell.addMode(&berlin);
+    shell.begin();
+    shell.setTransportMode(core::TransportMode::Off);
+    shell.setClockSource(core::ClockSource::External);
+
+    // Play Berlin and drive it (via external Clock pulses) until a note sounds.
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});   // absorb first delivery
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});    // play
+    core::MidiMessage clk{}; clk.type = core::MidiType::Clock;
+    for (int i = 0; i < 96 && berlin.engine().soundingNote() < 0; ++i) shell.onMidiIn(clk);
+    TEST_ASSERT_GREATER_OR_EQUAL(0, berlin.engine().soundingNote());
+
+    int offBefore = 0;
+    for (const auto& e : out.events) { if (!e.isOn) ++offBefore; }
+
+    core::MidiMessage stop{}; stop.type = core::MidiType::Stop;
+    shell.onMidiIn(stop);
+
+    int offAfter = 0;
+    for (const auto& e : out.events) { if (!e.isOn) ++offAfter; }
+    TEST_ASSERT_GREATER_THAN(offBefore, offAfter);          // silenced
+    TEST_ASSERT_EQUAL_INT(0, out.stops);                    // nothing re-emitted
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_realtime_types_are_not_channel_voice);
@@ -168,5 +297,9 @@ int main() {
     RUN_TEST(test_follower_gap_reset);
     RUN_TEST(test_bpm_readonly_under_external_clock);
     RUN_TEST(test_clock_source_switch_mid_note);
+    RUN_TEST(test_receive_start_continue_stop_drive_berlin);
+    RUN_TEST(test_transport_ignored_unless_receive);
+    RUN_TEST(test_external_stop_safety_under_off);
+    RUN_TEST(test_stop_safety_not_under_internal_clock);
     return UNITY_END();
 }

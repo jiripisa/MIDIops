@@ -83,6 +83,11 @@ Berlin). You change them in **Settings** and **BPM**:
   on. Range **1–16**, default **1**.
 - **MIDI In channel** (Settings → MIDI): which channel incoming notes are
   accepted from. **OMNI (0)** accepts all channels; **1–16** filters to one.
+- **Transport** (Settings → MIDI): **Send** (default) = the device emits MIDI
+  Start/Continue/Stop so a DAW can follow it; **Recv** = the device follows
+  incoming MIDI transport (Start plays from the beginning, Continue resumes,
+  Stop halts and silences); **Off** = neither send nor follow. Independent of
+  the Clock source setting.
 
 In the visualizations, **channel 1 is green**; other channels have their own
 colours so input and output read at a glance.
@@ -101,7 +106,7 @@ A real-time monitor of incoming MIDI notes. No parameters — just two views:
 | **notes** | A staff (notation) view of recent incoming notes. |
 
 The latches act as the **global transport** here (Play/Pause · Stop · Reset),
-which sends MIDI Start/Stop/Continue when the clock source is Internal.
+which sends MIDI Start/Stop/Continue when **Transport** is set to **Send**.
 
 ### 5.2 Arp — Arpeggiator
 
@@ -226,6 +231,10 @@ stays visible on all four — only the top parameter row changes).
 > On a latching switch, "each flip" means one action whether you flip it up or
 > down — so a single press regenerates once.
 
+> When **Transport = Send**, Latch1 and Latch2 also emit MIDI Start/Continue/Stop
+> so a connected DAW follows the device's playback: Latch1 ON sends Start (or
+> Continue when resuming from pause); Latch2 Stop sends Stop.
+
 ### 5.4 BPM
 
 A large tempo display. **Enc1** sets the global **BPM** (30–300, default 120).
@@ -243,6 +252,7 @@ Global settings, on two screens.
 | Enc1 | **MIDI Out channel** | 1–16 | 1 | Channel Arp/Berlin notes are sent on. |
 | Enc2 | **MIDI In channel** | OMNI, 1–16 | OMNI | Accept notes from all channels (OMNI) or just one. |
 | Enc3 | **Clock** | Internal, External | Internal | Generate the clock, or follow an external one. |
+| Enc4 | **Transport** | Off, Send, Recv | Send | Send = emit Start/Continue/Stop (device is the transport master); Recv = follow incoming transport; Off = neither. |
 
 **Screen `scale`:**
 
@@ -260,16 +270,30 @@ moved. No MIDI output.
 
 ---
 
-## 6. Clock: internal vs. external
+## 6. Clock and Transport
+
+**Clock source** (Settings → MIDI, Enc3) and **Transport** (Settings → MIDI, Enc4) are independent settings.
 
 - **Internal** (default): the device is the clock master. It sends MIDI Clock
-  (24 PPQN) plus Start/Continue/Stop, and Arp/Berlin run from it. Set the tempo
-  in **BPM** mode.
+  (24 PPQN), and Arp/Berlin run from it. Set the tempo in **BPM** mode.
 - **External**: the device follows incoming MIDI Clock. Arp/Berlin advance on
   each incoming pulse, the displayed BPM follows the external tempo, and the
   device does **not** generate its own clock. Switch back to Internal to resume.
-  When following an external clock, an incoming MIDI **Stop** silences the
-  playing engine immediately, so notes are not left hanging when the DAW stops.
+
+**Transport** controls whether MIDI Start/Continue/Stop are sent or followed, independently of the clock source:
+
+- **Send** (default): the device emits MIDI transport messages. The global
+  latches (in non-capturing modes) and Berlin's Latch1/Latch2 send Start,
+  Continue, or Stop so a connected DAW follows the device's playback.
+- **Recv**: the device follows incoming MIDI transport. Start plays from the
+  beginning; Continue resumes from the held position; Stop halts and silences
+  the sounding note immediately. Messages are consumed and not re-emitted.
+- **Off**: the device neither sends nor follows transport messages.
+
+**Safety (always active):** under an **External** clock source, an incoming MIDI
+Stop always silences the sounding note immediately — regardless of the Transport
+setting — because a DAW stopping the clock means the note's scheduled gate-off
+would never arrive.
 
 ---
 

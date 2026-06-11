@@ -101,6 +101,76 @@ static void test_latch3_resync_on_reentry() {
 }
 
 // ---------------------------------------------------------------------------
+// Under the default Send transport mode, Berlin's local latches also emit MIDI
+// transport so a DAW can follow: Latch1 ON → Start, Latch1 OFF → Stop, Latch1
+// ON again (resuming from paused) → Continue. The emission is flip-gated, so
+// the first-frame sync adoption is silent (primed with the opposite level).
+// ---------------------------------------------------------------------------
+static void test_berlin_latches_emit_transport_under_send() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out;
+    berlin.setMidiOutput(&out);
+    shell.setMidiOutput(&out);          // notify emission goes through the shell
+    berlin.onEnter();
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::TransportMode::Send),
+                          static_cast<int>(shell.transportMode()));
+
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // prime: absorb first delivery
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // flip ON → Start
+    TEST_ASSERT_EQUAL_INT(1, out.starts);
+    TEST_ASSERT_EQUAL_INT(0, out.stops);
+
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // flip OFF → Stop
+    TEST_ASSERT_EQUAL_INT(1, out.stops);
+
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // flip ON from paused → Continue
+    TEST_ASSERT_EQUAL_INT(1, out.continues);
+    TEST_ASSERT_EQUAL_INT(1, out.starts);                          // no extra Start
+}
+
+// ---------------------------------------------------------------------------
+// Latch2 (Stop) flip emits a MIDI Stop under Send.
+// ---------------------------------------------------------------------------
+static void test_berlin_latch2_emits_stop_under_send() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out;
+    berlin.setMidiOutput(&out);
+    shell.setMidiOutput(&out);
+    berlin.onEnter();
+
+    berlin.onRawInput({core::RawInput::Kind::Latch, 2, 0, false});  // prime
+    berlin.onRawInput({core::RawInput::Kind::Latch, 2, 0, true});   // flip → Stop
+    TEST_ASSERT_EQUAL_INT(1, out.stops);
+}
+
+// ---------------------------------------------------------------------------
+// With TransportMode::Off the same latch flips perform their local engine
+// action but emit NOTHING to the wire.
+// ---------------------------------------------------------------------------
+static void test_berlin_latches_silent_under_off() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out;
+    berlin.setMidiOutput(&out);
+    shell.setMidiOutput(&out);
+    shell.setTransportMode(core::TransportMode::Off);
+    berlin.onEnter();
+
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // prime
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // play (engine)
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());                  // local action still happens
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // pause
+    berlin.onRawInput({core::RawInput::Kind::Latch, 2, 0, false});  // prime latch2
+    berlin.onRawInput({core::RawInput::Kind::Latch, 2, 0, true});   // stop
+
+    TEST_ASSERT_EQUAL_INT(0, out.starts);
+    TEST_ASSERT_EQUAL_INT(0, out.continues);
+    TEST_ASSERT_EQUAL_INT(0, out.stops);
+}
+
+// ---------------------------------------------------------------------------
 // Structure screen encoder edits + clamping.
 // ---------------------------------------------------------------------------
 static void test_structure_screen_edits_and_clamps() {
@@ -368,10 +438,12 @@ static void test_live_full_regen_ignores_morph() {
 }
 
 // ---------------------------------------------------------------------------
-// N6: external Stop silences the engine. With clockSource=External the engine
-// only closes gates in onClockTick(); a DAW that stops sending clock when its
-// transport stops would leave a note hanging forever. An incoming MidiType::Stop
-// must notify the mode so the engine stops (NoteOff sent, playhead rewound).
+// N6 safety: external Stop silences the engine. With clockSource=External the
+// engine only closes gates in onClockTick(); a DAW that stops sending clock
+// when its transport stops would leave a note hanging forever. Under the
+// default Send mode the safety branch maps the incoming Stop to onTransport
+// (Pause), which silences the sounding note (NoteOff) and halts playback. The
+// Stop is CONSUMED, never re-emitted downstream.
 // ---------------------------------------------------------------------------
 static void test_external_stop_silences_engine() {
     core::AppShell shell;
@@ -400,7 +472,8 @@ static void test_external_stop_silences_engine() {
 
     // The DAW presses Stop: an external Stop message arrives via the shell.
     // Under External clock the gate-off never arrives via onClockTick(), so the
-    // Stop must flush the sounding note (a fresh NoteOff) and rewind.
+    // safety branch maps it to onTransport(Pause) — flushing the sounding note
+    // (a fresh NoteOff) and halting playback.
     core::MidiMessage stop{}; stop.type = core::MidiType::Stop;
     shell.onMidiIn(stop);
 
@@ -408,11 +481,16 @@ static void test_external_stop_silences_engine() {
     for (const auto& e : out.events) { if (!e.isOn) ++noteOffsAfter; }
     TEST_ASSERT_GREATER_THAN(noteOffsBefore, noteOffsAfter);   // NoteOff was sent
     TEST_ASSERT_FALSE(berlin.engine().isPlaying());            // engine stopped
+    // The incoming Stop is CONSUMED — never re-emitted downstream.
+    TEST_ASSERT_EQUAL_INT(0, out.stops);
 }
 
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_latch1_play_pause_latch2_stop);
+    RUN_TEST(test_berlin_latches_emit_transport_under_send);
+    RUN_TEST(test_berlin_latch2_emits_stop_under_send);
+    RUN_TEST(test_berlin_latches_silent_under_off);
     RUN_TEST(test_external_stop_silences_engine);
     RUN_TEST(test_held_latch_edge_detect);
     RUN_TEST(test_latch3_generate_on_each_flip);

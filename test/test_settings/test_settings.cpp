@@ -41,6 +41,28 @@ static void test_midi_screen_renders_omni() {
     StubDisplay d; s.screen(0).render(d);
     TEST_ASSERT_TRUE(d.drewText("OMNI"));     // default in channel
     TEST_ASSERT_TRUE(d.drewText("Int"));      // default clock source
+    TEST_ASSERT_TRUE(d.drewText("Send"));     // default transport mode
+}
+
+static void test_midi_screen_transport_cycles() {
+    core::AppShell shell; core::SettingsMode s(shell);
+    // Default is Send.
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::TransportMode::Send),
+                          static_cast<int>(shell.transportMode()));
+    // Enc4 +1: Send → Receive → Off → Send (cycleEnum order Off, Send, Receive).
+    s.screen(0).onEncoder(4, +1);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::TransportMode::Receive),
+                          static_cast<int>(shell.transportMode()));
+    s.screen(0).onEncoder(4, +1);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::TransportMode::Off),
+                          static_cast<int>(shell.transportMode()));
+    s.screen(0).onEncoder(4, +1);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::TransportMode::Send),
+                          static_cast<int>(shell.transportMode()));
+    // Zero delta is a no-op.
+    s.screen(0).onEncoder(4, 0);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::TransportMode::Send),
+                          static_cast<int>(shell.transportMode()));
 }
 
 int main() {
@@ -49,5 +71,6 @@ int main() {
     RUN_TEST(test_midi_screen_edits);
     RUN_TEST(test_scale_screen_edits_and_renders);
     RUN_TEST(test_midi_screen_renders_omni);
+    RUN_TEST(test_midi_screen_transport_cycles);
     return UNITY_END();
 }
