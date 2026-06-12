@@ -50,10 +50,17 @@ The six modes (boot order = `addMode()` order in the mains):
 * **Arp** — arpeggiator. Hold notes, configure pattern/octaves/gate per
   screen; Latch1 = Hold, Latch2 = Mute, Latch3 = Reset. A fifth
   "presets" screen saves/loads/deletes the params in 20 slots.
-* **Berlin** — generative Berlin-School sequencer (see the spec
-  reference below); Latch1 = Play, Latch2 = Stop, Latch3 = Generate.
-  Its "presets" screen stores params + the realized sequence in 20
-  slots; loading mid-play swaps seamlessly (playhead wraps).
+* **Berlin** — generative Berlin-School sequencer with three voices —
+  **Bass** (root-anchor "heartbeat" via its own generator), **Mid** and
+  **High** (see the spec reference below). Each voice has its own MIDI
+  channel (defaults 1/2/3, set on the `voices` mixer screen) and a mute
+  flag; per-voice lengths (Mid's 15 against 16) drift to give the genre's
+  signature note-phasing. Latch1 = Play, Latch2 = Stop, Latch3 = Generate
+  (regenerates all three voices, then runs a vertical consonance check
+  across the stack). Its "presets" screen stores the whole three-voice
+  stack — all params, channels, mutes and the three realized sequences —
+  in 20 slots; loading mid-play swaps seamlessly (each playhead wraps).
+  Berlin uses its per-voice channels, not the global Settings out channel.
 * **BPM** — large tempo display; Enc1 sets BPM (read-only while the
   clock source is External).
 * **Settings** — global settings on three screens (MIDI: out channel /
@@ -64,7 +71,9 @@ The six modes (boot order = `addMode()` order in the mains):
 Control scheme (roles are assigned at runtime by the active mode/screen,
 not by the pin names):
   * **Enc1–Enc4** — the per-screen parameter knobs (rotate to edit,
-    press for the screen's secondary action).
+    press for the screen's secondary action). On Berlin's per-voice
+    screens (`structure`, `character`) a press cycles the edited voice
+    Bass → Mid → High instead.
   * **Enc5** — rotate to switch screen within a mode; press to open the
     mode-select overlay (rotate to pick a mode, press to confirm).
   * **Latch1–Latch3** — stateless transport buttons: every mechanical flip
@@ -99,7 +108,7 @@ Likely next steps:
   * **More scales / Berlin generator options** in `core/Scale.*` and
     `core/BerlinTypes.h`.
   * **More Arp patterns** in `core/ArpTypes.h` + `core/ArpEngine.cpp`.
-  * **Multi-voice Berlin** (bass/mid/lead with cross-voice phasing) per
+  * **Lead voice** (4th, call-and-response with High, longer phrases) per
     Part 2 of the spec document below.
 
 (Persistence is done: global settings auto-save via `core/Storage.h`,

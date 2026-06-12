@@ -87,7 +87,8 @@ Berlin). Měníš je v **Settings** a **BPM**:
   nebo **External** (zařízení následuje příchozí MIDI clock 24 PPQN a zobrazuje
   následované tempo).
 - **MIDI Out kanál** (Settings → MIDI): kanál, na který se posílají noty
-  Arp/Berlin. Rozsah **1–16**, výchozí **1**.
+  **Arpu**. Rozsah **1–16**, výchozí **1**. (Berlin ho nepoužívá — každý z jeho
+  tří hlasů má vlastní kanál na obrazovce `voices` v Berlinu.)
 - **MIDI In kanál** (Settings → MIDI): z jakého kanálu se přijímají příchozí
   noty. **OMNI (0)** přijímá všechny kanály; **1–16** filtruje na jeden.
 - **Transport** (Settings → MIDI): **Send** (výchozí) = zařízení vysílá MIDI
@@ -168,64 +169,107 @@ sebou; Load/Delete na prázdném slotu jen bliknou `EMPTY`.
 
 ### 5.3 Berlin — generativní sekvencer
 
-Jednohlasý generativní sekvencer ve stylu Berlin School. **Vygeneruje** krátkou
-smyčkovou sekvenci jedním ze tří algoritmů a přehrává ji na clock. Přehrávání
-řídíš páčkami a hudbu tvaruješ čtyřmi parametrovými obrazovkami. Dole na každé
-obrazovce je **piano-roll** aktuální sekvence s **klaviaturou vlevo**: každá nota
-má svůj řádek, klávesy použité v sekvenci jsou označené malou šedou tečkou a
-**klávesa právě hrající noty zešedne**, jak playhead postupuje. **Jas** bloku
-každé noty odpovídá její velocity — hlasitější noty jsou jasnější, tišší tmavší.
+**Tříhlasý** generativní sekvencer ve stylu Berlin School. Každý hlas si
+**vygeneruje** vlastní krátkou smyčkovou sekvenci a přehrává ji na clock; tři
+hlasy dohromady staví klasickou vrstvenou berlínskou texturu:
 
-**Obrazovky:** `structure` · `character` · `dynamics` · `behavior` · `presets`
-(piano-roll zůstává na čtyřech parametrových obrazovkách — mění se jen horní
+- **Bass** — kořenový „heartbeat". Staví ho vlastní root-anchor generátor (root
+  na silných dobách, občas kvinta/oktáva, krátké gaty), takže se na něj knob
+  **Algorithm** nevztahuje. Výchozí: oktáva C1, length 16, density 30 %, gate
+  50 %, kanál 1.
+- **Mid** — pluck figura. Výchozí: oktáva C3, length **15**, kanál 2.
+- **High** — pohyblivá melodie a hlas, který je editovaný jako výchozí.
+  Výchozí: oktáva C4, length 16, kanál 3.
+
+**15** kroků Midu proti **16** ostatních hlasů je signature **note-phasing**
+žánru: hlasy sdílí tempo, ale jejich smyčky mají různé délky, takže se v průběhu
+mnoha taktů rozcházejí a zase scházejí.
+
+Přehrávání řídíš páčkami a hudbu tvaruješ pěti parametrovými obrazovkami. Dole
+na každé obrazovce je **piano-roll** všech tří hlasů naráz (viz níže).
+
+**Obrazovky:** `structure` · `character` · `voices` · `dynamics` · `behavior` ·
+`presets` (piano-roll zůstává na parametrových obrazovkách — mění se jen horní
 řádek parametrů).
 
-**Obrazovka `structure`:**
+**Po hlasech vs. globální.** `structure` a `character` editují **jeden hlas
+naráz** (*editovaný hlas*); `dynamics` a `behavior` jsou **globální** a platí
+pro všechny tři hlasy společně. Obrazovka `voices` je mixer (jedna buňka na
+hlas). Na obou per-voice obrazovkách **stisk kteréhokoli z Enc1–Enc4 přepíná
+editovaný hlas** Bass → Mid → High → Bass; jméno editovaného hlasu je vpravo
+nahoře nad piano-rollem v jeho barvě.
+
+**Obrazovka `structure`** (po hlasech):
 
 | Knob | Parametr | Rozsah | Výchozí | Význam |
 |---|---|---|---|---|
-| Enc1 | **Algorithm** | Walk, Phase, Degree | Walk | Metoda generování (viz níže). |
-| Enc2 | **Length** | 3–32 | 16 | Počet kroků smyčky. |
-| Enc3 | **Resolution** | 8th, 16th | 8th | Mřížka kroků (8th = klidnější, 16th = hustší). |
-| Enc4 | **Density** | 0–100 % | 50 | Kolik kroků hraje notu vs. pauzu. |
+| Enc1 | **Algorithm** | Walk, Phase, Degree | Walk | Metoda generování (viz níže). Pro **Bass** buňka ukazuje „Bass" a je zamčená — Bass vždy používá vlastní root-anchor generátor. |
+| Enc2 | **Length** | 3–32 | 16 (Mid 15) | Počet kroků smyčky tohoto hlasu. |
+| Enc3 | **Density** | 0–100 % | 50 (Bass 30) | Kolik kroků hraje notu vs. pauzu. |
+| Enc4 | **AlgoPrm** | — | — | Jedna sdílená buňka: **Scatter** (1–7) pod Walk, **GateLen** (3–16) pod Phase. Pod Degree a pro Bass se zobrazí zašedlé „-". |
 
-**Obrazovka `character`:**
+**Obrazovka `character`** (po hlasech):
 
 | Knob | Parametr | Rozsah | Výchozí | Význam |
 |---|---|---|---|---|
-| Enc1 | **Gate** | 40–99 % | 55 | Délka noty v rámci kroku. Funguje živě při přehrávání. |
+| Enc1 | **Gate** | 40–99 % | 55 (Bass 50) | Délka noty v rámci kroku. Funguje živě při přehrávání. |
 | Enc2 | **Tension** | 0–100 % | 30 | Nízká = tóny se drží root/kvinty (bezpečné); vysoká = odvážnější. |
-| Enc3 | **Octave base** | C1–C5 | C3 | Nejnižší oktáva hlasu. |
-| Enc4 | **Octave range** | 1–3 | 2 | Přes kolik oktáv se noty rozprostřou. V Live rozšíření/zúžení melodii proporcionálně roztáhne/stáhne (ve stupnici; root kotva zůstává). |
+| Enc3 | **Octave base** | C1–C5 | High C4, Mid C3, Bass C1 | Nejnižší oktáva hlasu. |
+| Enc4 | **Octave range** | 1–3 | 1 | Přes kolik oktáv se noty rozprostřou. V Live rozšíření/zúžení melodii proporcionálně roztáhne/stáhne (ve stupnici; root kotva zůstává). |
 
-**Obrazovka `dynamics`:**
+**Obrazovka `voices`** (mixer — jedna buňka na hlas):
+
+| Knob | Parametr | Rozsah | Výchozí | Význam |
+|---|---|---|---|---|
+| Enc1 | **Bass** kanál / mute | 1–16 | 1 | Otáčením nastavíš MIDI kanál Bassu; **stiskem mute/unmute**. |
+| Enc2 | **Mid** kanál / mute | 1–16 | 2 | Otáčením nastavíš MIDI kanál Midu; stiskem mute/unmute. |
+| Enc3 | **High** kanál / mute | 1–16 | 3 | Otáčením nastavíš MIDI kanál Highu; stiskem mute/unmute. |
+| Enc4 | — | — | — | Nepoužito. |
+
+> **Ztlumený** hlas běží potichu dál (jeho sekvence i playhead pokračují), takže
+> po unmute naskočí zpátky **ve fázi** s ostatními — tah „build up, then take
+> away". Buňka ztlumeného hlasu ukazuje **MUTED** a jeho řádek v rollu je
+> vykreslený nejtmavěji.
+
+**Obrazovka `dynamics`** (globální — platí pro všechny hlasy):
 
 | Knob | Parametr | Rozsah | Výchozí | Význam |
 |---|---|---|---|---|
 | Enc1 | **Velocity** | 1–126 | 100 | Základní velocity not. Funguje živě při přehrávání. |
 | Enc2 | **Humanize** | 0–30 | 20 | Náhodné ± kolísání velocity na notu. Funguje živě při přehrávání. |
 | Enc3 | **Accent** | 0–27 | 20 | Přídavek velocity na akcentovaných notách (1. doba, root noty). Funguje živě při přehrávání. |
-| Enc4 | **Scatter** | 1–7 | 3 | (jen Walk) velikost kroku melodického bloudění. Pod Phase/Degree zašedlé a zamčené. |
+| Enc4 | **Resolution** | 8th, 16th | 8th | Mřížka kroků (8th = klidnější, 16th = hustší). |
 
-**Obrazovka `behavior`:**
+**Obrazovka `behavior`** (globální):
 
 | Knob | Parametr | Rozsah | Výchozí | Význam |
 |---|---|---|---|---|
 | Enc1 | **Behavior** | Lock, Evolve, Live | Live | Jak se sekvence mění v čase (viz níže). |
 | Enc2 | **Morph** | 0–100 % | 100 | Jak moc se regenerace liší od aktuální sekvence: 0 % ≈ stejná, 100 % = úplně nová. |
 | Enc3 | **Evolve rate** | 1–8 | 4 | (jen Evolve) počet smyček mezi automatickými variacemi. Pod Lock/Live zašedlé a zamčené. |
-| Enc4 | **GateLen** | 3–16 | 6 | (jen Phase) délka gate seznamu. Pod Walk/Degree zašedlé a zamčené. |
+| Enc4 | — | — | — | Nepoužito. |
 
 > Šedě vykreslené buňky jsou parametry, které aktuální algoritmus/chování
 > ignoruje — jejich knoby jsou zamčené, dokud nepřepneš na konfiguraci, která
 > je používá.
 
+**Piano-roll** ukazuje **všechny tři hlasy naráz** přes sdílenou klaviaturu:
+**Bass modře, Mid zeleně, High oranžově**. **Editovaný hlas** je vykreslený plně
+syté, ostatní ztlumeně a ztlumený hlas nejtmavěji. Každý hlas má **vlastní
+playhead** — protože mají různé délky, jejich playheady se rozcházejí, takže je
+phasing vidět přímo v rollu. **Jas** bloku každé noty stále odpovídá její
+velocity (hlasitější = jasnější). Akcenty se už nekreslí bíle — barevná identita
+hlasu vždy vyhraje.
+
 **Obrazovka `presets`:** funguje úplně stejně jako obrazovka presets v Arpu
 (Enc1 = Save, Enc2 = Load, Enc3 = Delete přes 20 slotů — viz §5.2), s jedním
-berlinským bonusem: slot ukládá parametry **a přesnou realizovanou
-sekvenci**, takže load vrátí přesně ten pattern, který jsi uložil, žádné nové
-losování. Load během přehrávání vymění pattern **plynule**: playhead běží dál
-(zalomený do nové délky) — ideální pro živé přechody mezi uloženými patterny.
+berlinským bonusem: slot ukládá **celý tříhlasý stack** — všechny parametry,
+všechny tři realizované sekvence a u každého hlasu jeho kanál i stav mute —
+takže load vrátí přesně ty patterny, které jsi uložil, žádné nové losování. Load
+během přehrávání vymění stack **plynule**: playhead každého hlasu běží dál
+(zalomený do nové délky) — ideální pro živé přechody. **Sloty uložené před
+multi-voice updatem (firmware v0.15) se zobrazí jako prázdné** a lze je prostě
+přepsat.
 
 **Algoritmy (Enc1 na `structure`):**
 
@@ -237,6 +281,9 @@ losování. Load během přehrávání vymění pattern **plynule**: playhead b�
   pomalu se vyvíjející vzor, který „zní náhodně, ale není".
 - **Degree** (Degree-Weighted) — každá nota se volí samostatně, vážená ke
   konsonantním stupňům (root/kvinta); **Tension** tuto preferenci zplošťuje.
+- Hlas **Bass** tyto tři ignoruje a používá vlastní **root-anchor generátor**:
+  root na silných dobách, sem tam kvinta nebo oktáva, krátké gaty — heartbeat
+  pod ostatními dvěma hlasy.
 
 **Chování (Enc1 na `behavior`):**
 
@@ -246,7 +293,8 @@ losování. Load během přehrávání vymění pattern **plynule**: playhead b�
   se změní 1–2 kroky. Generate stále vytvoří úplně nový vzor.
 - **Live** — tvoje úpravy **tvarují stávající sekvenci na místě** při otáčení
   knobu, bez jejího přegenerování a **bez resetu pozice přehrávání** — přehrávání
-  běží dál skrz změnu. **Density** přidává nebo ubírá noty na nové množství
+  běží dál skrz změnu. Live tvarování míří jen na **editovaný hlas**. **Density**
+  přidává nebo ubírá noty na nové množství
   (kotva rootu na kroku 1 vždy zůstává); **Octave base/range** transponují a
   složí stávající noty do nového registru (obrys melodie zůstává zachován);
   **Length** zkrátí (pozice přehrávání se zaroluje) nebo prodlouží (vyplní se jen
@@ -263,9 +311,9 @@ losování. Load během přehrávání vymění pattern **plynule**: playhead b�
 
 | Latch | Funkce |
 |---|---|
-| **Latch1 — Play/Pause** | Stisk přepíná hraje/pauza. Pauza drží playhead na místě. (Při Transport = Recv řídí přehrávání DAW; stisk je i tak ruční přepínací zásah.) |
-| **Latch2 — Stop** | Stisk přetočí na krok 1 a utiší notu. |
-| **Latch3 — Generate** | Stisk vygeneruje novou sekvenci (s intenzitou **Morph**). |
+| **Latch1 — Play/Pause** | Stisk přepíná hraje/pauza pro **všechny tři hlasy** najednou. Pauza drží playheady na místě. (Při Transport = Recv řídí přehrávání DAW; stisk je i tak ruční přepínací zásah.) |
+| **Latch2 — Stop** | Stisk přetočí všechny hlasy na krok 1 a utiší je. |
+| **Latch3 — Generate** | Stisk přegeneruje **všechny tři hlasy**, pak provede **vertikální kontrolu konsonance** — kolidující současné noty (malá sekunda nebo tritón) se posunou na konsonantní tón ve stupnici. (Kontrola se přeskočí, je-li **Tension** kteréhokoli hlasu nad 60.) |
 
 > Je-li **Transport = Send**, Latch1 a Latch2 také vysílají MIDI Start/Continue/Stop,
 > aby připojený DAW následoval přehrávání zařízení: stisk play posílá Start (nebo
@@ -286,7 +334,7 @@ automaticky ~2 s po poslední úpravě a přežije vypnutí.
 
 | Knob | Parametr | Rozsah | Výchozí | Význam |
 |---|---|---|---|---|
-| Enc1 | **MIDI Out kanál** | 1–16 | 1 | Kanál, na který se posílají noty Arp/Berlin. |
+| Enc1 | **MIDI Out kanál** | 1–16 | 1 | Kanál, na který se posílají noty **Arpu**. (Berlin používá vlastní kanály po hlasech — viz §5.3.) |
 | Enc2 | **MIDI In kanál** | OMNI, 1–16 | OMNI | Přijímat noty ze všech kanálů (OMNI) nebo jen z jednoho. |
 | Enc3 | **Clock** | Internal, External | Internal | Generovat clock, nebo následovat externí. |
 | Enc4 | **Transport** | Off, Send, Recv | Send | Send = vysílat Start/Continue/Stop (zařízení je transport master); Recv = následovat příchozí transport; Off = ani jedno. |

@@ -9,7 +9,8 @@ namespace {
 constexpr uint8_t kPresetVersion = 1;
 
 constexpr int kArpBlobLen    = 5 + 9;                                   // 14
-constexpr int kBerlinBlobLen = 5 + 16 + 1 + core::BerlinSequence::kMaxSteps * 6;  // 214
+constexpr int kBerlinVoiceBlock = 16 + 1 + core::BerlinSequence::kMaxSteps * 6 + 2;  // 211
+constexpr int kBerlinBlobLen2   = 5 + 3 * kBerlinVoiceBlock;                          // 638
 
 bool validSlot(int slot) { return slot >= 0 && slot < core::kPresetSlots; }
 
@@ -96,14 +97,14 @@ bool loadArpPreset(Storage& st, int slot, ArpParams& out) {
 }
 
 // ---------------------------------------------------------------------------
-// Berlin
+// Berlin (v2: one slot = the whole three-voice stack)
 // ---------------------------------------------------------------------------
 
-bool saveBerlinPreset(Storage& st, int slot,
-                      const BerlinParams& p, const BerlinSequence& seq) {
-    if (!validSlot(slot)) return false;
-    uint8_t b[kBerlinBlobLen] = {'M', 'B', 'E', 'R', kPresetVersion};
-    int o = 5;
+// One 211-byte voice block: 16 params bytes (same order as v1), seq length,
+// 32x6 step bytes, channel, mute.
+static void encodeBerlinVoice(uint8_t* b, const BerlinVoicePreset& v) {
+    int o = 0;
+    const BerlinParams& p = v.params;
     b[o++] = static_cast<uint8_t>(p.algorithm);
     b[o++] = p.length;
     b[o++] = static_cast<uint8_t>(p.resolution);
@@ -120,32 +121,25 @@ bool saveBerlinPreset(Storage& st, int slot,
     b[o++] = static_cast<uint8_t>(p.behavior);
     b[o++] = p.morph;
     b[o++] = p.evolveRate;
-    b[o++] = static_cast<uint8_t>(seq.length());
+    b[o++] = static_cast<uint8_t>(v.seq.length());
     for (int i = 0; i < BerlinSequence::kMaxSteps; ++i) {
-        const BerlinStep& s = seq.step(i);
+        const BerlinStep& s = v.seq.step(i);
         b[o++] = s.active ? 1 : 0;
         b[o++] = s.note;
         b[o++] = s.velocity;
         b[o++] = s.accent ? 1 : 0;
         b[o++] = static_cast<uint8_t>(s.gateTicks > 255 ? 255 : s.gateTicks);
-        b[o++] = static_cast<uint8_t>(s.velJitter);   // int8 bit pattern
+        b[o++] = static_cast<uint8_t>(s.velJitter);
     }
-    char key[24];
-    presetKey("berlin", slot, key, sizeof key);
-    return st.save(key, b, kBerlinBlobLen);
+    b[o++] = v.channel;
+    b[o++] = v.muted ? 1 : 0;
 }
 
-bool loadBerlinPreset(Storage& st, int slot,
-                      BerlinParams& outParams, BerlinSequence& outSeq) {
-    if (!validSlot(slot)) return false;
-    char key[24];
-    presetKey("berlin", slot, key, sizeof key);
-    uint8_t b[kBerlinBlobLen];
-    if (!st.load(key, b, kBerlinBlobLen)) return false;
-    if (!magicOk(b, 'B', 'E', 'R')) return false;
-    BerlinParams p;
-    int o = 5;
+// Returns false on any out-of-range field (whole-blob rejection).
+static bool decodeBerlinVoice(const uint8_t* b, BerlinVoicePreset& v) {
+    int o = 0;
     const uint8_t algorithm  = b[o++];
+    BerlinParams p;
     p.length                 = b[o++];
     const uint8_t resolution = b[o++];
     p.density                = b[o++];
@@ -162,7 +156,6 @@ bool loadBerlinPreset(Storage& st, int slot,
     p.morph                  = b[o++];
     p.evolveRate             = b[o++];
     const uint8_t seqLen     = b[o++];
-    // Whole-blob validation (ranges mirror BerlinTypes.h + the screens).
     if (algorithm >= static_cast<uint8_t>(BerlinAlgorithm::kCount)) return false;
     if (p.length < 3 || p.length > BerlinSequence::kMaxSteps) return false;
     if (resolution >= static_cast<uint8_t>(BerlinResolution::kCount)) return false;
@@ -180,18 +173,19 @@ bool loadBerlinPreset(Storage& st, int slot,
     if (p.morph > 100) return false;
     if (p.evolveRate < 1 || p.evolveRate > 8) return false;
     if (seqLen < 1 || seqLen > BerlinSequence::kMaxSteps) return false;
+    const uint8_t* steps = b + o;
     for (int i = 0; i < BerlinSequence::kMaxSteps; ++i) {
-        const uint8_t* s = b + 5 + 16 + 1 + i * 6;
+        const uint8_t* s = steps + i * 6;
         if (s[0] > 1 || s[1] > 127 || s[2] > 127 || s[3] > 1) return false;
     }
     p.algorithm  = static_cast<BerlinAlgorithm>(algorithm);
     p.resolution = static_cast<BerlinResolution>(resolution);
     p.behavior   = static_cast<BerlinBehavior>(behavior);
-    BerlinSequence seq;
-    seq.setLength(seqLen);
+    v.params = p;
+    v.seq.setLength(seqLen);
     for (int i = 0; i < BerlinSequence::kMaxSteps; ++i) {
-        const uint8_t* s = b + 5 + 16 + 1 + i * 6;
-        BerlinStep& step = seq.step(i);
+        const uint8_t* s = steps + i * 6;
+        BerlinStep& step = v.seq.step(i);
         step.active    = s[0] != 0;
         step.note      = s[1];
         step.velocity  = s[2];
@@ -199,9 +193,48 @@ bool loadBerlinPreset(Storage& st, int slot,
         step.gateTicks = s[4];
         step.velJitter = static_cast<int8_t>(s[5]);
     }
-    outParams = p;
-    outSeq    = seq;
+    o += BerlinSequence::kMaxSteps * 6;
+    const uint8_t channel = b[o++];
+    const uint8_t muted   = b[o++];
+    if (channel < 1 || channel > 16) return false;
+    if (muted > 1) return false;
+    v.channel = channel;
+    v.muted   = muted != 0;
     return true;
+}
+
+bool saveBerlinPreset2(Storage& st, int slot, const BerlinVoicePreset v[3]) {
+    if (!validSlot(slot)) return false;
+    uint8_t b[kBerlinBlobLen2] = {'M', 'B', 'E', 'R', 2};
+    for (int i = 0; i < 3; ++i)
+        encodeBerlinVoice(b + 5 + i * kBerlinVoiceBlock, v[i]);
+    char key[24];
+    presetKey("berlin", slot, key, sizeof key);
+    return st.save(key, b, kBerlinBlobLen2);
+}
+
+bool loadBerlinPreset2(Storage& st, int slot, BerlinVoicePreset v[3]) {
+    if (!validSlot(slot)) return false;
+    char key[24];
+    presetKey("berlin", slot, key, sizeof key);
+    uint8_t b[kBerlinBlobLen2];
+    if (!st.load(key, b, kBerlinBlobLen2)) return false;   // v1 size fails here
+    if (b[0] != 'M' || b[1] != 'B' || b[2] != 'E' || b[3] != 'R' || b[4] != 2)
+        return false;
+    BerlinVoicePreset tmp[3];
+    for (int i = 0; i < 3; ++i)
+        if (!decodeBerlinVoice(b + 5 + i * kBerlinVoiceBlock, tmp[i])) return false;
+    for (int i = 0; i < 3; ++i) v[i] = tmp[i];             // never a partial apply
+    return true;
+}
+
+bool berlinPreset2Usable(Storage& st, int slot) {
+    if (!validSlot(slot)) return false;
+    char key[24];
+    presetKey("berlin", slot, key, sizeof key);
+    uint8_t b[kBerlinBlobLen2];
+    if (!st.load(key, b, kBerlinBlobLen2)) return false;
+    return b[0] == 'M' && b[1] == 'B' && b[2] == 'E' && b[3] == 'R' && b[4] == 2;
 }
 
 } // namespace core

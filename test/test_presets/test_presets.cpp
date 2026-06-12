@@ -51,43 +51,50 @@ static void test_arp_preset_round_trip() {
     TEST_ASSERT_FALSE(core::presetExists(st, "arp", 4));
 }
 
-static void test_berlin_preset_round_trip_includes_sequence() {
+static void test_berlin_preset2_round_trip_three_voices() {
     FakeStorage st;
-    core::BerlinParams p;
-    p.algorithm = core::BerlinAlgorithm::DegreeWeighted;
-    p.length = 21;
-    p.density = 73;
-    p.behavior = core::BerlinBehavior::Evolve;
-    core::BerlinSequence seq;
-    seq.setLength(21);
-    for (int i = 0; i < 21; ++i) {
-        core::BerlinStep& s = seq.step(i);
-        s.active = (i % 3) != 2;
-        s.note = static_cast<uint8_t>(48 + i);
-        s.velocity = static_cast<uint8_t>(60 + i);
-        s.accent = (i % 5) == 0;
-        s.gateTicks = static_cast<uint16_t>(3 + (i % 9));
-        s.velJitter = static_cast<int8_t>(i - 10);
+    core::BerlinVoicePreset in[3];
+    for (int v = 0; v < 3; ++v) {
+        in[v].params.length  = static_cast<uint8_t>(14 + v);
+        in[v].params.density = static_cast<uint8_t>(30 + v * 10);
+        in[v].channel        = static_cast<uint8_t>(4 + v);
+        in[v].muted          = (v == 1);
+        in[v].seq.setLength(14 + v);
+        for (int i = 0; i < in[v].seq.length(); ++i) {
+            core::BerlinStep& s = in[v].seq.step(i);
+            s.active = (i % 2) == 0;
+            s.note = static_cast<uint8_t>(36 + v * 12 + i);
+            s.velocity = static_cast<uint8_t>(70 + i);
+            s.gateTicks = 6;
+            s.velJitter = static_cast<int8_t>(i - 5);
+        }
     }
-    TEST_ASSERT_TRUE(core::saveBerlinPreset(st, 0, p, seq));
-    core::BerlinParams q;
-    core::BerlinSequence out;
-    TEST_ASSERT_TRUE(core::loadBerlinPreset(st, 0, q, out));
-    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::BerlinAlgorithm::DegreeWeighted),
-                          static_cast<int>(q.algorithm));
-    TEST_ASSERT_EQUAL_INT(21, q.length);
-    TEST_ASSERT_EQUAL_INT(73, q.density);
-    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::BerlinBehavior::Evolve),
-                          static_cast<int>(q.behavior));
-    TEST_ASSERT_EQUAL_INT(21, out.length());
-    for (int i = 0; i < 21; ++i) {
-        TEST_ASSERT_EQUAL_INT(seq.step(i).active ? 1 : 0, out.step(i).active ? 1 : 0);
-        TEST_ASSERT_EQUAL_INT(seq.step(i).note, out.step(i).note);
-        TEST_ASSERT_EQUAL_INT(seq.step(i).velocity, out.step(i).velocity);
-        TEST_ASSERT_EQUAL_INT(seq.step(i).accent ? 1 : 0, out.step(i).accent ? 1 : 0);
-        TEST_ASSERT_EQUAL_INT(seq.step(i).gateTicks, out.step(i).gateTicks);
-        TEST_ASSERT_EQUAL_INT(seq.step(i).velJitter, out.step(i).velJitter);
+    TEST_ASSERT_FALSE(core::berlinPreset2Usable(st, 3));
+    TEST_ASSERT_TRUE(core::saveBerlinPreset2(st, 3, in));
+    TEST_ASSERT_TRUE(core::berlinPreset2Usable(st, 3));
+    core::BerlinVoicePreset out[3];
+    TEST_ASSERT_TRUE(core::loadBerlinPreset2(st, 3, out));
+    for (int v = 0; v < 3; ++v) {
+        TEST_ASSERT_EQUAL_INT(in[v].params.length, out[v].params.length);
+        TEST_ASSERT_EQUAL_INT(in[v].params.density, out[v].params.density);
+        TEST_ASSERT_EQUAL_INT(in[v].channel, out[v].channel);
+        TEST_ASSERT_EQUAL_INT(in[v].muted ? 1 : 0, out[v].muted ? 1 : 0);
+        TEST_ASSERT_EQUAL_INT(in[v].seq.length(), out[v].seq.length());
+        for (int i = 0; i < in[v].seq.length(); ++i) {
+            TEST_ASSERT_EQUAL_INT(in[v].seq.step(i).note, out[v].seq.step(i).note);
+            TEST_ASSERT_EQUAL_INT(in[v].seq.step(i).velocity, out[v].seq.step(i).velocity);
+            TEST_ASSERT_EQUAL_INT(in[v].seq.step(i).velJitter, out[v].seq.step(i).velJitter);
+        }
     }
+}
+
+// A v1-sized blob under the same key reads as EMPTY, never as garbage.
+static void test_berlin_v1_blob_reads_as_empty() {
+    FakeStorage st;
+    st.data["berlin.s01"] = std::vector<uint8_t>(214, 0);  // v1-sized junk
+    TEST_ASSERT_FALSE(core::berlinPreset2Usable(st, 0));
+    core::BerlinVoicePreset out[3];
+    TEST_ASSERT_FALSE(core::loadBerlinPreset2(st, 0, out));
 }
 
 static void test_corrupt_preset_loads_as_empty() {
@@ -232,7 +239,8 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_preset_key_naming);
     RUN_TEST(test_arp_preset_round_trip);
-    RUN_TEST(test_berlin_preset_round_trip_includes_sequence);
+    RUN_TEST(test_berlin_preset2_round_trip_three_voices);
+    RUN_TEST(test_berlin_v1_blob_reads_as_empty);
     RUN_TEST(test_corrupt_preset_loads_as_empty);
     RUN_TEST(test_picker_open_rotate_confirm_save);
     RUN_TEST(test_picker_slot_wraps_and_is_remembered);

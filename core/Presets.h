@@ -27,12 +27,19 @@ bool deletePreset(Storage& st, const char* prefix, int slot);
 bool saveArpPreset(Storage& st, int slot, const ArpParams& p);
 bool loadArpPreset(Storage& st, int slot, ArpParams& out);
 
-// Berlin preset v1: 214 bytes — 'M','B','E','R', version, the BerlinParams
-// fields, the sequence length, then all 32 steps (6 bytes each), so a load
-// restores the exact realized pattern, not a re-roll.
-bool saveBerlinPreset(Storage& st, int slot,
-                      const BerlinParams& p, const BerlinSequence& seq);
-bool loadBerlinPreset(Storage& st, int slot,
-                      BerlinParams& outParams, BerlinSequence& outSeq);
+// Berlin preset v2: one slot = the whole three-voice stack. 638 bytes —
+// 'M','B','E','R', version 2, then 3x (16 params bytes, seq length, 32x6
+// step bytes, channel, mute). A v1 (214-byte) blob fails the exact-size
+// load, so old single-voice slots read as empty and get overwritten.
+struct BerlinVoicePreset {
+    BerlinParams   params;
+    BerlinSequence seq;
+    uint8_t        channel = 1;
+    bool           muted   = false;
+};
+
+bool saveBerlinPreset2(Storage& st, int slot, const BerlinVoicePreset v[3]);
+bool loadBerlinPreset2(Storage& st, int slot, BerlinVoicePreset v[3]);
+bool berlinPreset2Usable(Storage& st, int slot);   // size+magic+version probe
 
 } // namespace core

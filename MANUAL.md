@@ -85,8 +85,9 @@ Berlin). You change them in **Settings** and **BPM**:
 - **Clock source** (Settings → MIDI): **Internal** (the device generates the
   MIDI clock) or **External** (the device follows incoming MIDI clock at
   24 PPQN and shows the followed tempo).
-- **MIDI Out channel** (Settings → MIDI): the channel Arp/Berlin notes are sent
-  on. Range **1–16**, default **1**.
+- **MIDI Out channel** (Settings → MIDI): the channel **Arp** notes are sent
+  on. Range **1–16**, default **1**. (Berlin does not use this — each of its
+  three voices has its own channel on the Berlin `voices` screen.)
 - **MIDI In channel** (Settings → MIDI): which channel incoming notes are
   accepted from. **OMNI (0)** accepts all channels; **1–16** filters to one.
 - **Transport** (Settings → MIDI): **Send** (default) = the device emits MIDI
@@ -168,64 +169,106 @@ can clean several slots in a row; Load/Delete on an empty slot just flash
 
 ### 5.3 Berlin — generative sequencer
 
-A single-voice generative sequencer in the Berlin-School style. It **generates**
-a short looping sequence with one of three algorithms and plays it on the clock.
-You drive playback with the latches and shape the music with four parameter
-screens. The bottom of every screen shows a **piano-roll** of the current
-sequence with a **left-hand keyboard**: each note has its own lane, keys used by
-the sequence are marked with a small grey dot, and the **currently played note's
-key greys out** as the playhead moves. Each note block's **brightness reflects
-its velocity** — louder notes are brighter, quieter notes dimmer.
+A **three-voice** generative sequencer in the Berlin-School style. Each voice
+**generates** its own short looping sequence and plays it on the clock; the
+three together build the classic layered Berlin texture:
 
-**Screens:** `structure` · `character` · `dynamics` · `behavior` · `presets`
-(the piano-roll stays visible on the four parameter screens — only the top
-parameter row changes).
+- **Bass** — the root-heavy "heartbeat". It is built by its own root-anchor
+  generator (root on the strong beats, occasional fifth/octave, short gates),
+  so the **Algorithm** knob does not apply to it. Defaults: octave C1, length
+  16, density 30 %, gate 50 %, channel 1.
+- **Mid** — the pluck figure. Defaults: octave C3, length **15**, channel 2.
+- **High** — the moving melody, and the voice selected for editing by default.
+  Defaults: octave C4, length 16, channel 3.
 
-**Screen `structure`:**
+Mid's **15** steps running against the other voices' **16** is the genre's
+signature **note-phasing**: the voices share a tempo but their loops are
+different lengths, so they drift in and out of alignment over many bars.
+
+You drive playback with the latches and shape the music with five parameter
+screens. The bottom of every screen shows a **piano-roll** of all three voices
+at once (see below).
+
+**Screens:** `structure` · `character` · `voices` · `dynamics` · `behavior` ·
+`presets` (the piano-roll stays visible on the parameter screens — only the
+top parameter row changes).
+
+**Per-voice vs. global.** `structure` and `character` edit **one voice at a
+time** (the *edited voice*); `dynamics` and `behavior` are **global** and apply
+to all three voices together. The `voices` screen is the mixer (one cell per
+voice). On the two per-voice screens, **pressing any of Enc1–Enc4 cycles the
+edited voice** Bass → Mid → High → Bass; the edited voice's name is shown at the
+top-right of the piano-roll in its colour.
+
+**Screen `structure`** (per voice):
 
 | Knob | Parameter | Range | Default | Meaning |
 |---|---|---|---|---|
-| Enc1 | **Algorithm** | Walk, Phase, Degree | Walk | Generation method (see below). |
-| Enc2 | **Length** | 3–32 | 16 | Steps in the loop. |
-| Enc3 | **Resolution** | 8th, 16th | 8th | Step grid (8th = calmer, 16th = busier). |
-| Enc4 | **Density** | 0–100 % | 50 | How many steps play a note vs. rest. |
+| Enc1 | **Algorithm** | Walk, Phase, Degree | Walk | Generation method (see below). For **Bass** this cell shows "Bass" and is locked — Bass always uses its own root-anchor generator. |
+| Enc2 | **Length** | 3–32 | 16 (Mid 15) | Steps in this voice's loop. |
+| Enc3 | **Density** | 0–100 % | 50 (Bass 30) | How many steps play a note vs. rest. |
+| Enc4 | **AlgoPrm** | — | — | One shared cell: **Scatter** (1–7) under Walk, **GateLen** (3–16) under Phase. Shown as a greyed "-" under Degree and for Bass. |
 
-**Screen `character`:**
+**Screen `character`** (per voice):
 
 | Knob | Parameter | Range | Default | Meaning |
 |---|---|---|---|---|
-| Enc1 | **Gate** | 40–99 % | 55 | Note length within a step. Applies live while playing. |
+| Enc1 | **Gate** | 40–99 % | 55 (Bass 50) | Note length within a step. Applies live while playing. |
 | Enc2 | **Tension** | 0–100 % | 30 | Low = pitches hug the root/fifth (safe); high = more adventurous. |
-| Enc3 | **Octave base** | C1–C5 | C3 | The lowest octave of the voice. |
-| Enc4 | **Octave range** | 1–3 | 2 | How many octaves the notes may span. In Live, widening/narrowing proportionally stretches/squeezes the melody (in scale; the root anchor stays). |
+| Enc3 | **Octave base** | C1–C5 | High C4, Mid C3, Bass C1 | The lowest octave of the voice. |
+| Enc4 | **Octave range** | 1–3 | 1 | How many octaves the notes may span. In Live, widening/narrowing proportionally stretches/squeezes the melody (in scale; the root anchor stays). |
 
-**Screen `dynamics`:**
+**Screen `voices`** (mixer — one cell per voice):
+
+| Knob | Parameter | Range | Default | Meaning |
+|---|---|---|---|---|
+| Enc1 | **Bass** channel / mute | 1–16 | 1 | Rotate to set the Bass MIDI channel; **press to mute/unmute**. |
+| Enc2 | **Mid** channel / mute | 1–16 | 2 | Rotate to set the Mid MIDI channel; press to mute/unmute. |
+| Enc3 | **High** channel / mute | 1–16 | 3 | Rotate to set the High MIDI channel; press to mute/unmute. |
+| Enc4 | — | — | — | Unused. |
+
+> A **muted** voice keeps running silently (its sequence and playhead carry on),
+> so unmuting drops it back in **in phase** with the others — the "build up,
+> then take away" move. A muted voice's cell shows **MUTED** and its roll lane
+> is drawn darkest.
+
+**Screen `dynamics`** (global — applies to all voices):
 
 | Knob | Parameter | Range | Default | Meaning |
 |---|---|---|---|---|
 | Enc1 | **Velocity** | 1–126 | 100 | Base note velocity. Applies live while playing. |
 | Enc2 | **Humanize** | 0–30 | 20 | Random ± velocity variation per note. Applies live while playing. |
 | Enc3 | **Accent** | 0–27 | 20 | Extra velocity on accented notes (beat 1, root notes). Applies live while playing. |
-| Enc4 | **Scatter** | 1–7 | 3 | (Walk only) step size of the melodic wander. Greyed out and locked under Phase/Degree. |
+| Enc4 | **Resolution** | 8th, 16th | 8th | Step grid (8th = calmer, 16th = busier). |
 
-**Screen `behavior`:**
+**Screen `behavior`** (global):
 
 | Knob | Parameter | Range | Default | Meaning |
 |---|---|---|---|---|
-| Enc1 | **Behavior** | Lock, Evolve, Live | Live | How the sequence changes over time (see below). |
+| Enc1 | **Behavior** | Lock, Evolve, Live | Live | How the sequences change over time (see below). |
 | Enc2 | **Morph** | 0–100 % | 100 | How different a regeneration is from the current sequence: 0 % ≈ same, 100 % = brand new. |
 | Enc3 | **Evolve rate** | 1–8 | 4 | (Evolve only) loops between automatic variations. Greyed out and locked under Lock/Live. |
-| Enc4 | **GateLen** | 3–16 | 6 | (Phase only) length of the gate list. Greyed out and locked under Walk/Degree. |
+| Enc4 | — | — | — | Unused. |
 
 > Cells drawn in grey are parameters the current algorithm/behavior ignores —
 > their knobs are locked until you switch to a configuration that uses them.
 
+**The piano-roll** shows **all three voices at once** over a shared keyboard:
+**Bass blue, Mid green, High orange**. The **edited voice** is drawn fully
+saturated, the others dimmed, and a muted voice darkest. Each voice has **its
+own playhead** — because the voices have different lengths their playheads drift
+apart, so the phasing is visible right on the roll. Each note block's
+**brightness still reflects its velocity** (louder = brighter). Accents are no
+longer drawn white — the voice's colour identity always wins.
+
 **Screen `presets`:** works exactly like Arp's presets screen (Enc1 = Save,
 Enc2 = Load, Enc3 = Delete over 20 slots — see §5.2), with one Berlin twist:
-a slot stores the parameters **and the exact realized sequence**, so a load
-brings back the very pattern you saved, not a re-roll. Loading while playing
-swaps the pattern **seamlessly**: the playhead keeps running (wrapped into
-the new length) — ideal for live transitions between saved patterns.
+a slot stores the **whole three-voice stack** — all parameters, all three
+realized sequences, and each voice's channel and mute state — so a load brings
+back the very patterns you saved, not a re-roll. Loading while playing swaps
+the stack **seamlessly**: each voice's playhead keeps running (wrapped into the
+new length) — ideal for live transitions. **Slots saved before the multi-voice
+update (firmware v0.15) appear empty** and can simply be overwritten.
 
 **Algorithms (Enc1 on `structure`):**
 
@@ -238,6 +281,9 @@ the new length) — ideal for live transitions between saved patterns.
   producing a long, slowly evolving pattern that "sounds random but isn't."
 - **Degree** (Degree-Weighted) — each note is chosen independently, weighted
   toward consonant scale degrees (root/fifth); **Tension** flattens the bias.
+- The **Bass** voice ignores these three and uses its own **root-anchor
+  generator**: the root on the strong beats, the odd fifth or octave, short
+  gates — the heartbeat under the other two voices.
 
 **Behaviors (Enc1 on `behavior`):**
 
@@ -247,7 +293,8 @@ the new length) — ideal for live transitions between saved patterns.
   every **Evolve rate** loops. Generate still rolls a whole new pattern.
 - **Live** — your edits **sculpt the existing sequence in place** as you turn
   the knob, without re-rolling it and **without ever resetting the playhead** —
-  playback keeps running through the change. **Density** adds or removes notes
+  playback keeps running through the change. Live sculpting targets the
+  **edited voice** only. **Density** adds or removes notes
   to hit the new amount (the root anchor on step 1 always stays); **Octave
   base/range** transpose and fold the existing notes into the new register
   (melody contour preserved); **Length** truncates (the playhead wraps) or
@@ -264,9 +311,9 @@ the new length) — ideal for live transitions between saved patterns.
 
 | Latch | Function |
 |---|---|
-| **Latch1 — Play/Pause** | Press toggles play/pause. Pause holds the playhead in place. (Under Transport = Recv the DAW drives playback; a press is still a manual-override toggle.) |
-| **Latch2 — Stop** | Press rewinds to step 1 and silences the note. |
-| **Latch3 — Generate** | Press generates a new sequence (using **Morph** intensity). |
+| **Latch1 — Play/Pause** | Press toggles play/pause for **all three voices** together. Pause holds the playheads in place. (Under Transport = Recv the DAW drives playback; a press is still a manual-override toggle.) |
+| **Latch2 — Stop** | Press rewinds all voices to step 1 and silences them. |
+| **Latch3 — Generate** | Press regenerates **all three voices**, then runs a **vertical consonance check** — clashing simultaneous notes (a minor second or tritone) get nudged to a consonant in-scale tone. (The check is skipped when any voice's **Tension** is above 60.) |
 
 > When **Transport = Send**, Latch1 and Latch2 also emit MIDI Start/Continue/Stop
 > so a connected DAW follows the device's playback: a play press sends Start (or
@@ -287,7 +334,7 @@ automatically ~2 s after the last edit and survives a power cycle.
 
 | Knob | Parameter | Range | Default | Meaning |
 |---|---|---|---|---|
-| Enc1 | **MIDI Out channel** | 1–16 | 1 | Channel Arp/Berlin notes are sent on. |
+| Enc1 | **MIDI Out channel** | 1–16 | 1 | Channel **Arp** notes are sent on. (Berlin uses its own per-voice channels — see §5.3.) |
 | Enc2 | **MIDI In channel** | OMNI, 1–16 | OMNI | Accept notes from all channels (OMNI) or just one. |
 | Enc3 | **Clock** | Internal, External | Internal | Generate the clock, or follow an external one. |
 | Enc4 | **Transport** | Off, Send, Recv | Send | Send = emit Start/Continue/Stop (device is the transport master); Recv = follow incoming transport; Off = neither. |

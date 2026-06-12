@@ -155,7 +155,7 @@ static void test_arp_outgoing_visualised() {
         "Engine should have emitted multiple NoteOn events across arp steps");
 
     // 2. The worms screen drew some rects (keyboard + worms).
-    TEST_ASSERT_GREATER_THAN_MESSAGE(0, disp.rects, "WormsRenderer should have drawn rects");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, disp.rectCount, "WormsRenderer should have drawn rects");
 
     // 3. The top bar shows the mode name "Arp".
     TEST_ASSERT_TRUE_MESSAGE(disp.drewText("Arp"), "Top bar should include 'Arp'");

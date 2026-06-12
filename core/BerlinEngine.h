@@ -25,6 +25,15 @@ public:
     void setGenerator(SequenceGenerator* g) { generator_ = g; }   // Task 4
     void seed(uint32_t v) { rng_.seed(v); }                        // tests
 
+    // Mute suppresses NoteOns only; the engine keeps ticking so unmuting
+    // re-enters in phase ("build up, then take away"). NoteOffs always pass,
+    // and muting silences the currently sounding note immediately.
+    void setMuted(bool m) {
+        if (m && !muted_) silence();
+        muted_ = m;
+    }
+    bool muted() const { return muted_; }
+
     // Transport.
     void play();    // run (emits the current step if starting from silence)
     void pause();   // hold playhead, stop advancing
@@ -76,6 +85,7 @@ private:
 
     BerlinSequence seq_{};
     bool  playing_   = false;
+    bool  muted_     = false;
     int   playhead_  = 0;
     int   stepTicks_ = 0;
     int   loopCount_ = 0;    // completed loops since the last generate()/stop()

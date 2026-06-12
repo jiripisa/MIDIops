@@ -88,4 +88,41 @@ uint8_t berlinDegreeWeightedNote(const Scale& scale, uint8_t baseRoot,
     return static_cast<uint8_t>(note);
 }
 
+static bool berlinClash(int a, int b) {
+    int ic = (a - b) % 12;
+    if (ic < 0) ic += 12;
+    return ic == 1 || ic == 6 || ic == 11;
+}
+
+void berlinEnforceConsonance(BerlinSequence** seqs, int n, const Scale& scale,
+                             int tensionPercent) {
+    if (tensionPercent > 60 || n < 2) return;
+    for (int col = 0; col < BerlinSequence::kMaxSteps; ++col) {
+        for (int a = 0; a < n; ++a) {
+            BerlinStep& sa = seqs[a]->step(col % seqs[a]->length());
+            if (!sa.active) continue;
+            for (int b = a + 1; b < n; ++b) {
+                BerlinStep& sb = seqs[b]->step(col % seqs[b]->length());
+                if (!sb.active) continue;
+                if (!berlinClash(sa.note, sb.note)) continue;
+                BerlinStep& hiStep = sa.note >= sb.note ? sa : sb;
+                const BerlinStep& loStep = sa.note >= sb.note ? sb : sa;
+                for (int off = 1; off <= 6; ++off) {
+                    bool fixed = false;
+                    for (int sgn = -1; sgn <= 1; sgn += 2) {
+                        const int cand = static_cast<int>(hiStep.note) + sgn * off;
+                        if (cand < 0 || cand > 127) continue;
+                        if (!scale.contains(static_cast<uint8_t>(cand))) continue;
+                        if (berlinClash(cand, loStep.note)) continue;
+                        hiStep.note = static_cast<uint8_t>(cand);
+                        fixed = true;
+                        break;
+                    }
+                    if (fixed) break;
+                }
+            }
+        }
+    }
+}
+
 } // namespace core
