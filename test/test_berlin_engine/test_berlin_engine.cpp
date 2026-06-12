@@ -639,6 +639,44 @@ static void test_jitter_stable_across_stamps() {
         TEST_ASSERT_EQUAL_UINT8(first.step(i).velocity, e.sequence().step(i).velocity);
 }
 
+// Mute suppresses NoteOns but the engine keeps running (playhead advances),
+// the sounding note is silenced on mute, and unmuting re-enters in phase.
+static void test_engine_mute_keeps_running() {
+    core::Scale scale(core::Scale::Type::Minor, 0);
+    core::DrunkardWalkGenerator gen;
+    FakeMidiOutput out;
+    core::BerlinEngine e;
+    core::BerlinParams p;
+    p.density = 100;                       // every step active: deterministic NoteOns
+    e.setOutput(&out);
+    e.setScale(&scale);
+    e.setGenerator(&gen);
+    e.setParams(p);
+    e.seed(42);
+    e.generate();
+    e.play();
+    TEST_ASSERT_FALSE(e.muted());
+
+    e.setMuted(true);                      // silences the sounding note at once
+    TEST_ASSERT_FALSE(out.events.empty());
+    TEST_ASSERT_FALSE(out.events.back().isOn);
+
+    const size_t evCount = out.events.size();
+    const int phBefore = e.playhead();
+    for (int i = 0; i < 12 * 4; ++i) e.onClockTick();
+    TEST_ASSERT_TRUE(e.playhead() != phBefore);            // still running
+    for (size_t i = evCount; i < out.events.size(); ++i)
+        TEST_ASSERT_FALSE(out.events[i].isOn);             // no NoteOn while muted
+
+    e.setMuted(false);
+    const size_t evCount2 = out.events.size();
+    for (int i = 0; i < 12; ++i) e.onClockTick();          // next step sounds again
+    bool gotOn = false;
+    for (size_t i = evCount2; i < out.events.size(); ++i)
+        if (out.events[i].isOn) gotOn = true;
+    TEST_ASSERT_TRUE(gotOn);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_resolution_ticks);
@@ -669,5 +707,6 @@ int main() {
     RUN_TEST(test_live_edits_do_not_reset_playhead);
     RUN_TEST(test_velocity_knobs_apply_live);
     RUN_TEST(test_jitter_stable_across_stamps);
+    RUN_TEST(test_engine_mute_keeps_running);
     return UNITY_END();
 }

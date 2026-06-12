@@ -9,6 +9,7 @@ namespace core {
 
 void BerlinEngine::emit(bool isOn, uint8_t note, uint8_t velocity) {
     if (!out_) return;
+    if (isOn && muted_) return;            // mute: NoteOns suppressed, offs pass
     if (isOn) out_->sendNoteOn(outChannel_, note, velocity);
     else      out_->sendNoteOff(outChannel_, note);
 }
