@@ -867,6 +867,30 @@ static void test_voices_screen_channel_and_mute() {
     TEST_ASSERT_TRUE(d.drewText("HIGH"));
 }
 
+// Muting a voice from the mixer silences only that voice; it keeps phase and
+// resumes exactly where the others are.
+static void test_mute_keeps_phase_other_voices_sound() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});
+    berlin.screen(2).onEncoderSw(1);                        // mute Bass
+    const size_t mark = out.events.size();
+    for (int i = 0; i < 12 * 8; ++i) berlin.onClockTick();
+    bool bassOn = false, otherOn = false;
+    for (size_t i = mark; i < out.events.size(); ++i) {
+        if (!out.events[i].isOn) continue;
+        if (out.events[i].channel == 1) bassOn = true; else otherOn = true;
+    }
+    TEST_ASSERT_FALSE(bassOn);
+    TEST_ASSERT_TRUE(otherOn);
+    // Muted engine kept running in phase with the others.
+    TEST_ASSERT_EQUAL_INT(berlin.engine(core::BerlinMode::kHigh).playhead(),
+                          berlin.engine(core::BerlinMode::kBass).playhead());
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_three_voices_tick_and_phase);
@@ -897,5 +921,6 @@ int main() {
     RUN_TEST(test_resolution_restamps_gate_without_regen);
     RUN_TEST(test_berlin_screen_order_with_voices);
     RUN_TEST(test_voices_screen_channel_and_mute);
+    RUN_TEST(test_mute_keeps_phase_other_voices_sound);
     return UNITY_END();
 }
