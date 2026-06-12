@@ -960,8 +960,24 @@ static void test_dynamics_and_behavior_are_global() {
                               static_cast<int>(berlin.params(v).behavior));
 }
 
+// The combined roll labels the edited voice; rendering any param screen
+// draws it (StubDisplay sees the voice name drawn by the roll).
+static void test_param_screens_draw_multi_roll_with_voice_label() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    berlin.onEnter();
+    StubDisplay d;
+    berlin.screen(0).render(d);
+    TEST_ASSERT_TRUE(d.drewText("HIGH"));                  // edit-voice label
+    berlin.screen(0).onEncoderSw(1);                       // cycle to Bass
+    StubDisplay d2;
+    berlin.screen(1).render(d2);
+    TEST_ASSERT_TRUE(d2.drewText("BASS"));
+}
+
 int main() {
     UNITY_BEGIN();
+    RUN_TEST(test_param_screens_draw_multi_roll_with_voice_label);
     RUN_TEST(test_three_voices_tick_and_phase);
     RUN_TEST(test_voices_emit_on_their_channels);
     RUN_TEST(test_edit_voice_targets_one_voice);

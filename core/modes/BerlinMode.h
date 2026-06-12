@@ -57,6 +57,10 @@ public:
     bool capturesTransport() const override { return true; }
     void update(uint32_t nowMs) override;
 
+    // Build the combined per-voice piano-roll from the live engines (called by
+    // every parameter screen's render() so the visualization is shared).
+    void renderRoll(Display& d) const;
+
     void setMidiOutput(MidiOutput* o) {
         for (int v = 0; v < kVoices; ++v) voices_[v].engine.setOutput(o);
     }

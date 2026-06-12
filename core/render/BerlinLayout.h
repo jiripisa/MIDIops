@@ -165,4 +165,148 @@ inline void drawBerlinPianoRoll(Display& d, const BerlinSequence& seq, int playh
     }
 }
 
+// Voice identity for the multi-voice roll: index 0 Bass, 1 Mid, 2 High.
+constexpr uint16_t kBerlinVoiceColors[3] = {
+    rgb565(90, 140, 255),    // Bass — blue
+    color::Green,            // Mid
+    rgb565(255, 150, 40),    // High — orange
+};
+constexpr const char* kBerlinVoiceNames[3] = {"BASS", "MID", "HIGH"};
+
+struct BerlinRollVoice {
+    const BerlinSequence* seq = nullptr;
+    int         playhead     = 0;
+    int         soundingNote = -1;
+    uint16_t    color        = 0;
+    bool        muted        = false;
+    bool        edited       = false;
+    const char* name         = "";
+};
+
+// One roll over the union register of all voices. Each voice spans the full
+// width at its own column width (length-normalized), so phasing shows as
+// playheads drifting apart; a voice's playhead line is drawn only across its
+// own pitch band. Brightness still encodes velocity; the edited voice is
+// fully saturated, others dimmed, muted voices darkest. The edited voice's
+// name is labelled top-right in its color.
+inline void drawBerlinMultiRoll(Display& d, const BerlinRollVoice* vs, int n) {
+    d.fillRect(0, kBerlinRollTop, 320, kBerlinRollH, color::Black);
+    if (n < 1) return;
+
+    // Union pitch range over all voices' active steps (C3..C5 fallback),
+    // octave-snapped, at least 2 octaves — same rules as the single roll.
+    int mn = 127, mx = 0;
+    bool any = false;
+    for (int v = 0; v < n; ++v) {
+        const BerlinSequence& s = *vs[v].seq;
+        for (int i = 0; i < s.length(); ++i) {
+            if (!s.step(i).active) continue;
+            if (s.step(i).note < mn) mn = s.step(i).note;
+            if (s.step(i).note > mx) mx = s.step(i).note;
+            any = true;
+        }
+    }
+    if (!any) { mn = 48; mx = 72; }
+    int lo = mn - (mn % 12);
+    int hi = mx + (11 - (mx % 12));
+    while (hi - lo < 23) { hi += 12; if (hi - lo < 23) lo -= 12; }
+    if (lo < 0)   lo = 0;
+    if (hi > 127) hi = 127;
+
+    const int nSemis = hi - lo + 1;
+    auto yTop = [&](int note) {
+        return kBerlinRollTop + (hi - note) * kBerlinRollH / nSemis;
+    };
+    const int kbW   = kBerlinKbW;
+    const int rollX = kbW;
+    const int rollW = 320 - kbW;
+
+    // Keyboard + lane lines (a key is marked used/sounding if ANY voice does).
+    const uint16_t cWhite = color::LightGray;
+    const uint16_t cBlack = rgb565(40, 40, 40);
+    const uint16_t cDot   = rgb565(110, 110, 110);
+    const uint16_t cLine  = rgb565(30, 30, 30);
+    auto usedByAny = [&](int note) {
+        for (int v = 0; v < n; ++v) {
+            const BerlinSequence& s = *vs[v].seq;
+            for (int i = 0; i < s.length(); ++i)
+                if (s.step(i).active && s.step(i).note == note) return true;
+        }
+        return false;
+    };
+    auto soundingByAny = [&](int note) {
+        for (int v = 0; v < n; ++v)
+            if (vs[v].soundingNote == note) return true;
+        return false;
+    };
+    for (int nt = lo; nt <= hi; ++nt) {
+        const int y0 = yTop(nt);
+        const int y1 = yTop(nt - 1);
+        int h = y1 - y0;
+        if (h < 1) h = 1;
+        if (soundingByAny(nt)) {
+            d.fillRect(0, y0, kbW, h, color::Gray);
+        } else if (berlinIsBlackKey(nt)) {
+            d.fillRect(0, y0, kbW, h, cWhite);
+            d.fillRect(0, y0, kbW * 6 / 10, h, cBlack);
+        } else {
+            d.fillRect(0, y0, kbW, h, cWhite);
+        }
+        if (!soundingByAny(nt) && usedByAny(nt)) {
+            int ds = h - 2; if (ds > 4) ds = 4; if (ds < 2) ds = 2;
+            d.fillRect(kbW - ds - 3, y0 + (h - ds) / 2, ds, ds, cDot);
+        }
+        d.fillRect(rollX, y0, rollW, 1, cLine);
+    }
+    d.fillRect(kbW - 1, kBerlinRollTop, 1, kBerlinRollH, color::DarkGray);
+
+    // Per-voice playhead lines (restricted to the voice's own pitch band) and
+    // note blocks. Saturation: edited 255, others 140, muted 70 (of t).
+    for (int v = 0; v < n; ++v) {
+        const BerlinRollVoice& rv = vs[v];
+        const BerlinSequence& s = *rv.seq;
+        const int len  = s.length() < 1 ? 1 : s.length();
+        const int colW = rollW / len;
+        const int sat  = rv.muted ? 70 : (rv.edited ? 255 : 140);
+
+        int bandLo = 127, bandHi = 0;
+        for (int i = 0; i < len; ++i) {
+            if (!s.step(i).active) continue;
+            if (s.step(i).note < bandLo) bandLo = s.step(i).note;
+            if (s.step(i).note > bandHi) bandHi = s.step(i).note;
+        }
+        if (bandLo > bandHi) { bandLo = lo; bandHi = hi; }
+        const int bandY0 = yTop(bandHi);
+        const int bandY1 = yTop(bandLo - 1);
+        if (rv.playhead >= 0 && rv.playhead < len) {
+            d.fillRect(rollX + rv.playhead * colW, bandY0, colW,
+                       bandY1 - bandY0, scaleRgb565(rv.color, 60));
+        }
+
+        for (int i = 0; i < len; ++i) {
+            const BerlinStep& st = s.step(i);
+            if (!st.active) continue;
+            if (st.note < lo || st.note > hi) continue;
+            const int y0 = yTop(st.note);
+            const int y1 = yTop(st.note - 1);
+            int bh = y1 - y0 - 1; if (bh < 2) bh = 2;
+            int w = colW * st.gateTicks / 12;
+            if (w < 3) w = 3;
+            if (w > colW - 1) w = colW - 1;
+            const int vt = st.velocity;
+            int t = 25 + (vt * vt * 230) / (126 * 126);    // quadratic velocity map
+            t = t * sat / 255;
+            d.fillRect(rollX + i * colW + 1, y0, w, bh, scaleRgb565(rv.color, t));
+        }
+    }
+
+    // Edited voice label, top-right of the roll, in the voice's color.
+    for (int v = 0; v < n; ++v) {
+        if (!vs[v].edited) continue;
+        int len = 0; while (vs[v].name[len] != '\0') ++len;
+        d.drawText(320 - len * 6 - 4, kBerlinRollTop + 3, vs[v].name,
+                   vs[v].color, color::Black, 1);
+    }
+}
+
 } // namespace core

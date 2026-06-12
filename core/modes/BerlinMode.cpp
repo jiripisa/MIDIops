@@ -6,7 +6,7 @@
 #include "core/Display.h"
 #include "core/MidiOutput.h"
 #include "core/Presets.h"
-#include "core/render/BerlinLayout.h" // drawBerlinParamCell, drawBerlinParamDividers, drawBerlinPianoRoll
+#include "core/render/BerlinLayout.h" // drawBerlinParamCell, drawBerlinParamDividers, drawBerlinMultiRoll
 #include "core/render/ParamGrid.h"   // cycleEnum
 
 namespace core {
@@ -173,9 +173,25 @@ void BerlinMode::onRawInput(const RawInput& in) {
     }
 }
 
+// ---- Combined multi-voice piano-roll --------------------------------------
+
+void BerlinMode::renderRoll(Display& d) const {
+    BerlinRollVoice rv[kVoices];
+    for (int v = 0; v < kVoices; ++v) {
+        const BerlinEngine& e = voices_[v].engine;
+        rv[v].seq          = &e.sequence();
+        rv[v].playhead     = e.playhead();
+        rv[v].soundingNote = e.soundingNote();
+        rv[v].color        = kBerlinVoiceColors[v];
+        rv[v].muted        = e.muted();
+        rv[v].edited       = (v == editVoice_);
+        rv[v].name         = kBerlinVoiceNames[v];
+    }
+    drawBerlinMultiRoll(d, rv, kVoices);
+}
+
 // ---- Voices screen (mixer) ------------------------------------------------
 
-static const char* kVoiceNames[3] = {"BASS", "MID", "HIGH"};
 constexpr int kMutedLabelDy = 52;   // below the cell's value text
 
 void BerlinMode::VoicesScreen::onEncoder(int index, int delta) {
@@ -199,14 +215,13 @@ void BerlinMode::VoicesScreen::render(Display& d) const {
     for (int v = 0; v < kVoices; ++v) {
         const bool muted = mode_.voices_[v].engine.muted();
         snprintf(buf, sizeof buf, "CH %d", mode_.voices_[v].channel);
-        drawBerlinParamCell(d, v, kVoiceNames[v], buf, muted);
+        drawBerlinParamCell(d, v, kBerlinVoiceNames[v], buf, muted);
         if (muted)
             d.drawText(v * kBerlinCellW + 4, kBerlinParamTop + kMutedLabelDy, "MUTED",
                        color::Gray, color::Black, 1);
     }
     drawBerlinParamDividers(d);
-    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
-                        mode_.engine().soundingNote(), color::Green);
+    mode_.renderRoll(d);
 }
 
 // ---- Structure screen -----------------------------------------------------
@@ -282,8 +297,7 @@ void BerlinMode::StructureScreen::render(Display& d) const {
         drawBerlinParamCell(d, 3, "ALGOPRM", "-", true);   // dimmed: not used
     }
     drawBerlinParamDividers(d);
-    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
-                        mode_.engine().soundingNote(), color::Green);
+    mode_.renderRoll(d);
 }
 
 // ---- Character screen -------------------------------------------------------
@@ -343,8 +357,7 @@ void BerlinMode::CharacterScreen::render(Display& d) const {
     snprintf(buf, sizeof buf, "%d", p.octaveRange);
     drawBerlinParamCell(d, 3, "RANGE",   buf);
     drawBerlinParamDividers(d);
-    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
-                        mode_.engine().soundingNote(), color::Green);
+    mode_.renderRoll(d);
 }
 
 // ---- Dynamics screen --------------------------------------------------------
@@ -385,8 +398,7 @@ void BerlinMode::DynamicsScreen::render(Display& d) const {
     drawBerlinParamCell(d, 3, "RESOL",
                         g.resolution == BerlinResolution::Sixteenth ? "16th" : "8th");
     drawBerlinParamDividers(d);
-    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
-                        mode_.engine().soundingNote(), color::Green);
+    mode_.renderRoll(d);
 }
 
 // ---- Behavior screen --------------------------------------------------------
@@ -427,8 +439,7 @@ void BerlinMode::BehaviorScreen::render(Display& d) const {
     drawBerlinParamCell(d, 2, "EVOLVE",   buf, g.behavior != BerlinBehavior::Evolve);
     drawBerlinParamCell(d, 3, "-", "-", true);             // unused
     drawBerlinParamDividers(d);
-    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
-                        mode_.engine().soundingNote(), color::Green);
+    mode_.renderRoll(d);
 }
 
 } // namespace core
