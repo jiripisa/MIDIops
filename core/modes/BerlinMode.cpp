@@ -62,24 +62,37 @@ Screen& BerlinMode::screen(int i) {
 
 bool BerlinMode::presetUsed(int slot) {
     Storage* st = svc_.storage();
-    return st && presetExists(*st, "berlin", slot);
+    return st && berlinPreset2Usable(*st, slot);
 }
 
 bool BerlinMode::savePreset(int slot) {
     Storage* st = svc_.storage();
-    return st && saveBerlinPreset(*st, slot, editParams(), editEngine().sequence());
+    if (!st) return false;
+    BerlinVoicePreset v[kVoices];
+    for (int i = 0; i < kVoices; ++i) {
+        v[i].params  = voices_[i].params;
+        v[i].seq     = voices_[i].engine.sequence();
+        v[i].channel = voices_[i].channel;
+        v[i].muted   = voices_[i].engine.muted();
+    }
+    return saveBerlinPreset2(*st, slot, v);
 }
 
 bool BerlinMode::loadPreset(int slot) {
     Storage* st = svc_.storage();
     if (!st) return false;
-    BerlinParams   p;
-    BerlinSequence seq;
-    if (!loadBerlinPreset(*st, slot, p, seq)) return false;
-    editParams() = p;
-    applyGenerator(editVoice_);
-    editEngine().setParams(p);
-    editEngine().setSequence(seq);    // seamless mid-play: playhead wraps, keeps running
+    BerlinVoicePreset v[kVoices];
+    if (!loadBerlinPreset2(*st, slot, v)) return false;
+    for (int i = 0; i < kVoices; ++i) {
+        voices_[i].params  = v[i].params;
+        voices_[i].channel = v[i].channel;
+        applyGenerator(i);
+        voices_[i].engine.setParams(v[i].params);
+        voices_[i].engine.setOutChannel(v[i].channel);
+        voices_[i].engine.setMuted(v[i].muted);
+        voices_[i].engine.setSequence(v[i].seq);   // mid-play: playhead wraps
+    }
+    syncGlobals();   // the loaded voice-0 globals become canonical everywhere
     return true;
 }
 

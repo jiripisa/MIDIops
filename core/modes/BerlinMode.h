@@ -32,9 +32,10 @@ public:
     int     screenCount() const override { return 6; }
     Screen& screen(int i) override;
 
-    // PresetOps — BerlinParams + the realized sequence per slot, keys
-    // "berlin.s01".."berlin.s20". A load mid-play swaps seamlessly: the
-    // playhead keeps running, wrapped into the new length.
+    // PresetOps — one slot stores the whole three-voice stack (each voice's
+    // params + realized sequence + channel + mute), keys "berlin.s01".."berlin.s20".
+    // A load mid-play swaps seamlessly: every playhead keeps running, wrapped
+    // into the new length.
     bool presetUsed(int slot) override;
     bool savePreset(int slot) override;
     bool loadPreset(int slot) override;
