@@ -26,8 +26,11 @@ key-based so they can be added later under their own keys.
 New `core/Storage.h` interface: `load(key, buf, len)` (exactly `len` bytes
 or fail), `save(key, buf, len)`, `remove(key)`. Implementations:
 
-* `platform/teensy/TeensyStorage` — LittleFS_Program on a 64 KB region of
-  the unused program flash (LittleFS wear-levels internally).
+* `platform/teensy/TeensyStorage` — LittleFS_Program on a 512 KB region of
+  the unused program flash (LittleFS wear-levels internally). Note: on the
+  Teensy 4.1 LittleFS_Program uses 64 KB erase blocks and littlefs needs
+  ≥ 2 blocks for its superblock pair, so the region must be ≥ 128 KB —
+  a 64 KB region makes begin() fail silently.
 * `platform/host/FileStorage` — files under `$HOME/.midiops/`.
 
 ## 3. Wire format (key `"settings"`)

@@ -19,7 +19,13 @@ public:
     bool remove(const char* key) override;
 
 private:
-    static constexpr uint32_t kRegionBytes = 64 * 1024;
+    // LittleFS_Program on the Teensy 4.1 uses 64 KB erase blocks
+    // (SECTOR_SIZE in the core's LittleFS.cpp), and littlefs needs at least
+    // two blocks just for its superblock pair — a 64 KB region is a single
+    // block, so begin() fails and every operation silently no-ops. 512 KB
+    // (8 blocks) is still negligible next to the ~7.6 MB free and gives the
+    // wear-leveller room to rotate.
+    static constexpr uint32_t kRegionBytes = 512 * 1024;
     LittleFS_Program fs_;
     bool ok_ = false;
 
