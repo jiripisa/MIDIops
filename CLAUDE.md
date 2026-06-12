@@ -53,8 +53,9 @@ The six modes (boot order = `addMode()` order in the mains):
   reference below); Latch1 = Play, Latch2 = Stop, Latch3 = Generate.
 * **BPM** — large tempo display; Enc1 sets BPM (read-only while the
   clock source is External).
-* **Settings** — global settings on two screens (MIDI: out channel /
-  in channel / clock source; Scale: scale type / root).
+* **Settings** — global settings on three screens (MIDI: out channel /
+  in channel / clock source / transport; Scale: scale type / root;
+  System: two-step factory reset).
 * **Debug** — live telemetry for every encoder and latch; for bring-up.
 
 Control scheme (roles are assigned at runtime by the active mode/screen,
@@ -71,7 +72,11 @@ not by the pin names):
     listed above.
 
 Global settings (in Settings mode): scale type + root, MIDI out channel,
-MIDI in channel (0 = OMNI), and clock source (Internal / External).
+MIDI in channel (0 = OMNI), clock source (Internal / External), and
+transport (Off / Send / Receive). All of them — plus the BPM — persist:
+`AppShell` auto-saves a versioned blob ~2 s after the last change through
+the `core/Storage.h` interface (Teensy: LittleFS on program flash via
+`TeensyStorage`; host: files under `~/.midiops/` via `FileStorage`).
 
 The physical panel (pins per `platform/teensy/main.cpp`):
   * **Five KY-040 encoders** Enc1–Enc5 — Enc1 4/5/3, Enc2 14/15/16,
@@ -88,8 +93,9 @@ don't require restructuring — only new files in `core/` and matching
 implementations under `platform/teensy/` and `platform/host/`.
 
 Likely next steps:
-  * **Persistence** of settings + mode parameters to flash so they
-    survive a power cycle (Teensy has 7+ MB free).
+  * **Persistence of mode parameters** (Arp/Berlin) — global settings
+    already persist via `core/Storage.h`; mode params would go under
+    their own storage keys.
   * **More scales / Berlin generator options** in `core/Scale.*` and
     `core/BerlinTypes.h`.
   * **More Arp patterns** in `core/ArpTypes.h` + `core/ArpEngine.cpp`.

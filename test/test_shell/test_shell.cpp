@@ -5,6 +5,7 @@
 #include "core/modes/BpmMode.h"
 #include "core/modes/DebugMode.h"
 #include "support/Fakes.h"
+#include "support/FakeStorage.h"
 #include "support/StubDisplay.h"
 #include "support/FakeMidiOutput.h"
 
@@ -331,6 +332,132 @@ static void test_global_latch_transport_gated_by_mode() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Settings persistence (design: docs/specs/2026-06-12-settings-persistence.md)
+//   Blob "settings": 'M','O','P','S', version 1, scaleType, scaleRoot, outCh,
+//   inCh, clockSource, transportMode, bpm lo, bpm hi (13 bytes).
+// ---------------------------------------------------------------------------
+static void seedSettingsBlob(FakeStorage& st, uint8_t scaleType, uint8_t root,
+                             uint8_t outCh, uint8_t inCh, uint8_t clock,
+                             uint8_t transport, uint16_t bpm,
+                             uint8_t version = 1, char magic0 = 'M') {
+    st.data["settings"] = {
+        static_cast<uint8_t>(magic0), 'O', 'P', 'S', version,
+        scaleType, root, outCh, inCh, clock, transport,
+        static_cast<uint8_t>(bpm & 0xFF), static_cast<uint8_t>(bpm >> 8)};
+}
+
+static void test_settings_loaded_at_boot() {
+    FakeStorage st;
+    seedSettingsBlob(st, /*Minor*/1, /*root D*/2, /*out*/5, /*in*/3,
+                     /*Internal*/0, /*Receive*/2, /*bpm*/96);
+    core::AppShell shell;
+    FakeMode a("a", 1);
+    shell.addMode(&a);
+    shell.setStorage(&st);
+    shell.begin();
+    TEST_ASSERT_EQUAL_INT(5, shell.midiOutChannel());
+    TEST_ASSERT_EQUAL_INT(3, shell.midiInChannel());
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Scale::Type::Minor),
+                          static_cast<int>(shell.scale().type()));
+    TEST_ASSERT_EQUAL_INT(2, shell.scale().root());
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::TransportMode::Receive),
+                          static_cast<int>(shell.transportMode()));
+    TEST_ASSERT_EQUAL_INT(96, shell.bpm());
+}
+
+static void test_corrupt_or_out_of_range_blob_keeps_defaults() {
+    // Bad magic, bad version, and an out-of-range field must each leave the
+    // defaults fully untouched (never a partial apply).
+    FakeStorage bad1, bad2, bad3;
+    seedSettingsBlob(bad1, 1, 2, 5, 3, 0, 2, 96, /*version*/1, /*magic*/'X');
+    seedSettingsBlob(bad2, 1, 2, 5, 3, 0, 2, 96, /*version*/9);
+    seedSettingsBlob(bad3, 1, 2, /*outCh out of range*/0, 3, 0, 2, 96);
+    FakeStorage* cases[3] = {&bad1, &bad2, &bad3};
+    for (FakeStorage* st : cases) {
+        core::AppShell shell;
+        FakeMode a("a", 1);
+        shell.addMode(&a);
+        shell.setStorage(st);
+        shell.begin();
+        TEST_ASSERT_EQUAL_INT(1, shell.midiOutChannel());
+        TEST_ASSERT_EQUAL_INT(0, shell.midiInChannel());
+        TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Scale::Type::Major),
+                              static_cast<int>(shell.scale().type()));
+        TEST_ASSERT_EQUAL_INT(120, shell.bpm());
+    }
+}
+
+static void test_settings_edit_saves_once_after_debounce() {
+    FakeStorage st;
+    core::AppShell shell;
+    FakeMode a("a", 1);
+    shell.addMode(&a);
+    shell.setStorage(&st);
+    shell.begin();
+    shell.tick(1000);
+    shell.setMidiOutChannel(7);                     // dirty at t=1000
+    shell.tick(1100);
+    TEST_ASSERT_EQUAL_INT(0, st.saves);             // not immediate
+    shell.tick(2999);
+    TEST_ASSERT_EQUAL_INT(0, st.saves);             // still inside the window
+    shell.tick(3000);
+    TEST_ASSERT_EQUAL_INT(1, st.saves);             // exactly one write
+    shell.tick(9000);
+    TEST_ASSERT_EQUAL_INT(1, st.saves);             // no repeats
+    // The written blob round-trips.
+    core::AppShell shell2;
+    FakeMode b("b", 1);
+    shell2.addMode(&b);
+    shell2.setStorage(&st);
+    shell2.begin();
+    TEST_ASSERT_EQUAL_INT(7, shell2.midiOutChannel());
+}
+
+static void test_settings_rapid_edits_collapse_to_single_save() {
+    FakeStorage st;
+    core::AppShell shell;
+    FakeMode a("a", 1);
+    shell.addMode(&a);
+    shell.setStorage(&st);
+    shell.begin();
+    shell.tick(1000);
+    shell.setMidiOutChannel(7);                     // dirty at 1000
+    shell.tick(2000);
+    shell.setMidiOutChannel(8);                     // dirty re-stamped at 2000
+    shell.tick(3500);
+    TEST_ASSERT_EQUAL_INT(0, st.saves);             // window restarted
+    shell.tick(4000);
+    TEST_ASSERT_EQUAL_INT(1, st.saves);
+}
+
+static void test_factory_reset_restores_defaults_and_erases() {
+    FakeStorage st;
+    seedSettingsBlob(st, 1, 2, 5, 3, 0, 2, 96);
+    core::AppShell shell;
+    FakeMode a("a", 1);
+    shell.addMode(&a);
+    shell.setStorage(&st);
+    shell.begin();
+    TEST_ASSERT_EQUAL_INT(5, shell.midiOutChannel());   // stored applied
+    shell.tick(1000);
+    shell.factoryReset();
+    TEST_ASSERT_EQUAL_INT(1, shell.midiOutChannel());
+    TEST_ASSERT_EQUAL_INT(0, shell.midiInChannel());
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Scale::Type::Major),
+                          static_cast<int>(shell.scale().type()));
+    TEST_ASSERT_EQUAL_INT(0, shell.scale().root());
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::TransportMode::Send),
+                          static_cast<int>(shell.transportMode()));
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::ClockSource::Internal),
+                          static_cast<int>(shell.clockSource()));
+    TEST_ASSERT_EQUAL_INT(120, shell.bpm());
+    TEST_ASSERT_TRUE(st.removes >= 1);
+    TEST_ASSERT_TRUE(st.data.find("settings") == st.data.end());
+    shell.tick(9000);
+    TEST_ASSERT_EQUAL_INT(0, st.saves);             // reset is not "dirty"
+}
+
 static void test_render_draws_top_bar_with_mode_and_screen() {
     core::AppShell shell;
     FakeMode a("mon", 2);
@@ -493,6 +620,11 @@ int main() {
     RUN_TEST(test_overlay_rotation_resets_timeout);
     RUN_TEST(test_overlay_carousel_animates_toward_choice);
     RUN_TEST(test_overlay_carousel_wraps_shortest_path);
+    RUN_TEST(test_settings_loaded_at_boot);
+    RUN_TEST(test_corrupt_or_out_of_range_blob_keeps_defaults);
+    RUN_TEST(test_settings_edit_saves_once_after_debounce);
+    RUN_TEST(test_settings_rapid_edits_collapse_to_single_save);
+    RUN_TEST(test_factory_reset_restores_defaults_and_erases);
     RUN_TEST(test_latch1_toggles_play_pause_and_sends_realtime);
     RUN_TEST(test_latch2_stop_latch3_reset);
     RUN_TEST(test_capturing_mode_skips_global_transport);

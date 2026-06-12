@@ -11,6 +11,7 @@ namespace core {
 
 class Display;
 class MidiOutput;
+class Storage;
 struct MidiMessage;
 
 // The runtime. Hosts a fixed array of modes, routes hardware input to the
@@ -20,9 +21,11 @@ public:
     static constexpr int      kMaxModes        = 12;
     static constexpr uint32_t kOverlayTimeoutMs = 3000;
     static constexpr int      kOverlayAnimTauMs = 80;   // carousel ease time constant
+    static constexpr uint32_t kSettingsSaveDebounceMs = 2000;
 
     void addMode(Mode* mode);          // call once per mode before begin()
     void setMidiOutput(MidiOutput* o); // for transport realtime messages
+    void setStorage(Storage* s);       // optional; call before begin()
     void begin(int startMode = 0);     // enters the given mode — call exactly once
 
     // Hardware input. Encoder index 1..5, latch index 1..3.
@@ -39,17 +42,22 @@ public:
     void     setBpm(uint16_t bpm) override;
     Transport transport() const override { return transport_; }
     const Scale& scale() const override { return scale_; }
-    void setScaleType(Scale::Type t) override { scale_.setType(t); }
-    void setScaleRoot(uint8_t pc) override { scale_.setRoot(pc); }
+    void setScaleType(Scale::Type t) override { scale_.setType(t); markSettingsDirty(); }
+    void setScaleRoot(uint8_t pc) override { scale_.setRoot(pc); markSettingsDirty(); }
     uint8_t  midiOutChannel() const override { return midiOutChannel_; }
-    void     setMidiOutChannel(uint8_t ch) override { if (ch >= 1 && ch <= 16) midiOutChannel_ = ch; }
+    void     setMidiOutChannel(uint8_t ch) override {
+        if (ch >= 1 && ch <= 16) { midiOutChannel_ = ch; markSettingsDirty(); }
+    }
     uint8_t  midiInChannel() const override { return midiInChannel_; }
-    void     setMidiInChannel(uint8_t ch) override { if (ch <= 16) midiInChannel_ = ch; }
+    void     setMidiInChannel(uint8_t ch) override {
+        if (ch <= 16) { midiInChannel_ = ch; markSettingsDirty(); }
+    }
     ClockSource clockSource() const override { return clockSource_; }
     void     setClockSource(ClockSource s) override;
     TransportMode transportMode() const override { return transportMode_; }
-    void     setTransportMode(TransportMode m) override { transportMode_ = m; }
+    void     setTransportMode(TransportMode m) override { transportMode_ = m; markSettingsDirty(); }
     void     notifyLocalTransport(Transport t) override;
+    void     factoryReset() override;
 
     // Inspectors for tests.
     int activeModeIndex() const { return activeMode_; }
@@ -89,6 +97,13 @@ private:
     bool           lastLatchOn_[4] = {};   // 1-based; [0] unused
     bool           latchSeen_[4]   = {};   // 1-based; first-delivery absorb per index
 
+    // Settings persistence: every settings setter marks dirty; tick() writes
+    // once kSettingsSaveDebounceMs after the LAST change (a knob twist is a
+    // single flash write). Nullptr storage = volatile settings, as before.
+    Storage* storage_ = nullptr;
+    bool     settingsDirty_   = false;
+    uint32_t settingsDirtyMs_ = 0;
+
     uint32_t nowMs_ = 0;
 
     Screen& activeScreen();
@@ -98,6 +113,9 @@ private:
     void applyTransport(Transport t);
     void drawTopBar(Display& d) const;
     void drawOverlay(Display& d) const;
+    void markSettingsDirty() { settingsDirty_ = true; settingsDirtyMs_ = nowMs_; }
+    void loadSettings();
+    void saveSettings();
 };
 
 } // namespace core

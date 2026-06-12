@@ -2,6 +2,7 @@
 
 #include "core/app/AppShell.h"
 #include "core/modes/SettingsMode.h"
+#include "support/FakeStorage.h"
 #include "support/StubDisplay.h"
 
 void setUp() {}
@@ -9,9 +10,10 @@ void tearDown() {}
 
 static void test_settings_screens() {
     core::AppShell shell; core::SettingsMode s(shell);
-    TEST_ASSERT_EQUAL_INT(2, s.screenCount());
-    TEST_ASSERT_EQUAL_STRING("midi",  s.screen(0).name());
-    TEST_ASSERT_EQUAL_STRING("scale", s.screen(1).name());
+    TEST_ASSERT_EQUAL_INT(3, s.screenCount());
+    TEST_ASSERT_EQUAL_STRING("midi",   s.screen(0).name());
+    TEST_ASSERT_EQUAL_STRING("scale",  s.screen(1).name());
+    TEST_ASSERT_EQUAL_STRING("system", s.screen(2).name());
 }
 
 static void test_midi_screen_edits() {
@@ -65,6 +67,54 @@ static void test_midi_screen_transport_cycles() {
                           static_cast<int>(shell.transportMode()));
 }
 
+// ---------------------------------------------------------------------------
+// System screen: two-step factory reset on Enc1 press. First press arms for
+// 3 s ("SURE?"); a second press inside the window resets; the window expiring
+// returns to idle (the next press only re-arms, never resets).
+// ---------------------------------------------------------------------------
+static void test_system_screen_arm_confirm_resets() {
+    core::AppShell shell;
+    FakeStorage st;
+    shell.setStorage(&st);
+    shell.begin();
+    shell.setMidiOutChannel(9);
+    core::SettingsMode s(shell);
+    core::Screen& sys = s.screen(2);
+    sys.update(1000);
+    sys.onEncoderSw(1);                 // arm
+    TEST_ASSERT_EQUAL_INT(9, shell.midiOutChannel());   // arming alone: no reset
+    sys.onEncoderSw(1);                 // confirm inside the window
+    TEST_ASSERT_EQUAL_INT(1, shell.midiOutChannel());   // defaults restored
+    TEST_ASSERT_TRUE(st.removes >= 1);
+}
+
+static void test_system_screen_arm_window_expires() {
+    core::AppShell shell;
+    shell.begin();
+    shell.setMidiOutChannel(9);
+    core::SettingsMode s(shell);
+    core::Screen& sys = s.screen(2);
+    sys.update(1000);
+    sys.onEncoderSw(1);                 // arm at t=1000
+    sys.update(4100);                   // window (3 s) expired
+    sys.onEncoderSw(1);                 // this press only re-arms
+    TEST_ASSERT_EQUAL_INT(9, shell.midiOutChannel());   // no reset happened
+}
+
+static void test_system_screen_renders_reset_cell() {
+    core::AppShell shell;
+    core::SettingsMode s(shell);
+    core::Screen& sys = s.screen(2);
+    StubDisplay d;
+    sys.render(d);
+    TEST_ASSERT_TRUE(d.drewText("RESET"));
+    sys.update(1000);
+    sys.onEncoderSw(1);                 // armed
+    StubDisplay d2;
+    sys.render(d2);
+    TEST_ASSERT_TRUE(d2.drewText("SURE?"));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_settings_screens);
@@ -72,5 +122,8 @@ int main() {
     RUN_TEST(test_scale_screen_edits_and_renders);
     RUN_TEST(test_midi_screen_renders_omni);
     RUN_TEST(test_midi_screen_transport_cycles);
+    RUN_TEST(test_system_screen_arm_confirm_resets);
+    RUN_TEST(test_system_screen_arm_window_expires);
+    RUN_TEST(test_system_screen_renders_reset_cell);
     return UNITY_END();
 }

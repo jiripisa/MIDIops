@@ -34,6 +34,10 @@ public:
     // transportState_ (top bar) and emits MIDI transport when mode == Send.
     // Does NOT call back into the mode's onTransport (the mode already acted).
     virtual void          notifyLocalTransport(Transport t) = 0;
+    // Restores every persisted setting (scale, channels, clock source,
+    // transport mode, BPM) to its factory default and erases the stored
+    // blob. Default no-op so test fakes need not care.
+    virtual void          factoryReset() {}
 };
 
 } // namespace core

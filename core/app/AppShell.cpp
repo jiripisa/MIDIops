@@ -5,7 +5,19 @@
 
 #include "core/Display.h"
 #include "core/MidiOutput.h"
+#include "core/Storage.h"
 #include "core/render/ModeIcons.h"
+
+namespace {
+
+// Persisted-settings wire format (design:
+// docs/specs/2026-06-12-settings-persistence.md): explicit bytes, no struct
+// memcpy, so there are no padding/endianness concerns between platforms.
+constexpr char kSettingsKey[]    = "settings";
+constexpr int  kSettingsBlobLen  = 13;
+constexpr uint8_t kSettingsVersion = 1;
+
+} // namespace
 
 namespace core {
 
@@ -15,7 +27,10 @@ void AppShell::addMode(Mode* mode) {
 
 void AppShell::setMidiOutput(MidiOutput* o) { out_ = o; }
 
+void AppShell::setStorage(Storage* s) { storage_ = s; }
+
 void AppShell::begin(int startMode) {
+    loadSettings();
     activeMode_ = (startMode >= 0 && startMode < modeCount_) ? startMode : 0;
     screenIndex_ = 0;
     if (modeCount_ > 0) {
@@ -213,6 +228,7 @@ void AppShell::onMidiIn(const MidiMessage& msg) {
 
 void AppShell::setBpm(uint16_t bpm) {
     bpm_ = bpm;
+    markSettingsDirty();
     // Only drive the internal clock master while on the internal source;
     // following an external clock must not fight the derived tempo.
     if (out_ && clockSource_ == ClockSource::Internal) out_->setClockBpm(bpm_);
@@ -220,6 +236,7 @@ void AppShell::setBpm(uint16_t bpm) {
 
 void AppShell::setClockSource(ClockSource s) {
     clockSource_ = s;
+    markSettingsDirty();
     if (out_) {
         if (s == ClockSource::External) {
             out_->setClockBpm(0);     // stop the internal clock master
@@ -263,6 +280,72 @@ void AppShell::tick(uint32_t nowMs) {
         uint32_t n = out_->consumeClockTicks();
         for (uint32_t i = 0; i < n; ++i) modes_[activeMode_]->onClockTick();
     }
+    // Debounced settings auto-save: one flash write per editing burst.
+    if (storage_ && settingsDirty_ &&
+        nowMs_ - settingsDirtyMs_ >= kSettingsSaveDebounceMs) {
+        saveSettings();
+        settingsDirty_ = false;
+    }
+}
+
+void AppShell::loadSettings() {
+    if (!storage_) return;
+    uint8_t b[kSettingsBlobLen];
+    if (!storage_->load(kSettingsKey, b, kSettingsBlobLen)) return;
+    if (b[0] != 'M' || b[1] != 'O' || b[2] != 'P' || b[3] != 'S' ||
+        b[4] != kSettingsVersion) {
+        return;
+    }
+    const uint8_t  scaleType = b[5], root = b[6], outCh = b[7], inCh = b[8],
+                   clock = b[9], transport = b[10];
+    const uint16_t bpm = static_cast<uint16_t>(b[11] | (b[12] << 8));
+    // Validate everything BEFORE applying anything: a blob with any field out
+    // of range is rejected whole, never half-applied.
+    if (scaleType >= static_cast<uint8_t>(Scale::Type::kCount)) return;
+    if (root > 11) return;
+    if (outCh < 1 || outCh > 16) return;
+    if (inCh > 16) return;
+    if (clock > static_cast<uint8_t>(ClockSource::External)) return;
+    if (transport >= static_cast<uint8_t>(TransportMode::kCount)) return;
+    if (bpm < 30 || bpm > 300) return;
+    setScaleType(static_cast<Scale::Type>(scaleType));
+    setScaleRoot(root);
+    setMidiOutChannel(outCh);
+    setMidiInChannel(inCh);
+    setTransportMode(static_cast<TransportMode>(transport));
+    setBpm(bpm);
+    // Clock source last: switching to External stops the internal clock
+    // master that setBpm just programmed.
+    setClockSource(static_cast<ClockSource>(clock));
+    settingsDirty_ = false;            // loading is not an edit
+}
+
+void AppShell::saveSettings() {
+    if (!storage_) return;
+    const uint8_t b[kSettingsBlobLen] = {
+        'M', 'O', 'P', 'S', kSettingsVersion,
+        static_cast<uint8_t>(scale_.type()),
+        scale_.root(),
+        midiOutChannel_,
+        midiInChannel_,
+        static_cast<uint8_t>(clockSource_),
+        static_cast<uint8_t>(transportMode_),
+        static_cast<uint8_t>(bpm_ & 0xFF),
+        static_cast<uint8_t>(bpm_ >> 8),
+    };
+    storage_->save(kSettingsKey, b, kSettingsBlobLen);
+}
+
+void AppShell::factoryReset() {
+    setScaleType(Scale::Type::Major);
+    setScaleRoot(0);
+    setMidiOutChannel(1);
+    setMidiInChannel(0);
+    setTransportMode(TransportMode::Send);
+    setBpm(120);
+    setClockSource(ClockSource::Internal);
+    if (storage_) storage_->remove(kSettingsKey);
+    settingsDirty_ = false;            // back at factory state: nothing to save
 }
 
 void AppShell::drawTopBar(Display& d) const {

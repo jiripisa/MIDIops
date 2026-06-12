@@ -131,4 +131,39 @@ void SettingsMode::ScaleScreen::render(Display& d) const {
     drawParamCell(d, 1, 0, "ROOT",  rootName(svc_.scale().root()));
 }
 
+// ---------------------------------------------------------------------------
+// SystemScreen
+// ---------------------------------------------------------------------------
+
+void SettingsMode::SystemScreen::onEncoderSw(int index) {
+    if (index != 1) return;
+    if (state_ == ResetState::Armed) {
+        svc_.factoryReset();
+        state_ = ResetState::Done;
+    } else {
+        state_ = ResetState::Armed;
+    }
+    stateMs_ = nowMs_;
+}
+
+void SettingsMode::SystemScreen::update(uint32_t nowMs) {
+    nowMs_ = nowMs;
+    if (state_ == ResetState::Armed && nowMs_ - stateMs_ >= kArmWindowMs)
+        state_ = ResetState::Idle;
+    if (state_ == ResetState::Done && nowMs_ - stateMs_ >= kDoneShowMs)
+        state_ = ResetState::Idle;
+}
+
+void SettingsMode::SystemScreen::render(Display& d) const {
+    drawParamGridDividers(d);
+    const char* value = state_ == ResetState::Armed ? "SURE?"
+                      : state_ == ResetState::Done  ? "DONE"
+                                                    : "RESET";
+    drawParamCell(d, 0, 0, "FACTORY", value);
+    const char* hint = state_ == ResetState::Armed
+                           ? "press E1 again to confirm"
+                           : "press E1 to factory-reset";
+    d.drawText(8, 200, hint, color::Gray, color::Black, 1);
+}
+
 } // namespace core

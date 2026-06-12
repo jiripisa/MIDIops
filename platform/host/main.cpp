@@ -25,6 +25,7 @@
 #include "core/modes/DebugMode.h"
 #include "core/modes/MonitoringMode.h"
 #include "core/modes/SettingsMode.h"
+#include "platform/host/FileStorage.h"
 #include "platform/host/RtMidiInput.h"
 #include "platform/host/RtMidiOutput.h"
 #include "platform/host/SdlDisplay.h"
@@ -105,6 +106,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
     SdlDisplay   display(kLogicalW, kLogicalH, kScale, "MIDIops simulator");
     RtMidiInput  midiIn("MIDIops");
     RtMidiOutput midiOut("MIDIops Clock");
+    FileStorage  storage;                     // settings persist in ~/.midiops/
     core::AppShell       app;
     core::MonitoringMode monitoringMode;
     core::DebugMode      debugMode;
@@ -125,6 +127,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
     app.addMode(&settingsMode);
     app.addMode(&debugMode);
     app.setBpm(120);
+    app.setStorage(&storage);
     app.begin(2);   // boot into Berlin (addMode order: Monitoring, Arp, Berlin, ...)
 
     // Prime the shell's latch shadow state with the initial OFF levels. On

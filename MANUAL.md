@@ -95,6 +95,11 @@ Berlin). You change them in **Settings** and **BPM**:
   Stop halts and silences); **Off** = neither send nor follow. Independent of
   the Clock source setting.
 
+All of the settings above — including the tempo — are **saved automatically**
+about 2 seconds after the last change and restored at the next power-up.
+**Settings → System** offers a **factory reset** that returns them all to the
+defaults listed here.
+
 In the visualizations, **channel 1 is green**; other channels have their own
 colours so input and output read at a glance.
 
@@ -256,7 +261,8 @@ incoming clock.
 
 ### 5.5 Settings
 
-Global settings, on two screens.
+Global settings, on three screens. Every change here (and the BPM) is saved
+automatically ~2 s after the last edit and survives a power cycle.
 
 **Screen `midi`:**
 
@@ -273,6 +279,14 @@ Global settings, on two screens.
 |---|---|---|---|---|
 | Enc1 | **Scale** | Major, Minor, Aug, Dim, Pent+, Pent− | Major | The scale all notes are quantized to. |
 | Enc2 | **Root** | C … B | C | The tonal centre. |
+
+**Screen `system`:**
+
+A **FACTORY RESET** cell driven by the **Enc1 press** (two-step, so it cannot
+fire by accident): the first press arms it (`SURE?`), a second press within
+3 seconds restores every global setting and the BPM to its default and erases
+the stored values (`DONE`). If you do not confirm in time it returns to idle.
+Rotating the knobs does nothing on this screen.
 
 ### 5.6 Debug
 

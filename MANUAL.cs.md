@@ -96,6 +96,11 @@ Berlin). Měníš je v **Settings** a **BPM**:
   Stop = zastaví a utiší); **Off** = ani neposílá, ani nenásleduje. Nastavení
   je nezávislé na nastavení zdroje clocku.
 
+Všechna výše uvedená nastavení — včetně tempa — se **ukládají automaticky**
+zhruba 2 sekundy po poslední změně a po dalším zapnutí se obnoví.
+**Settings → System** nabízí **factory reset**, který je všechna vrátí na
+výchozí hodnoty uvedené zde.
+
 Ve vizualizacích je **kanál 1 zelený**; ostatní kanály mají vlastní barvy, aby
 byl vstup a výstup hned čitelný.
 
@@ -256,7 +261,8 @@ clock.
 
 ### 5.5 Settings
 
-Globální nastavení, na dvou obrazovkách.
+Globální nastavení, na třech obrazovkách. Každá zdejší změna (a BPM) se uloží
+automaticky ~2 s po poslední úpravě a přežije vypnutí.
 
 **Obrazovka `midi`:**
 
@@ -273,6 +279,14 @@ Globální nastavení, na dvou obrazovkách.
 |---|---|---|---|---|
 | Enc1 | **Scale** | Major, Minor, Aug, Dim, Pent+, Pent− | Major | Stupnice, do které se kvantizují všechny noty. |
 | Enc2 | **Root** | C … B | C | Tónální centrum. |
+
+**Obrazovka `system`:**
+
+Buňka **FACTORY RESET** ovládaná **stiskem Enc1** (dvoukrokově, aby nešla
+spustit omylem): první stisk ji odjistí (`SURE?`), druhý stisk do 3 sekund
+vrátí všechna globální nastavení i BPM na výchozí hodnoty a smaže uložené
+hodnoty (`DONE`). Pokud nepotvrdíš včas, vrátí se do klidového stavu.
+Otáčení knobů na této obrazovce nic nedělá.
 
 ### 5.6 Debug
 

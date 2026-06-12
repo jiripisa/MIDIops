@@ -26,6 +26,7 @@
 #include "platform/teensy/TeensyEncoder.h"
 #include "platform/teensy/TeensyMidiInput.h"
 #include "platform/teensy/TeensyMidiOutput.h"
+#include "platform/teensy/TeensyStorage.h"
 
 // ============================================================
 //  ILI9341 SPI wiring  (2.8" 320x240 display)
@@ -119,6 +120,7 @@ static TeensyEncoder   enc5Knob(kPinEnc5Dt, kPinEnc5Clk);
 // pin HIGH when latched closed). Matches the latch1Button default.
 static TeensyButton    latch2Button(kPinLatch2);
 static TeensyButton    latch3Button(kPinLatch3);
+static TeensyStorage   storage;
 static core::AppShell       app;
 static core::MonitoringMode monitoringMode;
 static core::DebugMode      debugMode;
@@ -148,6 +150,8 @@ void setup() {
     app.addMode(&settingsMode);
     app.addMode(&debugMode);
     app.setBpm(120);
+    storage.begin();             // LittleFS on program flash; settings persist
+    app.setStorage(&storage);
     app.begin(2);   // boot into Berlin (addMode order: Monitoring, Arp, Berlin, ...)
     app.tick(millis());
     app.render(display);
