@@ -2,6 +2,7 @@
 
 #include "core/app/AppServices.h"
 #include "core/app/Mode.h"
+#include "core/app/PresetScreen.h"
 #include "core/render/ModeIcons.h"
 #include "core/BerlinEngine.h"
 #include "core/BerlinTypes.h"
@@ -15,17 +16,26 @@ namespace core {
 class MidiOutput;
 
 // BerlinMode — single-voice generative Berlin-School sequencer.
-// Screens: Structure / Character / Dynamics / Behavior. Each draws its top
-// parameter row plus the shared bottom piano-roll (drawn every screen so the
-// visualization persists across screen switches).
-class BerlinMode : public Mode {
+// Screens: Structure / Character / Dynamics / Behavior / Presets. The four
+// parameter screens draw their top parameter row plus the shared bottom
+// piano-roll (drawn every screen so the visualization persists across screen
+// switches); Presets is the Save/Load/Delete slot picker.
+class BerlinMode : public Mode, public PresetOps {
 public:
     explicit BerlinMode(AppServices& svc);
 
     const char* name() const override { return "Berlin"; }
     const uint16_t* icon() const override { return icons::kBerlin; }
-    int     screenCount() const override { return 4; }
+    int     screenCount() const override { return 5; }
     Screen& screen(int i) override;
+
+    // PresetOps — BerlinParams + the realized sequence per slot, keys
+    // "berlin.s01".."berlin.s20". A load mid-play swaps seamlessly: the
+    // playhead keeps running, wrapped into the new length.
+    bool presetUsed(int slot) override;
+    bool savePreset(int slot) override;
+    bool loadPreset(int slot) override;
+    bool deletePresetSlot(int slot) override;
 
     void onEnter() override;
     void onExit()  override { engine_.stop(); }   // silence any sounding note on leave
@@ -107,6 +117,7 @@ private:
     CharacterScreen  characterScreen_{*this};
     DynamicsScreen   dynamicsScreen_{*this};
     BehaviorScreen   behaviorScreen_{*this};
+    PresetScreen     presetScreen_{*this};
 };
 
 } // namespace core

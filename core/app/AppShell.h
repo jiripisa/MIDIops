@@ -58,6 +58,7 @@ public:
     void     setTransportMode(TransportMode m) override { transportMode_ = m; markSettingsDirty(); }
     void     notifyLocalTransport(Transport t) override;
     void     factoryReset() override;
+    Storage* storage() const override { return storage_; }
 
     // Inspectors for tests.
     int activeModeIndex() const { return activeMode_; }

@@ -3,6 +3,7 @@
 #include "core/app/AppShell.h"
 #include "core/modes/BerlinMode.h"
 #include "support/FakeMidiOutput.h"
+#include "support/FakeStorage.h"
 
 void setUp()    {}
 void tearDown() {}
@@ -680,9 +681,82 @@ static void test_external_stop_silences_engine() {
     TEST_ASSERT_EQUAL_INT(0, out.stops);
 }
 
+// ---------------------------------------------------------------------------
+// Presets: a saved slot restores params AND the exact realized sequence.
+// ---------------------------------------------------------------------------
+static void test_berlin_preset_restores_sequence_exactly() {
+    core::AppShell shell;
+    FakeStorage st;
+    shell.setStorage(&st);
+    core::BerlinMode berlin(shell);
+    berlin.onEnter();                                  // generates a sequence
+
+    core::BerlinSequence snapshot = berlin.engine().sequence();
+    const int savedLength = berlin.params().length;
+
+    core::Screen& presets = berlin.screen(4);
+    TEST_ASSERT_EQUAL_STRING("presets", presets.name());
+    presets.update(1000);
+    presets.onEncoderSw(1);                            // Save
+    presets.onEncoder(1, +4);                          // slot index 4 (shown 05)
+    presets.onEncoderSw(1);                            // confirm
+    TEST_ASSERT_TRUE(st.exists("berlin.s05"));
+
+    // Mutate the live state: Live length edit sculpts the sequence in place.
+    berlin.screen(0).onEncoder(2, +8);
+    TEST_ASSERT_NOT_EQUAL(savedLength, berlin.params().length);
+
+    presets.onEncoderSw(2);                            // Load (slot remembered)
+    presets.onEncoderSw(2);                            // confirm
+    TEST_ASSERT_EQUAL_INT(savedLength, berlin.params().length);
+    const core::BerlinSequence& got = berlin.engine().sequence();
+    TEST_ASSERT_EQUAL_INT(snapshot.length(), got.length());
+    for (int i = 0; i < snapshot.length(); ++i) {
+        TEST_ASSERT_EQUAL_INT(snapshot.step(i).active ? 1 : 0, got.step(i).active ? 1 : 0);
+        TEST_ASSERT_EQUAL_INT(snapshot.step(i).note, got.step(i).note);
+        TEST_ASSERT_EQUAL_INT(snapshot.step(i).velocity, got.step(i).velocity);
+        TEST_ASSERT_EQUAL_INT(snapshot.step(i).gateTicks, got.step(i).gateTicks);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Presets: loading mid-play keeps playing; the playhead wraps into the new
+// (shorter) length instead of resetting.
+// ---------------------------------------------------------------------------
+static void test_berlin_preset_load_mid_play_keeps_playing() {
+    core::AppShell shell;
+    FakeStorage st;
+    shell.setStorage(&st);
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+
+    core::Screen& presets = berlin.screen(4);
+    presets.update(1000);
+    presets.onEncoderSw(1);                            // save length-16 preset to slot 0
+    presets.onEncoderSw(1);
+
+    berlin.screen(0).onEncoder(2, +16);                // Live: extend to length 32
+    TEST_ASSERT_EQUAL_INT(32, berlin.params().length);
+
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // prime
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // play
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
+    for (int i = 0; i < 12 * 20; ++i) berlin.onClockTick();         // playhead ~20
+    TEST_ASSERT_TRUE(berlin.engine().playhead() >= 16);
+
+    presets.onEncoderSw(2);                            // load the length-16 preset
+    presets.onEncoderSw(2);
+    TEST_ASSERT_EQUAL_INT(16, berlin.params().length);
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());                  // still running
+    TEST_ASSERT_TRUE(berlin.engine().playhead() < 16);              // wrapped, not reset
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_latch1_play_pause_latch2_stop);
+    RUN_TEST(test_berlin_preset_restores_sequence_exactly);
+    RUN_TEST(test_berlin_preset_load_mid_play_keeps_playing);
     RUN_TEST(test_berlin_latch1_click_toggles);
     RUN_TEST(test_berlin_latches_emit_transport_under_send);
     RUN_TEST(test_berlin_latch2_emits_stop_under_send);

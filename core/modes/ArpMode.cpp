@@ -4,6 +4,7 @@
 
 #include "core/Display.h"
 #include "core/MidiMessage.h"
+#include "core/Presets.h"
 #include "core/render/NotationRenderer.h"
 #include "core/render/ParamGrid.h"
 #include "core/render/WormsRenderer.h"
@@ -57,8 +58,35 @@ Screen& ArpMode::screen(int i) {
         case 0:  return paramScreenA_;
         case 1:  return paramScreenB_;
         case 2:  return wormsScreen_;
-        default: return notesScreen_;
+        case 3:  return notesScreen_;
+        default: return presetScreen_;
     }
+}
+
+// ---------------------------------------------------------------------------
+// PresetOps (keys "arp.s01".."arp.s20")
+// ---------------------------------------------------------------------------
+
+bool ArpMode::presetUsed(int slot) {
+    Storage* st = svc_.storage();
+    return st && presetExists(*st, "arp", slot);
+}
+
+bool ArpMode::savePreset(int slot) {
+    Storage* st = svc_.storage();
+    return st && saveArpPreset(*st, slot, params_);
+}
+
+bool ArpMode::loadPreset(int slot) {
+    Storage* st = svc_.storage();
+    if (!st || !loadArpPreset(*st, slot, params_)) return false;
+    engine_.setParams(params_);
+    return true;
+}
+
+bool ArpMode::deletePresetSlot(int slot) {
+    Storage* st = svc_.storage();
+    return st && deletePreset(*st, "arp", slot);
 }
 
 void ArpMode::onEnter() {

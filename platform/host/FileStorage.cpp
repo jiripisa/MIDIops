@@ -40,3 +40,8 @@ bool FileStorage::remove(const char* key) {
     std::remove(pathFor(key).c_str());  // missing file is not an error
     return true;
 }
+
+bool FileStorage::exists(const char* key) {
+    struct stat st;
+    return ::stat(pathFor(key).c_str(), &st) == 0;
+}

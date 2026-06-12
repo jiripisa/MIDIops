@@ -13,6 +13,7 @@ public:
     bool load(const char* key, void* buf, int len) override;
     bool save(const char* key, const void* buf, int len) override;
     bool remove(const char* key) override;
+    bool exists(const char* key) override;
 
 private:
     std::string dir_;

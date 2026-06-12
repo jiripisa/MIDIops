@@ -2,6 +2,7 @@
 
 #include "core/app/AppServices.h"
 #include "core/app/Mode.h"
+#include "core/app/PresetScreen.h"
 #include "core/render/ModeIcons.h"
 #include "core/ArpEngine.h"
 #include "core/ArpTypes.h"
@@ -12,19 +13,26 @@ namespace core {
 
 class MidiOutput;
 
-// ArpMode — arpeggiator with 4 screens:
+// ArpMode — arpeggiator with 5 screens:
 //   0 "params1" — steps, rate, gate, direction
 //   1 "params2" — octave, swing, velocity mode, latch
 //   2 "worms"   — outgoing note visualisation
 //   3 "notes"   — notation view of outgoing notes
-class ArpMode : public Mode {
+//   4 "presets" — Save/Load/Delete params to 20 slots
+class ArpMode : public Mode, public PresetOps {
 public:
     explicit ArpMode(AppServices& svc);
 
     const char* name() const override { return "Arp"; }
     const uint16_t* icon() const override { return icons::kArp; }
-    int     screenCount() const override { return 4; }
+    int     screenCount() const override { return 5; }
     Screen& screen(int i) override;
+
+    // PresetOps — ArpParams (incl. Hold) per slot, keys "arp.s01".."arp.s20".
+    bool presetUsed(int slot) override;
+    bool savePreset(int slot) override;
+    bool loadPreset(int slot) override;
+    bool deletePresetSlot(int slot) override;
 
     void onEnter() override;
     void onExit() override;
@@ -123,6 +131,7 @@ private:
     ParamScreenB paramScreenB_{*this};
     WormsScreen  wormsScreen_{*this};
     NotesScreen  notesScreen_{*this};
+    PresetScreen presetScreen_{*this};
 };
 
 } // namespace core

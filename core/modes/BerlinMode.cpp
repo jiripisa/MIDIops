@@ -5,6 +5,7 @@
 #include "core/BerlinGen.h"           // berlinGateTicks (live gate re-stamp)
 #include "core/Display.h"
 #include "core/MidiOutput.h"
+#include "core/Presets.h"
 #include "core/render/BerlinLayout.h" // drawBerlinParamCell, drawBerlinParamDividers, drawBerlinPianoRoll
 #include "core/render/ParamGrid.h"   // cycleEnum
 
@@ -28,7 +29,40 @@ Screen& BerlinMode::screen(int i) {
     if (i == 1) return characterScreen_;
     if (i == 2) return dynamicsScreen_;
     if (i == 3) return behaviorScreen_;
+    if (i == 4) return presetScreen_;
     return structureScreen_;
+}
+
+// ---------------------------------------------------------------------------
+// PresetOps (keys "berlin.s01".."berlin.s20")
+// ---------------------------------------------------------------------------
+
+bool BerlinMode::presetUsed(int slot) {
+    Storage* st = svc_.storage();
+    return st && presetExists(*st, "berlin", slot);
+}
+
+bool BerlinMode::savePreset(int slot) {
+    Storage* st = svc_.storage();
+    return st && saveBerlinPreset(*st, slot, params_, engine_.sequence());
+}
+
+bool BerlinMode::loadPreset(int slot) {
+    Storage* st = svc_.storage();
+    if (!st) return false;
+    BerlinParams   p;
+    BerlinSequence seq;
+    if (!loadBerlinPreset(*st, slot, p, seq)) return false;
+    params_ = p;
+    applyGenerator();
+    engine_.setParams(params_);
+    engine_.setSequence(seq);    // seamless mid-play: playhead wraps, keeps running
+    return true;
+}
+
+bool BerlinMode::deletePresetSlot(int slot) {
+    Storage* st = svc_.storage();
+    return st && deletePreset(*st, "berlin", slot);
 }
 
 void BerlinMode::onEnter() {

@@ -21,6 +21,9 @@ public:
 
     // Removes the blob under `key` (missing key is not an error).
     virtual bool remove(const char* key) = 0;
+
+    // True when a blob is stored under `key` (any size).
+    virtual bool exists(const char* key) = 0;
 };
 
 } // namespace core

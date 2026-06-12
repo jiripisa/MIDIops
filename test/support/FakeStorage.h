@@ -35,4 +35,5 @@ public:
         data.erase(key);
         return true;
     }
+    bool exists(const char* key) override { return data.count(key) != 0; }
 };

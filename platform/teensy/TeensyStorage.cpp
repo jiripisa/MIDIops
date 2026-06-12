@@ -44,3 +44,10 @@ bool TeensyStorage::remove(const char* key) {
     fs_.remove(path);                  // missing file is not an error
     return true;
 }
+
+bool TeensyStorage::exists(const char* key) {
+    if (!ok_) return false;
+    char path[32];
+    pathFor(key, path, sizeof path);
+    return fs_.exists(path);
+}

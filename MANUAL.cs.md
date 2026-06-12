@@ -126,7 +126,7 @@ Arpeggiátor respektující stupnici. Drž nebo pošli noty; engine je přehraje
 arpeggio na **MIDI Out kanál**, zamčené na clock. Noty se řadí do **FIFO**
 fronty, takže se nikdy nepřekrývají.
 
-**Obrazovky:** `params1` · `params2` · `worms` · `notes`.
+**Obrazovky:** `params1` · `params2` · `worms` · `notes` · `presets`.
 
 **Obrazovka `params1`:**
 
@@ -148,6 +148,16 @@ fronty, takže se nikdy nepřekrývají.
 
 Obrazovky `worms` a `notes` vizualizují **odchozí** arpeggio.
 
+**Obrazovka `presets`:** ukládání, načítání a mazání parametrů Arpu ve **20
+slotech**. Stiskem **Enc1 = Save**, **Enc2 = Load** nebo **Enc3 = Delete**
+otevřeš výběr slotu — mřížku slotů 01–20, kde obsazené sloty svítí, prázdné
+jsou tmavé a výběr má rámeček. Otáčením kteréhokoli z Enc1–4 vybereš slot a
+**dalším stiskem téhož enkodéru potvrdíš**; stisk jiného enkodéru ruší,
+stejně jako 5 s bez vstupu nebo odchod z obrazovky. Číslo slotu se pamatuje,
+takže save → load zůstane na stejném slotu. Save obsazený slot rovnou
+přepíše; Delete nechá výběr otevřený, takže můžeš vyčistit víc slotů za
+sebou; Load/Delete na prázdném slotu jen bliknou `EMPTY`.
+
 **Transport (páčky):**
 
 | Latch | Funkce |
@@ -166,8 +176,9 @@ má svůj řádek, klávesy použité v sekvenci jsou označené malou šedou te
 **klávesa právě hrající noty zešedne**, jak playhead postupuje. **Jas** bloku
 každé noty odpovídá její velocity — hlasitější noty jsou jasnější, tišší tmavší.
 
-**Obrazovky:** `structure` · `character` · `dynamics` · `behavior` (piano-roll
-zůstává na všech čtyřech — mění se jen horní řádek parametrů).
+**Obrazovky:** `structure` · `character` · `dynamics` · `behavior` · `presets`
+(piano-roll zůstává na čtyřech parametrových obrazovkách — mění se jen horní
+řádek parametrů).
 
 **Obrazovka `structure`:**
 
@@ -208,6 +219,13 @@ zůstává na všech čtyřech — mění se jen horní řádek parametrů).
 > Šedě vykreslené buňky jsou parametry, které aktuální algoritmus/chování
 > ignoruje — jejich knoby jsou zamčené, dokud nepřepneš na konfiguraci, která
 > je používá.
+
+**Obrazovka `presets`:** funguje úplně stejně jako obrazovka presets v Arpu
+(Enc1 = Save, Enc2 = Load, Enc3 = Delete přes 20 slotů — viz §5.2), s jedním
+berlinským bonusem: slot ukládá parametry **a přesnou realizovanou
+sekvenci**, takže load vrátí přesně ten pattern, který jsi uložil, žádné nové
+losování. Load během přehrávání vymění pattern **plynule**: playhead běží dál
+(zalomený do nové délky) — ideální pro živé přechody mezi uloženými patterny.
 
 **Algoritmy (Enc1 na `structure`):**
 

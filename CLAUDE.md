@@ -48,9 +48,12 @@ The six modes (boot order = `addMode()` order in the mains):
   worms scrolling up from a keyboard, plus a notation screen; held-note
   chord names in the header.
 * **Arp** — arpeggiator. Hold notes, configure pattern/octaves/gate per
-  screen; Latch1 = Hold, Latch2 = Mute, Latch3 = Reset.
+  screen; Latch1 = Hold, Latch2 = Mute, Latch3 = Reset. A fifth
+  "presets" screen saves/loads/deletes the params in 20 slots.
 * **Berlin** — generative Berlin-School sequencer (see the spec
   reference below); Latch1 = Play, Latch2 = Stop, Latch3 = Generate.
+  Its "presets" screen stores params + the realized sequence in 20
+  slots; loading mid-play swaps seamlessly (playhead wraps).
 * **BPM** — large tempo display; Enc1 sets BPM (read-only while the
   clock source is External).
 * **Settings** — global settings on three screens (MIDI: out channel /
@@ -93,12 +96,15 @@ don't require restructuring — only new files in `core/` and matching
 implementations under `platform/teensy/` and `platform/host/`.
 
 Likely next steps:
-  * **Persistence of mode parameters** (Arp/Berlin) — global settings
-    already persist via `core/Storage.h`; mode params would go under
-    their own storage keys.
   * **More scales / Berlin generator options** in `core/Scale.*` and
     `core/BerlinTypes.h`.
   * **More Arp patterns** in `core/ArpTypes.h` + `core/ArpEngine.cpp`.
+  * **Multi-voice Berlin** (bass/mid/lead with cross-voice phasing) per
+    Part 2 of the spec document below.
+
+(Persistence is done: global settings auto-save via `core/Storage.h`,
+and the modes' preset slots live in `core/Presets.*` + the shared
+`core/app/PresetScreen.*` picker.)
 
 ## Reference: Berlin School mode
 

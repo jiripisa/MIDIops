@@ -5,6 +5,7 @@
 #include "core/app/AppShell.h"
 #include "core/modes/ArpMode.h"
 #include "support/FakeMidiOutput.h"
+#include "support/FakeStorage.h"
 #include "support/StubDisplay.h"
 
 // ---------------------------------------------------------------------------
@@ -43,11 +44,39 @@ static void test_arp_mode_screens() {
     core::AppShell shell;
     core::ArpMode  arp(shell);
 
-    TEST_ASSERT_EQUAL_INT(4, arp.screenCount());
+    TEST_ASSERT_EQUAL_INT(5, arp.screenCount());
     TEST_ASSERT_EQUAL_STRING("params1", arp.screen(0).name());
     TEST_ASSERT_EQUAL_STRING("params2", arp.screen(1).name());
     TEST_ASSERT_EQUAL_STRING("worms",   arp.screen(2).name());
     TEST_ASSERT_EQUAL_STRING("notes",   arp.screen(3).name());
+    TEST_ASSERT_EQUAL_STRING("presets", arp.screen(4).name());
+}
+
+// ---------------------------------------------------------------------------
+// test_arp_preset_save_load_round_trip
+//   Params survive save -> change -> load through the presets screen. The
+//   slot index is remembered between the Save and Load picker openings.
+// ---------------------------------------------------------------------------
+static void test_arp_preset_save_load_round_trip() {
+    core::AppShell shell;
+    FakeStorage st;
+    shell.setStorage(&st);
+    core::ArpMode arp(shell);
+    core::Screen& presets = arp.screen(4);
+    presets.update(1000);
+
+    arp.screen(0).onEncoder(1, +5);                    // steps 3 -> 8
+    TEST_ASSERT_EQUAL_INT(8, arp.params().steps);
+    presets.onEncoderSw(1);                            // Save picker
+    presets.onEncoder(1, +2);                          // slot index 2 (shown 03)
+    presets.onEncoderSw(1);                            // confirm
+    TEST_ASSERT_TRUE(st.exists("arp.s03"));
+
+    arp.screen(0).onEncoder(1, -4);                    // steps 8 -> 4
+    TEST_ASSERT_EQUAL_INT(4, arp.params().steps);
+    presets.onEncoderSw(2);                            // Load picker (slot kept)
+    presets.onEncoderSw(2);                            // confirm
+    TEST_ASSERT_EQUAL_INT(8, arp.params().steps);      // restored
 }
 
 // ---------------------------------------------------------------------------
@@ -466,6 +495,7 @@ static void test_arp_ticks_from_internal_clock() {
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_arp_mode_screens);
+    RUN_TEST(test_arp_preset_save_load_round_trip);
     RUN_TEST(test_param_edit_steps);
     RUN_TEST(test_arp_outgoing_visualised);
     RUN_TEST(test_param_edit_rate_cycles);

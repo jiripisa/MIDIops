@@ -43,6 +43,14 @@ public:
     void applyLiveLength();                  // truncate (wrap playhead) or extend (fill the new tail)
     void applyLiveTension();                 // re-pitch active steps (except step 0), keep rhythm/velocity/gate
 
+    // Replaces the whole sequence (preset load). The playhead is wrapped into
+    // the new length; playing state and the sounding gate are untouched, so a
+    // load mid-play swaps the pattern seamlessly.
+    void setSequence(const BerlinSequence& s) {
+        seq_ = s;
+        if (playhead_ >= seq_.length()) playhead_ %= seq_.length();
+    }
+
     void onClockTick();      // advance one 24-PPQN tick
 
     bool isPlaying()    const { return playing_; }

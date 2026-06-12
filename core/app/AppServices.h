@@ -7,6 +7,8 @@
 
 namespace core {
 
+class Storage;
+
 enum class ClockSource : uint8_t { Internal = 0, External = 1 };
 
 enum class TransportMode : uint8_t { Off = 0, Send, Receive, kCount };
@@ -38,6 +40,9 @@ public:
     // transport mode, BPM) to its factory default and erases the stored
     // blob. Default no-op so test fakes need not care.
     virtual void          factoryReset() {}
+    // The shell's persistent store (mode presets live there under their own
+    // keys). nullptr = no persistence available; default so fakes need not care.
+    virtual Storage*      storage() const { return nullptr; }
 };
 
 } // namespace core

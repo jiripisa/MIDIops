@@ -125,7 +125,7 @@ A scale-aware arpeggiator. Hold or inject notes; the engine plays them back as
 an arpeggio on the **MIDI Out channel**, locked to the clock. Notes queue
 **FIFO** so they never overlap.
 
-**Screens:** `params1` · `params2` · `worms` · `notes`.
+**Screens:** `params1` · `params2` · `worms` · `notes` · `presets`.
 
 **Screen `params1`:**
 
@@ -147,6 +147,17 @@ an arpeggio on the **MIDI Out channel**, locked to the clock. Notes queue
 
 The `worms` and `notes` screens visualize the **outgoing** arpeggio.
 
+**Screen `presets`:** save, load and delete the Arp parameters in **20
+slots**. Press **Enc1 = Save**, **Enc2 = Load** or **Enc3 = Delete** to open
+the slot picker — a grid of slots 01–20 where used slots are bright, empty
+ones dim and the selection is framed. Rotate any of Enc1–4 to pick a slot,
+then **press the same encoder again to confirm**; pressing a different
+encoder cancels, as does 5 s without input or leaving the screen. The slot
+number is remembered, so a save → load round-trip stays on the same slot.
+Save overwrites a used slot directly; Delete keeps the picker open so you
+can clean several slots in a row; Load/Delete on an empty slot just flash
+`EMPTY`.
+
 **Transport (latches):**
 
 | Latch | Function |
@@ -166,8 +177,9 @@ the sequence are marked with a small grey dot, and the **currently played note's
 key greys out** as the playhead moves. Each note block's **brightness reflects
 its velocity** — louder notes are brighter, quieter notes dimmer.
 
-**Screens:** `structure` · `character` · `dynamics` · `behavior` (the piano-roll
-stays visible on all four — only the top parameter row changes).
+**Screens:** `structure` · `character` · `dynamics` · `behavior` · `presets`
+(the piano-roll stays visible on the four parameter screens — only the top
+parameter row changes).
 
 **Screen `structure`:**
 
@@ -207,6 +219,13 @@ stays visible on all four — only the top parameter row changes).
 
 > Cells drawn in grey are parameters the current algorithm/behavior ignores —
 > their knobs are locked until you switch to a configuration that uses them.
+
+**Screen `presets`:** works exactly like Arp's presets screen (Enc1 = Save,
+Enc2 = Load, Enc3 = Delete over 20 slots — see §5.2), with one Berlin twist:
+a slot stores the parameters **and the exact realized sequence**, so a load
+brings back the very pattern you saved, not a re-roll. Loading while playing
+swaps the pattern **seamlessly**: the playhead keeps running (wrapped into
+the new length) — ideal for live transitions between saved patterns.
 
 **Algorithms (Enc1 on `structure`):**
 
