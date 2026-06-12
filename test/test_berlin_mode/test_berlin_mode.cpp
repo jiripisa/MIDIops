@@ -5,6 +5,7 @@
 #include "core/modes/BerlinMode.h"
 #include "support/FakeMidiOutput.h"
 #include "support/FakeStorage.h"
+#include "support/StubDisplay.h"
 
 void setUp()    {}
 void tearDown() {}
@@ -249,7 +250,7 @@ static void test_character_behavior_screens_edit_clamp() {
     core::AppShell shell;
     core::BerlinMode berlin(shell);
     core::Screen& ch = berlin.screen(1);
-    core::Screen& bh = berlin.screen(3);
+    core::Screen& bh = berlin.screen(4);
 
     // --- CharacterScreen ---
     // Gate clamps 40..99 (Enc1)
@@ -287,7 +288,7 @@ static void test_character_behavior_screens_edit_clamp() {
 static void test_dynamics_screen() {
     core::AppShell shell;
     core::BerlinMode berlin(shell);
-    core::Screen& dyn = berlin.screen(2);          // Dynamics now at index 2
+    core::Screen& dyn = berlin.screen(3);          // Dynamics now at index 3
 
     for (int i = 0; i < 200; ++i) dyn.onEncoder(1, +1);
     TEST_ASSERT_EQUAL_INT(126, berlin.params().velocityBase);
@@ -313,7 +314,7 @@ static void test_dynamics_screen() {
 static void test_behavior_screen_gatelen_and_evolve_locks() {
     core::AppShell shell;
     core::BerlinMode berlin(shell);
-    core::Screen& bh = berlin.screen(3);
+    core::Screen& bh = berlin.screen(4);
 
     // GateLen edits + clamps under Phase only.
     berlin.params().algorithm = core::BerlinAlgorithm::GatePitchPhasing;
@@ -507,7 +508,7 @@ static void test_velocity_edit_applies_live_and_locked_never_regens() {
     // the sequence's velocities at once, in EVERY behavior — even under Locked.
     berlin.params().behavior = core::BerlinBehavior::Locked;
     core::BerlinSequence before = berlin.engine().sequence();
-    berlin.screen(2).onEncoder(1, +1);                // velocity base +1 (live)
+    berlin.screen(3).onEncoder(1, +1);                // velocity base +1 (live)
     bool anyVelChanged = false;
     for (int i = 0; i < before.length(); ++i) {
         if (before.step(i).active &&
@@ -707,7 +708,7 @@ static void test_berlin_preset_restores_sequence_exactly() {
     core::BerlinSequence snapshot = berlin.engine().sequence();
     const int savedLength = berlin.params().length;
 
-    core::Screen& presets = berlin.screen(4);
+    core::Screen& presets = berlin.screen(5);
     TEST_ASSERT_EQUAL_STRING("presets", presets.name());
     presets.update(1000);
     presets.onEncoderSw(1);                            // Save
@@ -744,7 +745,7 @@ static void test_berlin_preset_load_mid_play_keeps_playing() {
     FakeMidiOutput out; berlin.setMidiOutput(&out);
     berlin.onEnter();
 
-    core::Screen& presets = berlin.screen(4);
+    core::Screen& presets = berlin.screen(5);
     presets.update(1000);
     presets.onEncoderSw(1);                            // save length-16 preset to slot 0
     presets.onEncoderSw(1);
@@ -824,6 +825,48 @@ static void test_edit_voice_targets_one_voice() {
     TEST_ASSERT_EQUAL_INT(30, berlin.params().density);
 }
 
+// ---------------------------------------------------------------------------
+// Screen order: 0 structure, 1 character, 2 voices, 3 dynamics, 4 behavior,
+// 5 presets — six screens total.
+// ---------------------------------------------------------------------------
+static void test_berlin_screen_order_with_voices() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    TEST_ASSERT_EQUAL_INT(6, berlin.screenCount());
+    TEST_ASSERT_EQUAL_STRING("structure", berlin.screen(0).name());
+    TEST_ASSERT_EQUAL_STRING("character", berlin.screen(1).name());
+    TEST_ASSERT_EQUAL_STRING("voices",    berlin.screen(2).name());
+    TEST_ASSERT_EQUAL_STRING("dynamics",  berlin.screen(3).name());
+    TEST_ASSERT_EQUAL_STRING("behavior",  berlin.screen(4).name());
+    TEST_ASSERT_EQUAL_STRING("presets",   berlin.screen(5).name());
+}
+
+// Mixer: rotate = per-voice channel (clamped 1..16), press = mute toggle.
+static void test_voices_screen_channel_and_mute() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+    core::Screen& mixer = berlin.screen(2);
+
+    mixer.onEncoder(2, +3);                                // Mid: 2 -> 5
+    TEST_ASSERT_EQUAL_INT(5, berlin.voiceChannel(core::BerlinMode::kMid));
+    mixer.onEncoder(1, -5);                                // Bass clamps at 1
+    TEST_ASSERT_EQUAL_INT(1, berlin.voiceChannel(core::BerlinMode::kBass));
+
+    TEST_ASSERT_FALSE(berlin.engine(core::BerlinMode::kHigh).muted());
+    mixer.onEncoderSw(3);                                  // mute High
+    TEST_ASSERT_TRUE(berlin.engine(core::BerlinMode::kHigh).muted());
+    mixer.onEncoderSw(3);                                  // unmute
+    TEST_ASSERT_FALSE(berlin.engine(core::BerlinMode::kHigh).muted());
+
+    StubDisplay d;
+    mixer.render(d);
+    TEST_ASSERT_TRUE(d.drewText("BASS"));
+    TEST_ASSERT_TRUE(d.drewText("MID"));
+    TEST_ASSERT_TRUE(d.drewText("HIGH"));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_three_voices_tick_and_phase);
@@ -852,5 +895,7 @@ int main() {
     RUN_TEST(test_live_density_edit_in_place);
     RUN_TEST(test_live_algorithm_knob_does_not_regen);
     RUN_TEST(test_resolution_restamps_gate_without_regen);
+    RUN_TEST(test_berlin_screen_order_with_voices);
+    RUN_TEST(test_voices_screen_channel_and_mute);
     return UNITY_END();
 }

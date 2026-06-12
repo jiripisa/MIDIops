@@ -18,17 +18,18 @@ class MidiOutput;
 
 // BerlinMode — multi-voice generative Berlin-School sequencer (Bass/Mid/High,
 // each = engine + params + MIDI channel; the screens edit one voice at a time).
-// Screens: Structure / Character / Dynamics / Behavior / Presets. The four
+// Screens: Structure / Character / Voices / Dynamics / Behavior / Presets. The
 // parameter screens draw their top parameter row plus the shared bottom
 // piano-roll (drawn every screen so the visualization persists across screen
-// switches); Presets is the Save/Load/Delete slot picker.
+// switches); Voices is the mixer (per-voice channel + mute); Presets is the
+// Save/Load/Delete slot picker.
 class BerlinMode : public Mode, public PresetOps {
 public:
     explicit BerlinMode(AppServices& svc);
 
     const char* name() const override { return "Berlin"; }
     const uint16_t* icon() const override { return icons::kBerlin; }
-    int     screenCount() const override { return 5; }
+    int     screenCount() const override { return 6; }
     Screen& screen(int i) override;
 
     // PresetOps — BerlinParams + the realized sequence per slot, keys
@@ -121,6 +122,20 @@ private:
         BerlinMode& mode_;
     };
 
+    // Mixer: one cell per voice — rotate sets the voice's MIDI channel,
+    // press toggles its mute (the engine keeps running so unmuting re-enters
+    // in phase). Enc4 unused.
+    class VoicesScreen : public Screen {
+    public:
+        explicit VoicesScreen(BerlinMode& m) : mode_(m) {}
+        const char* name() const override { return "voices"; }
+        void onEncoder(int index, int delta) override;
+        void onEncoderSw(int index) override;
+        void render(Display& d) const override;
+    private:
+        BerlinMode& mode_;
+    };
+
     class DynamicsScreen : public Screen {
     public:
         explicit DynamicsScreen(BerlinMode& m) : mode_(m) {}
@@ -143,6 +158,7 @@ private:
 
     StructureScreen  structureScreen_{*this};
     CharacterScreen  characterScreen_{*this};
+    VoicesScreen     voicesScreen_{*this};
     DynamicsScreen   dynamicsScreen_{*this};
     BehaviorScreen   behaviorScreen_{*this};
     PresetScreen     presetScreen_{*this};

@@ -49,9 +49,10 @@ void BerlinMode::applyGenerator(int v) {
 
 Screen& BerlinMode::screen(int i) {
     if (i == 1) return characterScreen_;
-    if (i == 2) return dynamicsScreen_;
-    if (i == 3) return behaviorScreen_;
-    if (i == 4) return presetScreen_;
+    if (i == 2) return voicesScreen_;
+    if (i == 3) return dynamicsScreen_;
+    if (i == 4) return behaviorScreen_;
+    if (i == 5) return presetScreen_;
     return structureScreen_;
 }
 
@@ -170,6 +171,41 @@ void BerlinMode::onRawInput(const RawInput& in) {
             }
             break;
     }
+}
+
+// ---- Voices screen (mixer) ------------------------------------------------
+
+static const char* kVoiceNames[3] = {"BASS", "MID", "HIGH"};
+
+void BerlinMode::VoicesScreen::onEncoder(int index, int delta) {
+    if (index < 1 || index > kVoices || delta == 0) return;
+    Voice& v = mode_.voices_[index - 1];
+    int ch = v.channel + delta;
+    if (ch < 1)  ch = 1;
+    if (ch > 16) ch = 16;
+    v.channel = static_cast<uint8_t>(ch);
+    v.engine.setOutChannel(v.channel);
+}
+
+void BerlinMode::VoicesScreen::onEncoderSw(int index) {
+    if (index < 1 || index > kVoices) return;
+    BerlinEngine& e = mode_.voices_[index - 1].engine;
+    e.setMuted(!e.muted());
+}
+
+void BerlinMode::VoicesScreen::render(Display& d) const {
+    char buf[12];
+    for (int v = 0; v < kVoices; ++v) {
+        const bool muted = mode_.voices_[v].engine.muted();
+        snprintf(buf, sizeof buf, "CH %d", mode_.voices_[v].channel);
+        drawBerlinParamCell(d, v, kVoiceNames[v], buf, muted);
+        if (muted)
+            d.drawText(v * kBerlinCellW + 4, kBerlinParamTop + 52, "MUTED",
+                       color::Gray, color::Black, 1);
+    }
+    drawBerlinParamDividers(d);
+    drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
+                        mode_.engine().soundingNote(), color::Green);
 }
 
 // ---- Structure screen -----------------------------------------------------
