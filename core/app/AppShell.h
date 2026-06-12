@@ -19,6 +19,7 @@ class AppShell : public AppServices {
 public:
     static constexpr int      kMaxModes        = 12;
     static constexpr uint32_t kOverlayTimeoutMs = 3000;
+    static constexpr int      kOverlayAnimTauMs = 80;   // carousel ease time constant
 
     void addMode(Mode* mode);          // call once per mode before begin()
     void setMidiOutput(MidiOutput* o); // for transport realtime messages
@@ -55,6 +56,7 @@ public:
     int activeScreenIndex() const { return screenIndex_; }
     bool overlayOpen() const { return overlayOpen_; }
     int overlayChoice() const { return overlayChoice_; }
+    int overlayAnimPos256() const { return overlayAnimPos256_; }
 
 private:
     enum class TransportState { Stopped, Playing, Paused };
@@ -67,6 +69,10 @@ private:
     bool     overlayOpen_ = false;
     int      overlayChoice_ = 0;
     uint32_t overlayLastInputMs_ = 0;
+    // Carousel tape position in 1/256 mode-index units, kept in
+    // [0, modeCount_*256). tick() eases it toward overlayChoice_*256 along
+    // the shortest wrapped path so the row slides instead of jumping.
+    int      overlayAnimPos256_ = 0;
 
     MidiOutput*    out_ = nullptr;
     uint16_t       bpm_ = 120;

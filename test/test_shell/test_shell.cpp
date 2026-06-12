@@ -115,6 +115,42 @@ static void test_overlay_rotation_resets_timeout() {
     TEST_ASSERT_TRUE(shell.overlayOpen());
 }
 
+// ---------------------------------------------------------------------------
+// Overlay carousel animation: the tape position (1/256 index units) eases
+// toward the choice instead of jumping, and settles exactly on it.
+// ---------------------------------------------------------------------------
+static void test_overlay_carousel_animates_toward_choice() {
+    core::AppShell shell;
+    FakeMode a("a", 1), b("b", 1), c("c", 1);
+    shell.addMode(&a); shell.addMode(&b); shell.addMode(&c);
+    shell.begin();
+    shell.tick(1000);
+    shell.onEncoderSw(5);                          // open: tape parked on choice
+    TEST_ASSERT_EQUAL_INT(0, shell.overlayAnimPos256());
+    shell.onEncoderKnob(5, +1);                    // choice 1 -> target 256
+    shell.tick(1010);                              // one 10 ms tick: partway only
+    const int mid = shell.overlayAnimPos256();
+    TEST_ASSERT_TRUE(mid > 0 && mid < 256);
+    for (uint32_t t = 1020; t <= 2000; t += 10) shell.tick(t);
+    TEST_ASSERT_EQUAL_INT(256, shell.overlayAnimPos256());   // settled exactly
+}
+
+// Rotating one detent backwards from index 0 must slide through the wrap
+// (0 -> n-1 the short way), not travel forward across the whole row.
+static void test_overlay_carousel_wraps_shortest_path() {
+    core::AppShell shell;
+    FakeMode a("a", 1), b("b", 1), c("c", 1);
+    shell.addMode(&a); shell.addMode(&b); shell.addMode(&c);
+    shell.begin();
+    shell.tick(1000);
+    shell.onEncoderSw(5);
+    shell.onEncoderKnob(5, -1);                    // choice 2 -> target 512 of span 768
+    shell.tick(1010);
+    TEST_ASSERT_TRUE(shell.overlayAnimPos256() > 512);   // moved backwards via wrap
+    for (uint32_t t = 1020; t <= 2000; t += 10) shell.tick(t);
+    TEST_ASSERT_EQUAL_INT(512, shell.overlayAnimPos256());
+}
+
 static void test_latch1_toggles_play_pause_and_sends_realtime() {
     core::AppShell shell;
     FakeMidiOutput out;
@@ -455,6 +491,8 @@ int main() {
     RUN_TEST(test_overlay_open_select_confirm);
     RUN_TEST(test_overlay_timeout_reverts);
     RUN_TEST(test_overlay_rotation_resets_timeout);
+    RUN_TEST(test_overlay_carousel_animates_toward_choice);
+    RUN_TEST(test_overlay_carousel_wraps_shortest_path);
     RUN_TEST(test_latch1_toggles_play_pause_and_sends_realtime);
     RUN_TEST(test_latch2_stop_latch3_reset);
     RUN_TEST(test_capturing_mode_skips_global_transport);

@@ -77,6 +77,7 @@ void AppShell::onEncoderSw(int index) {
     if (index == 5) {                      // open overlay
         overlayOpen_ = true;
         overlayChoice_ = activeMode_;
+        overlayAnimPos256_ = overlayChoice_ * 256;   // tape parked on the choice
         overlayLastInputMs_ = nowMs_;
         return;
     }
@@ -232,9 +233,25 @@ void AppShell::setClockSource(ClockSource s) {
 }
 
 void AppShell::tick(uint32_t nowMs) {
+    // Frame delta for animations, clamped so a large jump between ticks
+    // (startup, tests) advances at most one 50 ms animation step.
+    uint32_t dt = nowMs - nowMs_;
+    if (dt > 50) dt = 50;
     nowMs_ = nowMs;
     if (overlayOpen_ && (nowMs_ - overlayLastInputMs_) >= kOverlayTimeoutMs) {
         overlayOpen_ = false;              // revert: active mode never changed
+    }
+    if (overlayOpen_ && modeCount_ > 0 && dt > 0) {
+        // Slide the carousel tape toward the choice along the shortest
+        // wrapped path, exponentially eased (fast start, soft landing).
+        const int span = modeCount_ * 256;
+        int diff = ((overlayChoice_ * 256 - overlayAnimPos256_) % span + span) % span;
+        if (diff > span / 2) diff -= span;
+        if (diff != 0) {
+            int step = diff * static_cast<int>(dt) / kOverlayAnimTauMs;
+            if (step == 0) step = diff > 0 ? 1 : -1;   // integer-math floor: keep converging
+            overlayAnimPos256_ = ((overlayAnimPos256_ + step) % span + span) % span;
+        }
     }
     if (modeCount_ > 0) {
         modes_[activeMode_]->update(nowMs);
@@ -260,49 +277,51 @@ void AppShell::drawTopBar(Display& d) const {
 }
 
 void AppShell::drawOverlay(Display& d) const {
-    // Horizontal mode carousel: the mode names sit on one row across the
-    // middle of the screen; the selected one is drawn large inside a centred
-    // frame, and rotating Enc5 slides the row through it (wrapping).
+    // Horizontal mode carousel: the mode names sit on one animated row (a
+    // "tape") across the middle of the screen and the centred frame is the
+    // selection window the tape slides through. Text size steps down with
+    // distance from the centre (3 / 2 / 1) and the colour darkens with it.
     if (modeCount_ == 0) return;
-    const int cx  = d.width() / 2;
-    const int cy  = d.height() / 2;
-    const int gap = 18;
+    constexpr int kPitch = 130;     // px between neighbouring tape positions
+    const int n    = modeCount_;
+    const int span = n * 256;
+    const int cx   = d.width() / 2;
+    const int cy   = d.height() / 2;
 
-    d.drawText(cx - 33, cy - 40, "SELECT MODE", color::Gray, color::Black, 1);
+    d.drawText(cx - 33, cy - 44, "SELECT MODE", color::Gray, color::Black, 1);
 
-    // Selected mode: size-2 text centred in a 1px frame.
-    const char* selName = modes_[overlayChoice_]->name();
-    const int selW = static_cast<int>(std::strlen(selName)) * 12;
-    d.drawText(cx - selW / 2, cy - 7, selName, color::White, color::Black, 2);
-    const int fx = cx - selW / 2 - 8;
-    const int fy = cy - 14;
-    const int fw = selW + 16;
-    const int fh = 28;
+    // The tape. Distances are in 1/256 index units around overlayAnimPos256_;
+    // both backends clip, so names may slide partially off either edge.
+    for (int i = 0; i < n; ++i) {
+        int dist = ((i * 256 - overlayAnimPos256_) % span + span) % span;
+        if (dist >= span / 2) dist -= span;
+        const int adist = dist < 0 ? -dist : dist;
+        const int size  = adist < 128 ? 3 : (adist < 384 ? 2 : 1);
+        const uint16_t fg = adist < 128 ? color::White
+                                        : (adist < 384 ? color::Gray
+                                                       : color::DarkGray);
+        const char* nm = modes_[i]->name();
+        const int w = static_cast<int>(std::strlen(nm)) * 6 * size;
+        const int x = cx + dist * kPitch / 256 - w / 2;
+        if (x + w < 0 || x > d.width()) continue;
+        d.drawText(x, cy - 4 * size, nm, fg, color::Black, size);
+    }
+
+    // Selection window, drawn over the tape. Its width follows the animation
+    // by interpolating between the two names flanking the centre.
+    const int i0   = (overlayAnimPos256_ / 256) % n;
+    const int i1   = (i0 + 1) % n;
+    const int frac = overlayAnimPos256_ % 256;
+    const int w0   = static_cast<int>(std::strlen(modes_[i0]->name())) * 18 + 20;
+    const int w1   = static_cast<int>(std::strlen(modes_[i1]->name())) * 18 + 20;
+    const int fw   = w0 + (w1 - w0) * frac / 256;
+    const int fx   = cx - fw / 2;
+    const int fy   = cy - 17;
+    const int fh   = 34;
     d.fillRect(fx, fy, fw, 1, color::Yellow);
     d.fillRect(fx, fy + fh - 1, fw, 1, color::Yellow);
     d.fillRect(fx, fy, 1, fh, color::Yellow);
     d.fillRect(fx + fw - 1, fy, 1, fh, color::Yellow);
-
-    // Neighbours, size 1 and grey, walking outward from the frame. The offset
-    // bounds split the remaining n-1 modes between the two sides so each mode
-    // appears at most once even with few modes; off-screen names are skipped.
-    const int n = modeCount_;
-    int x = fx + fw + gap;
-    for (int off = 1; off <= n / 2; ++off) {
-        const char* nm = modes_[(overlayChoice_ + off) % n]->name();
-        const int w = static_cast<int>(std::strlen(nm)) * 6;
-        if (x + w > d.width()) break;
-        d.drawText(x, cy - 3, nm, color::Gray, color::Black, 1);
-        x += w + gap;
-    }
-    x = fx - gap;
-    for (int off = 1; off <= (n - 1) / 2; ++off) {
-        const char* nm = modes_[((overlayChoice_ - off) % n + n) % n]->name();
-        const int w = static_cast<int>(std::strlen(nm)) * 6;
-        if (x - w < 0) break;
-        d.drawText(x - w, cy - 3, nm, color::Gray, color::Black, 1);
-        x -= w + gap;
-    }
 }
 
 void AppShell::render(Display& d) {
