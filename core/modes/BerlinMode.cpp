@@ -168,6 +168,16 @@ void BerlinMode::onRawInput(const RawInput& in) {
                     applyGenerator(v);
                     voices_[v].engine.generate();
                 }
+                // Vertical consonance across the stack (spec §2.4 step 3);
+                // the highest per-voice tension decides the skip.
+                int tension = 0;
+                for (int v = 0; v < kVoices; ++v)
+                    if (voices_[v].params.tension > tension)
+                        tension = voices_[v].params.tension;
+                BerlinSequence* seqs[kVoices];
+                for (int v = 0; v < kVoices; ++v)
+                    seqs[v] = &voices_[v].engine.sequenceMut();
+                berlinEnforceConsonance(seqs, kVoices, scale_, tension);
             }
             break;
     }

@@ -283,6 +283,57 @@ static void test_bass_anchor_generator_is_root_heavy() {
     TEST_ASSERT_TRUE(onRootPc * 2 >= active);              // root-heavy
 }
 
+// Spec §2.4 step 3: simultaneously sounding notes at interval class 1/6/11
+// get the HIGHER note moved to the nearest in-scale tone that clears the
+// clash. High tension (>60) keeps the grit: nothing moves.
+static void test_consonance_check_moves_clashing_high_note() {
+    core::Scale scale(core::Scale::Type::Minor, 0);       // C minor
+    core::BerlinSequence a, b;
+    a.setLength(4); b.setLength(4);
+    for (int i = 0; i < 4; ++i) {
+        a.step(i).active = true; a.step(i).note = 48;      // C3 root, all steps
+        b.step(i).active = false;
+    }
+    b.step(0).active = true; b.step(0).note = 53;          // F3 vs C3: consonant
+    b.step(1).active = true; b.step(1).note = 49;          // Db3 vs C3: interval
+                                                           // class 1 = clash
+    core::BerlinSequence* seqs[2] = {&a, &b};
+    core::berlinEnforceConsonance(seqs, 2, scale, /*tension=*/30);
+
+    TEST_ASSERT_EQUAL_INT(53, b.step(0).note);             // consonant: untouched
+    // The clashing Db moved to an in-scale tone that no longer clashes with C.
+    TEST_ASSERT_TRUE(scale.contains(b.step(1).note));
+    int ic = (b.step(1).note - 48) % 12; if (ic < 0) ic += 12;
+    TEST_ASSERT_TRUE(ic != 1 && ic != 6 && ic != 11);
+}
+
+static void test_consonance_check_skipped_at_high_tension() {
+    core::Scale scale(core::Scale::Type::Minor, 0);
+    core::BerlinSequence a, b;
+    a.setLength(2); b.setLength(2);
+    a.step(0).active = true; a.step(0).note = 48;
+    b.step(0).active = true; b.step(0).note = 49;          // clash
+    core::BerlinSequence* seqs[2] = {&a, &b};
+    core::berlinEnforceConsonance(seqs, 2, scale, /*tension=*/80);
+    TEST_ASSERT_EQUAL_INT(49, b.step(0).note);             // untouched
+}
+
+// Phasing alignment: voices of different lengths clash where columns
+// coincide MOD length — a 2-step voice against a 3-step voice meets the
+// clash at columns 1, 3, 5... the fix clears them all in one pass.
+static void test_consonance_check_respects_phasing_alignment() {
+    core::Scale scale(core::Scale::Type::Minor, 0);
+    core::BerlinSequence a, b;
+    a.setLength(3);
+    a.step(1).active = true; a.step(1).note = 48;          // C on column 1 (mod 3)
+    b.setLength(2);
+    b.step(1).active = true; b.step(1).note = 49;          // Db on column 1 (mod 2)
+    core::BerlinSequence* seqs[2] = {&a, &b};
+    core::berlinEnforceConsonance(seqs, 2, scale, 30);
+    int ic = (b.step(1).note - 48) % 12; if (ic < 0) ic += 12;
+    TEST_ASSERT_TRUE(ic != 1 && ic != 6 && ic != 11);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_walk_starts_on_root_and_stays_in_scale);
@@ -299,5 +350,8 @@ int main() {
     RUN_TEST(test_length_32_supported);
     RUN_TEST(test_walk_tension_biases_toward_root_fifth);
     RUN_TEST(test_bass_anchor_generator_is_root_heavy);
+    RUN_TEST(test_consonance_check_moves_clashing_high_note);
+    RUN_TEST(test_consonance_check_skipped_at_high_tension);
+    RUN_TEST(test_consonance_check_respects_phasing_alignment);
     return UNITY_END();
 }

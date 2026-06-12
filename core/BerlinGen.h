@@ -31,4 +31,13 @@ int     berlinDegreeWeight(const Scale& scale, int note, int tensionPercent);
 uint8_t berlinDegreeWeightedNote(const Scale& scale, uint8_t baseRoot,
                                  const BerlinParams& p, BerlinRng& rng);
 
+// Spec §2.4 step 3 — vertical consonance across the phasing stack. Walks the
+// first kMaxSteps time columns; wherever two voices' steps coincide
+// (column % length) at an interval class of 1, 6 or 11 semitones, the HIGHER
+// note is moved to the nearest in-scale tone (searching outward 1..6
+// semitones) that clears the clash in that column. One pass, pragmatic per
+// spec; skipped entirely when tension > 60 ("or leave it if Tension is high").
+void berlinEnforceConsonance(BerlinSequence** seqs, int n, const Scale& scale,
+                             int tensionPercent);
+
 } // namespace core
