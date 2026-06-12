@@ -100,8 +100,8 @@ make sim
 ```
 
 A window opens. The process creates a virtual CoreMIDI **input** port named
-**`MIDIops`** that any DAW can route notes/clock into, and a virtual
-**output** port named **`MIDIops Sim`** that broadcasts the 24 PPQN clock
+**`MIDIops Sim`** that any DAW can route notes/clock into, and a virtual
+**output** port of the same name that broadcasts the 24 PPQN clock
 plus the arpeggiator/Berlin NoteOn/NoteOff stream.
 
 Simulator keys (the encoders are key trios `{left, press, right}`):
@@ -156,17 +156,17 @@ hardware change — see the doc-sync rules in [`CLAUDE.md`](CLAUDE.md).
 2. Double-click **IAC Driver**, tick **Device is online**, ensure at least one
    bus is listed.
 3. Start the simulator (`make sim`); it announces `[RtMidi] virtual input
-   port opened: "MIDIops"` on stderr.
+   port opened: "MIDIops Sim"` on stderr.
 4. In Ableton → **Preferences → Link/Tempo/MIDI → MIDI**, enable the **Track**
-   output for `MIDIops` (it appears once the simulator runs).
-5. On a Live MIDI track, set the MIDI output to `MIDIops` on the channel that
+   output for `MIDIops Sim` (it appears once the simulator runs).
+5. On a Live MIDI track, set the MIDI output to `MIDIops Sim` on the channel that
    matches the **MIDI In channel** in Settings (default OMNI accepts all).
    Notes you play appear in the simulator.
 
 To **hear** Arp/Berlin, route `MIDIops Sim` (input on Ableton's side) into an
 instrument track. That port also broadcasts MIDI Clock; to instead **follow**
 Ableton's clock, set Settings → Clock = **External** and enable Ableton's clock
-output to `MIDIops`.
+output to `MIDIops Sim`.
 
 ## Layout
 

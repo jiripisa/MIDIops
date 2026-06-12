@@ -31,7 +31,7 @@ When adding a feature:
 ## Build & run
 
 ```bash
-make sim         # simulator (SDL window + virtual MIDI port "MIDIops")
+make sim         # simulator (SDL window + virtual MIDI port "MIDIops Sim")
 make firmware    # build the Teensy .hex
 make flash       # build + upload to a connected Teensy
 make clean       # blow away .pio/

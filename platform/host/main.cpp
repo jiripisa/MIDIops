@@ -1,8 +1,8 @@
 // Mac (SDL) entrypoint for the MIDIops simulator.
 //
 //  * Opens a 960x720 SDL window (320x240 logical, scaled 3x).
-//  * Creates a CoreMIDI virtual input port named "MIDIops" so external
-//    apps (Ableton -> IAC Driver -> MIDIops) can drive the monitor.
+//  * Creates a CoreMIDI virtual input port named "MIDIops Sim" so external
+//    apps (Ableton -> IAC Driver -> MIDIops Sim) can drive the monitor.
 //  * Maps the bottom-row keys z x c v b n m to inject local Note On/Off
 //    messages (white keys C4..B4) so the UI can be verified without any
 //    external MIDI source.
@@ -104,7 +104,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
     }
 
     SdlDisplay   display(kLogicalW, kLogicalH, kScale, "MIDIops simulator");
-    RtMidiInput  midiIn("MIDIops");
+    RtMidiInput  midiIn("MIDIops Sim");
     RtMidiOutput midiOut("MIDIops Sim");
     FileStorage  storage;                     // settings persist in ~/.midiops/
     core::AppShell       app;
