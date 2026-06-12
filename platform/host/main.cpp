@@ -105,7 +105,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
     SdlDisplay   display(kLogicalW, kLogicalH, kScale, "MIDIops simulator");
     RtMidiInput  midiIn("MIDIops");
-    RtMidiOutput midiOut("MIDIops Clock");
+    RtMidiOutput midiOut("MIDIops Sim");
     FileStorage  storage;                     // settings persist in ~/.midiops/
     core::AppShell       app;
     core::MonitoringMode monitoringMode;
