@@ -103,15 +103,37 @@ bool BerlinMode::deletePresetSlot(int slot) {
 
 void BerlinMode::onEnter() {
     scale_ = svc_.scale();
+    bool generated = false;
     for (int v = 0; v < kVoices; ++v) {
         Voice& vc = voices_[v];
         vc.engine.setScale(&scale_);
         vc.engine.setParams(vc.params);
         vc.engine.setOutChannel(vc.channel);
         applyGenerator(v);
-        if (!vc.engine.sequence().step(0).active) vc.engine.generate();  // ensure something to show/play
+        if (!vc.engine.sequence().step(0).active) {       // ensure something to show/play
+            vc.engine.generate();
+            generated = true;
+        }
     }
+    // The boot/first-entry stack gets the same consonance pass as Generate.
+    // Only when something was actually generated — re-entering the mode must
+    // never mutate sequences the user already has (Locked stays locked).
+    if (generated) enforceConsonance();
     for (int i = 0; i < 4; ++i) latchSynced_[i] = false;  // re-absorb first delivery per index
+}
+
+// Vertical consonance across the stack (spec §2.4 step 3); the highest
+// per-voice tension decides the skip. Runs after Generate and after a
+// first-entry generation.
+void BerlinMode::enforceConsonance() {
+    int tension = 0;
+    for (int v = 0; v < kVoices; ++v)
+        if (voices_[v].params.tension > tension)
+            tension = voices_[v].params.tension;
+    BerlinSequence* seqs[kVoices];
+    for (int v = 0; v < kVoices; ++v)
+        seqs[v] = &voices_[v].engine.sequenceMut();
+    berlinEnforceConsonance(seqs, kVoices, scale_, tension);
 }
 
 void BerlinMode::update(uint32_t /*nowMs*/) {
@@ -181,16 +203,7 @@ void BerlinMode::onRawInput(const RawInput& in) {
                     applyGenerator(v);
                     voices_[v].engine.generate();
                 }
-                // Vertical consonance across the stack (spec §2.4 step 3);
-                // the highest per-voice tension decides the skip.
-                int tension = 0;
-                for (int v = 0; v < kVoices; ++v)
-                    if (voices_[v].params.tension > tension)
-                        tension = voices_[v].params.tension;
-                BerlinSequence* seqs[kVoices];
-                for (int v = 0; v < kVoices; ++v)
-                    seqs[v] = &voices_[v].engine.sequenceMut();
-                berlinEnforceConsonance(seqs, kVoices, scale_, tension);
+                enforceConsonance();
             }
             break;
     }

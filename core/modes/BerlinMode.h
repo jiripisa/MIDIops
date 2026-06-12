@@ -126,6 +126,7 @@ private:
     BerlinEngine& editEngine() { return voices_[editVoice_].engine; }
 
     void applyGenerator(int v);   // point voice v's engine at its generator
+    void enforceConsonance();     // spec §2.4 step 3 across the stack
 
     class StructureScreen : public Screen {
     public:
