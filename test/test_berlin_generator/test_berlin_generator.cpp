@@ -5,6 +5,7 @@
 #include "core/DrunkardWalkGenerator.h"
 #include "core/DegreeWeightedGenerator.h"
 #include "core/GatePitchPhasingGenerator.h"
+#include "core/BassAnchorGenerator.h"
 #include "core/BerlinGen.h"
 #include "core/Scale.h"
 #include "core/BerlinRng.h"
@@ -248,6 +249,40 @@ static void test_walk_tension_biases_toward_root_fifth() {
     TEST_ASSERT_GREATER_THAN(highT, lowT);   // low tension → more root/fifth hits
 }
 
+// Bass anchor (spec §2.4c/§9): root skeleton on steps 0 and length/2, all
+// notes in scale and register, and at least half of the active notes sit on
+// the root pitch class ("root-heavy heartbeat").
+static void test_bass_anchor_generator_is_root_heavy() {
+    core::Scale scale(core::Scale::Type::Minor, 0);
+    core::BerlinParams p;
+    p.length = 16; p.density = 40; p.octaveBase = 24; p.octaveRange = 1;
+    core::BerlinRng rng; rng.seed(42);
+    core::BassAnchorGenerator gen;
+    core::BerlinSequence seq;
+    gen.generate(seq, p, scale, rng);
+
+    int lo = 0, hi = 0;
+    core::berlinRegister(p, lo, hi);
+    const uint8_t root = core::berlinBaseRoot(scale, p);
+
+    TEST_ASSERT_EQUAL_INT(16, seq.length());
+    TEST_ASSERT_TRUE(seq.step(0).active);                  // beat 1 anchor
+    TEST_ASSERT_EQUAL_INT(root, seq.step(0).note);
+    TEST_ASSERT_TRUE(seq.step(0).accent);
+    TEST_ASSERT_TRUE(seq.step(8).active);                  // beat 3 anchor
+    TEST_ASSERT_EQUAL_INT(root, seq.step(8).note);
+
+    int active = 0, onRootPc = 0;
+    for (int i = 0; i < seq.length(); ++i) {
+        if (!seq.step(i).active) continue;
+        ++active;
+        TEST_ASSERT_TRUE(seq.step(i).note >= lo && seq.step(i).note <= hi);
+        TEST_ASSERT_TRUE(scale.contains(seq.step(i).note));
+        if (seq.step(i).note % 12 == scale.root()) ++onRootPc;
+    }
+    TEST_ASSERT_TRUE(onRootPc * 2 >= active);              // root-heavy
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_walk_starts_on_root_and_stays_in_scale);
@@ -263,5 +298,6 @@ int main() {
     RUN_TEST(test_phasing_repeats_pitch_by_period);
     RUN_TEST(test_length_32_supported);
     RUN_TEST(test_walk_tension_biases_toward_root_fifth);
+    RUN_TEST(test_bass_anchor_generator_is_root_heavy);
     return UNITY_END();
 }
