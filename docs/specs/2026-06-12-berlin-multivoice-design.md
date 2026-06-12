@@ -20,9 +20,9 @@ Spec reference: `synthseeker/berlin-school-theory-and-generator-spec-EN.md`
   gate unit) + its own `BerlinParams` + a MIDI **channel** (1..16,
   configurable, defaults 1/2/3) + a **mute** flag. Clock ticks fan out to
   all three engines; transport (play/pause/stop) drives all three.
-* **Phasing comes free**: per-voice lengths (defaults Bass 16, Mid 16,
-  High 15 — the classic 16×15 pair) give each voice its own loop and
-  playhead; drifting playheads ARE the phasing.
+* **Phasing comes free**: per-voice lengths (defaults Bass 16, Mid 15,
+  High 16 — the classic 16×15 pair; Mid carries the odd length) give each
+  voice its own loop and playhead; drifting playheads ARE the phasing.
 * **New `BassAnchorGenerator`** (spec §2.4c, §9): root as the skeleton on
   beats 1 and 9 (musical beats 1 and 3), occasional fifth/octave, rare move
   to degree 4/6, short gates — the "heartbeat". The Bass voice always uses
