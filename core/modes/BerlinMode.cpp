@@ -256,6 +256,8 @@ void BerlinMode::StructureScreen::onEncoder(int index, int delta) {
     }
 }
 
+void BerlinMode::StructureScreen::onEncoderSw(int /*index*/) { mode_.cycleEditVoice(); }
+
 void BerlinMode::StructureScreen::render(Display& d) const {
     const BerlinParams& p = mode_.editParams();
     char buf[12];
@@ -312,6 +314,8 @@ void BerlinMode::CharacterScreen::onEncoder(int index, int delta) {
                 } break;
     }
 }
+
+void BerlinMode::CharacterScreen::onEncoderSw(int /*index*/) { mode_.cycleEditVoice(); }
 
 void BerlinMode::CharacterScreen::render(Display& d) const {
     const BerlinParams& p = mode_.editParams();

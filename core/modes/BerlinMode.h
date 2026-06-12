@@ -77,6 +77,7 @@ public:
     // Edit-voice accessors (no-arg = the voice the screens currently edit).
     int  editVoice() const { return editVoice_; }
     void setEditVoice(int v) { if (v >= 0 && v < kVoices) editVoice_ = v; }
+    void cycleEditVoice() { editVoice_ = (editVoice_ + 1) % kVoices; }
     BerlinParams&         params()        { return voices_[editVoice_].params; }
     BerlinParams&         params(int v)   { return voices_[v].params; }
     const BerlinEngine&   engine() const  { return voices_[editVoice_].engine; }
@@ -106,6 +107,7 @@ private:
         explicit StructureScreen(BerlinMode& m) : mode_(m) {}
         const char* name() const override { return "structure"; }
         void onEncoder(int index, int delta) override;
+        void onEncoderSw(int index) override;
         void render(Display& d) const override;
     private:
         BerlinMode& mode_;
@@ -116,6 +118,7 @@ private:
         explicit CharacterScreen(BerlinMode& m) : mode_(m) {}
         const char* name() const override { return "character"; }
         void onEncoder(int index, int delta) override;
+        void onEncoderSw(int index) override;
         void render(Display& d) const override;
     private:
         BerlinMode& mode_;

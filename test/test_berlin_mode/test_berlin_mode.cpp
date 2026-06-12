@@ -891,6 +891,23 @@ static void test_mute_keeps_phase_other_voices_sound() {
                           berlin.engine(core::BerlinMode::kBass).playhead());
 }
 
+// ---------------------------------------------------------------------------
+// Pressing any Enc1-4 on a per-voice screen cycles the edited voice
+// Bass -> Mid -> High -> Bass; the selection is shared across screens.
+// Global screens (dynamics/behavior) do not cycle.
+// ---------------------------------------------------------------------------
+static void test_encoder_press_cycles_edit_voice() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    TEST_ASSERT_EQUAL_INT(core::BerlinMode::kHigh, berlin.editVoice());
+    berlin.screen(0).onEncoderSw(1);                       // structure: High -> Bass
+    TEST_ASSERT_EQUAL_INT(core::BerlinMode::kBass, berlin.editVoice());
+    berlin.screen(1).onEncoderSw(4);                       // character: Bass -> Mid
+    TEST_ASSERT_EQUAL_INT(core::BerlinMode::kMid, berlin.editVoice());
+    berlin.screen(3).onEncoderSw(1);                       // dynamics: global, no cycle
+    TEST_ASSERT_EQUAL_INT(core::BerlinMode::kMid, berlin.editVoice());
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_three_voices_tick_and_phase);
@@ -922,5 +939,6 @@ int main() {
     RUN_TEST(test_berlin_screen_order_with_voices);
     RUN_TEST(test_voices_screen_channel_and_mute);
     RUN_TEST(test_mute_keeps_phase_other_voices_sound);
+    RUN_TEST(test_encoder_press_cycles_edit_voice);
     return UNITY_END();
 }
