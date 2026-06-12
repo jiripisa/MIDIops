@@ -5,6 +5,7 @@
 
 #include "core/Display.h"
 #include "core/MidiOutput.h"
+#include "core/render/ModeIcons.h"
 
 namespace core {
 
@@ -288,10 +289,14 @@ void AppShell::drawOverlay(Display& d) const {
     const int cx   = d.width() / 2;
     const int cy   = d.height() / 2;
 
-    d.drawText(cx - 33, cy - 44, "SELECT MODE", color::Gray, color::Black, 1);
+    d.drawText(cx - 33, 24, "SELECT MODE", color::Gray, color::Black, 1);
 
     // The tape. Distances are in 1/256 index units around overlayAnimPos256_;
     // both backends clip, so names may slide partially off either edge.
+    // Each item is a 16x16 icon over the name, both scaled by the same
+    // factor and vertically centred as one block on the screen midline:
+    // icon 16*s + gap 2*s + text 8*s = 26*s tall, so the block top is
+    // cy - 13*s, the icon sits there and the text starts at cy + 5*s.
     for (int i = 0; i < n; ++i) {
         int dist = ((i * 256 - overlayAnimPos256_) % span + span) % span;
         if (dist >= span / 2) dist -= span;
@@ -301,14 +306,17 @@ void AppShell::drawOverlay(Display& d) const {
                                         : (adist < 384 ? color::Gray
                                                        : color::DarkGray);
         const char* nm = modes_[i]->name();
-        const int w = static_cast<int>(std::strlen(nm)) * 6 * size;
-        const int x = cx + dist * kPitch / 256 - w / 2;
-        if (x + w < 0 || x > d.width()) continue;
-        d.drawText(x, cy - 4 * size, nm, fg, color::Black, size);
+        const int w  = static_cast<int>(std::strlen(nm)) * 6 * size;
+        const int xc = cx + dist * kPitch / 256;
+        const int halfW = (w / 2 > 8 * size) ? w / 2 : 8 * size;
+        if (xc + halfW < 0 || xc - halfW > d.width()) continue;
+        drawIcon16(d, xc - 8 * size, cy - 13 * size, modes_[i]->icon(), size, fg);
+        d.drawText(xc - w / 2, cy + 5 * size, nm, fg, color::Black, size);
     }
 
     // Selection window, drawn over the tape. Its width follows the animation
-    // by interpolating between the two names flanking the centre.
+    // by interpolating between the two names flanking the centre; its height
+    // spans the selected item's icon + name block (26*3 px) plus padding.
     const int i0   = (overlayAnimPos256_ / 256) % n;
     const int i1   = (i0 + 1) % n;
     const int frac = overlayAnimPos256_ % 256;
@@ -316,8 +324,8 @@ void AppShell::drawOverlay(Display& d) const {
     const int w1   = static_cast<int>(std::strlen(modes_[i1]->name())) * 18 + 20;
     const int fw   = w0 + (w1 - w0) * frac / 256;
     const int fx   = cx - fw / 2;
-    const int fy   = cy - 17;
-    const int fh   = 34;
+    const int fy   = cy - 13 * 3 - 5;
+    const int fh   = 26 * 3 + 10;
     d.fillRect(fx, fy, fw, 1, color::Yellow);
     d.fillRect(fx, fy + fh - 1, fw, 1, color::Yellow);
     d.fillRect(fx, fy, 1, fh, color::Yellow);

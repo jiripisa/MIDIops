@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "core/app/Mode.h"
+#include "core/render/ModeIcons.h"
 
 namespace core {
 
@@ -12,6 +13,7 @@ class DebugMode : public Mode {
 public:
     DebugMode();
     const char* name() const override { return "Debug"; }
+    const uint16_t* icon() const override { return icons::kDebug; }
     int     screenCount() const override { return 1; }
     Screen& screen(int) override { return screen_; }
     void onRawInput(const RawInput& in) override;

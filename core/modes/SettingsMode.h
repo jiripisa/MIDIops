@@ -2,6 +2,7 @@
 
 #include "core/app/AppServices.h"
 #include "core/app/Mode.h"
+#include "core/render/ModeIcons.h"
 
 namespace core {
 
@@ -9,6 +10,7 @@ class SettingsMode : public Mode {
 public:
     explicit SettingsMode(AppServices& svc);
     const char* name() const override { return "Settings"; }
+    const uint16_t* icon() const override { return icons::kSettings; }
     int     screenCount() const override { return 2; }
     Screen& screen(int i) override {
         if (i == 0) return midiScreen_;

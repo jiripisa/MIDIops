@@ -2,6 +2,7 @@
 
 #include "core/app/AppServices.h"
 #include "core/app/Mode.h"
+#include "core/render/ModeIcons.h"
 #include "core/ArpEngine.h"
 #include "core/ArpTypes.h"
 #include "core/NoteWormModel.h"
@@ -21,6 +22,7 @@ public:
     explicit ArpMode(AppServices& svc);
 
     const char* name() const override { return "Arp"; }
+    const uint16_t* icon() const override { return icons::kArp; }
     int     screenCount() const override { return 4; }
     Screen& screen(int i) override;
 

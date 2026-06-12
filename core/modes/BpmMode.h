@@ -2,6 +2,7 @@
 
 #include "core/app/AppServices.h"
 #include "core/app/Mode.h"
+#include "core/render/ModeIcons.h"
 
 namespace core {
 
@@ -10,6 +11,7 @@ class BpmMode : public Mode {
 public:
     explicit BpmMode(AppServices& svc);
     const char* name() const override { return "BPM"; }
+    const uint16_t* icon() const override { return icons::kBpm; }
     int     screenCount() const override { return 1; }
     Screen& screen(int) override { return screen_; }
 

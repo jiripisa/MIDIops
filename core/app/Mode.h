@@ -41,6 +41,9 @@ class Mode {
 public:
     virtual ~Mode() = default;
     virtual const char* name() const = 0;
+    // Optional 16x16 1-bit icon (16 rows, bit 15 = leftmost pixel), shown by
+    // the shell above the name in the mode-select carousel. nullptr = none.
+    virtual const uint16_t* icon() const { return nullptr; }
     virtual int     screenCount() const = 0;
     virtual Screen& screen(int i) = 0;
     virtual void onEnter() {}

@@ -1,5 +1,6 @@
 #pragma once
 #include "core/app/Mode.h"
+#include "core/render/ModeIcons.h"
 #include "core/NoteWormModel.h"
 #include "core/render/NotationRenderer.h"
 
@@ -10,6 +11,7 @@ public:
     MonitoringMode();
 
     const char* name() const override { return "Monitoring"; }
+    const uint16_t* icon() const override { return icons::kMonitoring; }
     int     screenCount() const override { return 2; }
     Screen& screen(int i) override { return i == 0 ? static_cast<Screen&>(wormsScreen_) : static_cast<Screen&>(notesScreen_); }
 

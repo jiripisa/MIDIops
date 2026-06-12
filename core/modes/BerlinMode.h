@@ -2,6 +2,7 @@
 
 #include "core/app/AppServices.h"
 #include "core/app/Mode.h"
+#include "core/render/ModeIcons.h"
 #include "core/BerlinEngine.h"
 #include "core/BerlinTypes.h"
 #include "core/DegreeWeightedGenerator.h"
@@ -22,6 +23,7 @@ public:
     explicit BerlinMode(AppServices& svc);
 
     const char* name() const override { return "Berlin"; }
+    const uint16_t* icon() const override { return icons::kBerlin; }
     int     screenCount() const override { return 4; }
     Screen& screen(int i) override;
 

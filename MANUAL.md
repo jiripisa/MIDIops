@@ -56,9 +56,11 @@ piano-roll) fill the area below the top bar.
 
 - **Switch screen** (within a mode): rotate **Enc5**. Screens wrap around.
 - **Switch mode**: press **Enc5** to open the **mode-select overlay** — the
-  mode names sit on one horizontal row, and the framed name in the centre of
-  the screen is the selection. The name in the frame is drawn largest; names
-  shrink and darken with distance from the centre. Rotate **Enc5** to slide
+  mode names sit on one horizontal row, each with its icon above the name
+  (oscilloscope = Monitoring, ascending notes = Arp, sequencer bars = Berlin,
+  metronome = BPM, sliders = Settings, bug = Debug), and the framed item in
+  the centre of the screen is the selection. The framed item is drawn largest;
+  items shrink and darken with distance from the centre. Rotate **Enc5** to slide
   the row left/right — the row glides smoothly, like turning a tape, and wraps
   around. Press **Enc5** again to enter the framed mode. The overlay
   closes by itself after a few seconds of no input. While the overlay is open

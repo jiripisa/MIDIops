@@ -57,9 +57,11 @@ notace, piano-roll) vyplňují plochu pod horní lištou.
 - **Přepnout obrazovku** (v rámci módu): otoč **Enc5**. Obrazovky se cyklí
   dokola.
 - **Přepnout mód**: stiskni **Enc5** pro otevření **překryvu výběru módu** —
-  názvy módů leží v jednom vodorovném řádku a výběr označuje rámeček uprostřed
-  obrazovky. Název v rámečku je vykreslený největším písmem; se vzdáleností od
-  středu se názvy zmenšují a tmavnou. Otáčením **Enc5** se řádek posouvá
+  názvy módů leží v jednom vodorovném řádku, každý s ikonou nad názvem
+  (osciloskop = Monitoring, stoupající noty = Arp, sloupce sekvenceru = Berlin,
+  metronom = BPM, posuvníky = Settings, brouk = Debug), a výběr označuje
+  rámeček uprostřed obrazovky. Položka v rámečku je vykreslená největší;
+  se vzdáleností od středu se položky zmenšují a tmavnou. Otáčením **Enc5** se řádek posouvá
   doleva/doprava — klouže plynule, jako převíjení pásku, a cyklí dokola.
   Dalším stiskem **Enc5** vstoupíš do módu v rámečku. Překryv
   se po pár sekundách bez vstupu sám zavře. Dokud je překryv otevřený, páčky
