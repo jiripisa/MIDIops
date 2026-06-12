@@ -4,6 +4,7 @@
 #include "core/app/Mode.h"
 #include "core/app/PresetScreen.h"
 #include "core/render/ModeIcons.h"
+#include "core/BassAnchorGenerator.h"
 #include "core/BerlinEngine.h"
 #include "core/BerlinTypes.h"
 #include "core/DegreeWeightedGenerator.h"
@@ -15,7 +16,8 @@ namespace core {
 
 class MidiOutput;
 
-// BerlinMode — single-voice generative Berlin-School sequencer.
+// BerlinMode — multi-voice generative Berlin-School sequencer (Bass/Mid/High,
+// each = engine + params + MIDI channel; the screens edit one voice at a time).
 // Screens: Structure / Character / Dynamics / Behavior / Presets. The four
 // parameter screens draw their top parameter row plus the shared bottom
 // piano-roll (drawn every screen so the visualization persists across screen
@@ -38,8 +40,12 @@ public:
     bool deletePresetSlot(int slot) override;
 
     void onEnter() override;
-    void onExit()  override { engine_.stop(); }   // silence any sounding note on leave
-    void onClockTick() override { engine_.onClockTick(); }
+    void onExit()  override {              // silence every voice on leave
+        for (int v = 0; v < kVoices; ++v) voices_[v].engine.stop();
+    }
+    void onClockTick() override {
+        for (int v = 0; v < kVoices; ++v) voices_[v].engine.onClockTick();
+    }
     // Drives engine transport from the shell (Receive mapping + external-clock
     // Stop safety): Play → run, Pause → silence + hold position, Reset/Stop →
     // rewind + silence. Under an external clock the gate-off normally fired in
@@ -50,28 +56,50 @@ public:
     bool capturesTransport() const override { return true; }
     void update(uint32_t nowMs) override;
 
-    void setMidiOutput(MidiOutput* o) { engine_.setOutput(o); }
+    void setMidiOutput(MidiOutput* o) {
+        for (int v = 0; v < kVoices; ++v) voices_[v].engine.setOutput(o);
+    }
+
+    static constexpr int kVoices = 3;
+    enum VoiceId { kBass = 0, kMid = 1, kHigh = 2 };
+
+    struct Voice {
+        BerlinEngine engine;
+        BerlinParams params;
+        uint8_t      channel = 1;
+    };
 
     // Live sculpting: when Behavior == Live, apply the edited parameter to the
     // existing sequence in place (no regeneration, playhead untouched).
-    bool live() const { return params_.behavior == BerlinBehavior::Live; }
+    bool live() const { return voices_[editVoice_].params.behavior == BerlinBehavior::Live; }
 
-    // Test inspectors.
-    BerlinParams&         params()        { return params_; }
-    const BerlinEngine&   engine() const  { return engine_; }
+    // Edit-voice accessors (no-arg = the voice the screens currently edit).
+    int  editVoice() const { return editVoice_; }
+    void setEditVoice(int v) { if (v >= 0 && v < kVoices) editVoice_ = v; }
+    BerlinParams&         params()        { return voices_[editVoice_].params; }
+    BerlinParams&         params(int v)   { return voices_[v].params; }
+    const BerlinEngine&   engine() const  { return voices_[editVoice_].engine; }
+    const BerlinEngine&   engine(int v) const { return voices_[v].engine; }
+    uint8_t               voiceChannel(int v) const { return voices_[v].channel; }
 
 private:
     AppServices&          svc_;
     DrunkardWalkGenerator     walkGen_;
     DegreeWeightedGenerator   degreeGen_;
     GatePitchPhasingGenerator phasingGen_;
-    BerlinEngine          engine_;
-    BerlinParams          params_{};
+    Voice                 voices_[kVoices];
+    int                   editVoice_ = kHigh;
+    BassAnchorGenerator   bassGen_;
     Scale                 scale_{};
     bool                  lastLatch_[4]   = {false, false, false, false};  // index 1..3 edge-detect
     bool                  latchSynced_[4] = {false, false, false, false};  // first-frame absorb after onEnter
 
-    void applyGenerator();   // point the engine at the generator for params_.algorithm
+    // Convenience for the screens: the voice being edited.
+    BerlinParams& editParams() { return voices_[editVoice_].params; }
+    BerlinEngine& editEngine() { return voices_[editVoice_].engine; }
+
+    void applyGenerator(int v);   // point voice v's engine at its generator
+    void applyGeneratorAll() { for (int v = 0; v < kVoices; ++v) applyGenerator(v); }
 
     class StructureScreen : public Screen {
     public:

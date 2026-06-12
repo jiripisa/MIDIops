@@ -12,16 +12,38 @@
 namespace core {
 
 BerlinMode::BerlinMode(AppServices& svc) : svc_(svc) {
-    applyGenerator();
-    engine_.setParams(params_);
+    // Role defaults per spec §2.3 (see the table in the plan header).
+    voices_[kBass].params.octaveBase  = 24;   // C1
+    voices_[kBass].params.octaveRange = 1;
+    voices_[kBass].params.density     = 30;
+    voices_[kBass].params.gatePercent = 50;
+    voices_[kBass].params.length      = 16;
+    voices_[kBass].channel            = 1;
+
+    voices_[kMid].params.octaveBase   = 48;   // C3
+    voices_[kMid].params.octaveRange  = 1;
+    voices_[kMid].params.length       = 15;   // phases 15x16 against High/Bass
+    voices_[kMid].channel             = 2;
+
+    voices_[kHigh].params.octaveBase  = 60;   // C4
+    voices_[kHigh].params.octaveRange = 1;
+    voices_[kHigh].params.length      = 16;
+    voices_[kHigh].channel            = 3;
+
+    for (int v = 0; v < kVoices; ++v) {
+        applyGenerator(v);
+        voices_[v].engine.setParams(voices_[v].params);
+        voices_[v].engine.setOutChannel(voices_[v].channel);
+    }
 }
 
-void BerlinMode::applyGenerator() {
-    switch (params_.algorithm) {
-        case BerlinAlgorithm::DegreeWeighted:   engine_.setGenerator(&degreeGen_);  break;
-        case BerlinAlgorithm::GatePitchPhasing: engine_.setGenerator(&phasingGen_); break;
+void BerlinMode::applyGenerator(int v) {
+    if (v == kBass) { voices_[v].engine.setGenerator(&bassGen_); return; }
+    switch (voices_[v].params.algorithm) {
+        case BerlinAlgorithm::DegreeWeighted:   voices_[v].engine.setGenerator(&degreeGen_);  break;
+        case BerlinAlgorithm::GatePitchPhasing: voices_[v].engine.setGenerator(&phasingGen_); break;
         case BerlinAlgorithm::DrunkardWalk:
-        default:                                engine_.setGenerator(&walkGen_);    break;
+        default:                                voices_[v].engine.setGenerator(&walkGen_);    break;
     }
 }
 
@@ -44,7 +66,7 @@ bool BerlinMode::presetUsed(int slot) {
 
 bool BerlinMode::savePreset(int slot) {
     Storage* st = svc_.storage();
-    return st && saveBerlinPreset(*st, slot, params_, engine_.sequence());
+    return st && saveBerlinPreset(*st, slot, editParams(), editEngine().sequence());
 }
 
 bool BerlinMode::loadPreset(int slot) {
@@ -53,10 +75,10 @@ bool BerlinMode::loadPreset(int slot) {
     BerlinParams   p;
     BerlinSequence seq;
     if (!loadBerlinPreset(*st, slot, p, seq)) return false;
-    params_ = p;
-    applyGenerator();
-    engine_.setParams(params_);
-    engine_.setSequence(seq);    // seamless mid-play: playhead wraps, keeps running
+    editParams() = p;
+    applyGenerator(editVoice_);
+    editEngine().setParams(p);
+    editEngine().setSequence(seq);    // seamless mid-play: playhead wraps, keeps running
     return true;
 }
 
@@ -67,28 +89,37 @@ bool BerlinMode::deletePresetSlot(int slot) {
 
 void BerlinMode::onEnter() {
     scale_ = svc_.scale();
-    engine_.setScale(&scale_);
-    engine_.setParams(params_);
-    engine_.setOutChannel(svc_.midiOutChannel());
-    applyGenerator();
+    for (int v = 0; v < kVoices; ++v) {
+        Voice& vc = voices_[v];
+        vc.engine.setScale(&scale_);
+        vc.engine.setParams(vc.params);
+        vc.engine.setOutChannel(vc.channel);
+        applyGenerator(v);
+        if (!vc.engine.sequence().step(0).active) vc.engine.generate();  // ensure something to show/play
+    }
     for (int i = 0; i < 4; ++i) latchSynced_[i] = false;  // re-absorb first delivery per index
-    if (!engine_.sequence().step(0).active) engine_.generate();  // ensure something to show/play
 }
 
 void BerlinMode::update(uint32_t /*nowMs*/) {
     scale_ = svc_.scale();
-    engine_.setScale(&scale_);
-    engine_.setParams(params_);
-    applyGenerator();
-    engine_.setOutChannel(svc_.midiOutChannel());
+    for (int v = 0; v < kVoices; ++v) {
+        Voice& vc = voices_[v];
+        vc.engine.setScale(&scale_);
+        vc.engine.setParams(vc.params);
+        vc.engine.setOutChannel(vc.channel);   // per-voice channels (not the global out channel)
+        applyGenerator(v);
+    }
 }
 
 void BerlinMode::onTransport(Transport t) {
-    switch (t) {
-        case Transport::Play:  engine_.play();  break;
-        case Transport::Pause: engine_.silence(); engine_.pause(); break;
-        case Transport::Reset:
-        case Transport::Stop:  engine_.stop();  break;
+    for (int v = 0; v < kVoices; ++v) {
+        BerlinEngine& e = voices_[v].engine;
+        switch (t) {
+            case Transport::Play:  e.play();  break;
+            case Transport::Pause: e.silence(); e.pause(); break;
+            case Transport::Reset:
+            case Transport::Stop:  e.stop();  break;
+        }
     }
 }
 
@@ -112,25 +143,31 @@ void BerlinMode::onRawInput(const RawInput& in) {
         case 1:  // Play/Pause — a CLICK toggles by the engine state. The switch
                  // position carries no meaning (it is a mechanical latch, but the
                  // software treats every flip as a stateless button press); all
-                 // run-state truth lives in the engine and the top bar.
+                 // run-state truth lives in the engine and the top bar. Every
+                 // voice runs in lockstep, so voice 0's state is authoritative.
             if (flip) {
-                const bool playing = engine_.isPlaying();
-                if (playing) {
-                    engine_.pause();
-                } else {
-                    engine_.play();
+                const bool playing = voices_[0].engine.isPlaying();  // all in sync
+                for (int v = 0; v < kVoices; ++v) {
+                    if (playing) voices_[v].engine.pause();
+                    else         voices_[v].engine.play();
                 }
                 svc_.notifyLocalTransport(playing ? Transport::Pause : Transport::Play);
             }
             break;
         case 2:  // Stop (any flip)
             if (flip) {
-                engine_.stop();
+                for (int v = 0; v < kVoices; ++v) voices_[v].engine.stop();
                 svc_.notifyLocalTransport(Transport::Stop);
             }
             break;
-        case 3:  // Reset/Generate (any flip) — no transport emission
-            if (flip) { engine_.setParams(params_); applyGenerator(); engine_.generate(); }
+        case 3:  // Reset/Generate (any flip) — regenerate every voice, no transport emission
+            if (flip) {
+                for (int v = 0; v < kVoices; ++v) {
+                    voices_[v].engine.setParams(voices_[v].params);
+                    applyGenerator(v);
+                    voices_[v].engine.generate();
+                }
+            }
             break;
     }
 }
@@ -159,31 +196,31 @@ static void restampGateTicks(BerlinEngine& engine, const BerlinParams& p) {
 }
 
 void BerlinMode::StructureScreen::onEncoder(int index, int delta) {
-    BerlinParams& p = mode_.params_;
+    BerlinParams& p = mode_.editParams();
     switch (index) {
         case 1:  // Algorithm — no live action (applies at the next Generate).
             p.algorithm = cycleEnum(p.algorithm, delta);
             break;
         case 2: { int v = p.length + delta; if (v < 3) v = 3; if (v > 32) v = 32;
                   p.length = static_cast<uint8_t>(v);
-                  if (mode_.live()) { mode_.engine_.setParams(p); mode_.engine_.applyLiveLength(); }
+                  if (mode_.live()) { mode_.editEngine().setParams(p); mode_.editEngine().applyLiveLength(); }
                 } break;
         case 3:  // Resolution is inherently live in every behavior (the engine
                  // reads the grid per tick); just re-stamp the baked gateTicks
                  // so the piano-roll widths match. No regeneration.
             p.resolution = cycleEnum(p.resolution, delta);
-            mode_.engine_.setParams(p);
-            restampGateTicks(mode_.engine_, p);
+            mode_.editEngine().setParams(p);
+            restampGateTicks(mode_.editEngine(), p);
             break;
         case 4: { int v = p.density + delta * 5; if (v < 0) v = 0; if (v > 100) v = 100;
                   p.density = static_cast<uint8_t>(v);
-                  if (mode_.live()) { mode_.engine_.setParams(p); mode_.engine_.applyLiveDensity(); }
+                  if (mode_.live()) { mode_.editEngine().setParams(p); mode_.editEngine().applyLiveDensity(); }
                 } break;
     }
 }
 
 void BerlinMode::StructureScreen::render(Display& d) const {
-    const BerlinParams& p = mode_.params_;
+    const BerlinParams& p = mode_.editParams();
     char buf[12];
     drawBerlinParamCell(d, 0, "ALGO",    algoName(p.algorithm));
     snprintf(buf, sizeof buf, "%d", p.length);
@@ -204,19 +241,19 @@ static void octaveLabel(uint8_t note, char* buf, int n) {
 }
 
 void BerlinMode::CharacterScreen::onEncoder(int index, int delta) {
-    BerlinParams& p = mode_.params_;
+    BerlinParams& p = mode_.editParams();
     switch (index) {
         case 1: { int v = p.gatePercent + delta;     if (v < 40) v = 40; if (v > 99) v = 99;
                   p.gatePercent = static_cast<uint8_t>(v);
                   // Gate applies LIVE in every behavior: the engine derives the
                   // gate from the current params at each step; re-stamping the
                   // baked per-step gateTicks keeps the piano-roll widths in sync.
-                  mode_.engine_.setParams(p);
-                  restampGateTicks(mode_.engine_, p);
+                  mode_.editEngine().setParams(p);
+                  restampGateTicks(mode_.editEngine(), p);
                 } break;
         case 2: { int v = p.tension + delta * 5;     if (v < 0) v = 0;  if (v > 100) v = 100;
                   p.tension = static_cast<uint8_t>(v);
-                  if (mode_.live()) { mode_.engine_.setParams(p); mode_.engine_.applyLiveTension(); }
+                  if (mode_.live()) { mode_.editEngine().setParams(p); mode_.editEngine().applyLiveTension(); }
                 } break;
         case 3: { const int oldBase = p.octaveBase;
                   int v = p.octaveBase + delta * 12; if (v < 24) v = 24; if (v > 72) v = 72;
@@ -224,23 +261,23 @@ void BerlinMode::CharacterScreen::onEncoder(int index, int delta) {
                   // Pass the ACTUAL applied delta (clamping at the edges can make
                   // it less than delta*12), so the transpose matches the new base.
                   if (mode_.live()) {
-                      mode_.engine_.setParams(p);
-                      mode_.engine_.applyLiveOctaveBase(static_cast<int>(p.octaveBase) - oldBase);
+                      mode_.editEngine().setParams(p);
+                      mode_.editEngine().applyLiveOctaveBase(static_cast<int>(p.octaveBase) - oldBase);
                   }
                 } break;
         case 4: { const int oldRange = p.octaveRange;
                   int v = p.octaveRange + delta;     if (v < 1) v = 1;  if (v > 3) v = 3;
                   p.octaveRange = static_cast<uint8_t>(v);
                   if (mode_.live() && v != oldRange) {
-                      mode_.engine_.setParams(p);
-                      mode_.engine_.applyLiveOctaveRange(oldRange);
+                      mode_.editEngine().setParams(p);
+                      mode_.editEngine().applyLiveOctaveRange(oldRange);
                   }
                 } break;
     }
 }
 
 void BerlinMode::CharacterScreen::render(Display& d) const {
-    const BerlinParams& p = mode_.params_;
+    const BerlinParams& p = mode_.editParams();
     char buf[12];
     snprintf(buf, sizeof buf, "%d%%", p.gatePercent);
     drawBerlinParamCell(d, 0, "GATE",    buf);
@@ -258,7 +295,7 @@ void BerlinMode::CharacterScreen::render(Display& d) const {
 // ---- Dynamics screen --------------------------------------------------------
 
 void BerlinMode::DynamicsScreen::onEncoder(int index, int delta) {
-    BerlinParams& p = mode_.params_;
+    BerlinParams& p = mode_.editParams();
     switch (index) {
         case 1: {
             int v = p.velocityBase + delta;
@@ -268,8 +305,8 @@ void BerlinMode::DynamicsScreen::onEncoder(int index, int delta) {
             // Velocity/Humanize/Accent are LIVE performance parameters (like Gate):
             // re-stamp every active step's velocity from its stable jitter + the
             // current params, in every behavior, so the knob is audible at once.
-            mode_.engine_.setParams(p);
-            berlinStampVelocities(mode_.engine_.sequenceMut(), p);
+            mode_.editEngine().setParams(p);
+            berlinStampVelocities(mode_.editEngine().sequenceMut(), p);
             break;
         }
         case 2: {
@@ -277,8 +314,8 @@ void BerlinMode::DynamicsScreen::onEncoder(int index, int delta) {
             if (v < 0)  v = 0;
             if (v > 30) v = 30;
             p.velocityHumanize = static_cast<uint8_t>(v);
-            mode_.engine_.setParams(p);
-            berlinStampVelocities(mode_.engine_.sequenceMut(), p);
+            mode_.editEngine().setParams(p);
+            berlinStampVelocities(mode_.editEngine().sequenceMut(), p);
             break;
         }
         case 3: {
@@ -286,8 +323,8 @@ void BerlinMode::DynamicsScreen::onEncoder(int index, int delta) {
             if (v < 0)  v = 0;
             if (v > 27) v = 27;
             p.accent = static_cast<uint8_t>(v);
-            mode_.engine_.setParams(p);
-            berlinStampVelocities(mode_.engine_.sequenceMut(), p);
+            mode_.editEngine().setParams(p);
+            berlinStampVelocities(mode_.editEngine().sequenceMut(), p);
             break;
         }
         case 4:
@@ -306,7 +343,7 @@ void BerlinMode::DynamicsScreen::onEncoder(int index, int delta) {
 }
 
 void BerlinMode::DynamicsScreen::render(Display& d) const {
-    const BerlinParams& p = mode_.params_;
+    const BerlinParams& p = mode_.editParams();
     char buf[12];
     snprintf(buf, sizeof buf, "%d", p.velocityBase);
     drawBerlinParamCell(d, 0, "VEL",   buf);
@@ -334,7 +371,7 @@ static const char* behaviorName(BerlinBehavior b) {
 }
 
 void BerlinMode::BehaviorScreen::onEncoder(int index, int delta) {
-    BerlinParams& p = mode_.params_;
+    BerlinParams& p = mode_.editParams();
     switch (index) {
         case 1: p.behavior = cycleEnum(p.behavior, delta); break;
         case 2: { int v = p.morph + delta * 5;     if (v < 0) v = 0;  if (v > 100) v = 100;
@@ -365,7 +402,7 @@ void BerlinMode::BehaviorScreen::onEncoder(int index, int delta) {
 }
 
 void BerlinMode::BehaviorScreen::render(Display& d) const {
-    const BerlinParams& p = mode_.params_;
+    const BerlinParams& p = mode_.editParams();
     char buf[12];
     drawBerlinParamCell(d, 0, "BEHAVIOR", behaviorName(p.behavior));
     snprintf(buf, sizeof buf, "%d%%", p.morph);

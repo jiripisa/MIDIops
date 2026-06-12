@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include "core/app/AppShell.h"
+#include "core/BerlinGen.h"           // berlinBaseRoot (Bass-invariance check)
 #include "core/modes/BerlinMode.h"
 #include "support/FakeMidiOutput.h"
 #include "support/FakeStorage.h"
@@ -389,8 +390,11 @@ static void test_latch3_generate_on_each_flip() {
 }
 
 // ---------------------------------------------------------------------------
-// Algorithm dispatch: switching params_.algorithm before a generate causes the
-// engine to use the corresponding generator (reflected in the produced sequence).
+// Algorithm dispatch: switching the EDIT voice's (High) algorithm before a
+// generate causes its engine to use the corresponding generator (reflected in
+// the produced sequence). The Bass voice ignores the Algorithm knob entirely:
+// it always uses the BassAnchorGenerator (step 0 = the bass root), so cycling
+// ALGO and regenerating must never change Bass's generator.
 // ---------------------------------------------------------------------------
 static int activeCount(const core::BerlinSequence& s) {
     int n = 0; for (int i = 0; i < s.length(); ++i) if (s.step(i).active) ++n; return n;
@@ -415,6 +419,15 @@ static void test_algorithm_dispatch() {
     berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});  // generate (other flip)
     TEST_ASSERT_EQUAL_INT(16, berlin.engine().sequence().length());
     TEST_ASSERT_TRUE(activeCount(berlin.engine().sequence()) >= 1);
+
+    // The Bass voice always uses the BassAnchorGenerator, regardless of the
+    // Algorithm knob: its step 0 stays the active bass root after every regen.
+    const core::BerlinStep& bass0 =
+        berlin.engine(core::BerlinMode::kBass).sequence().step(0);
+    TEST_ASSERT_TRUE(bass0.active);
+    TEST_ASSERT_EQUAL_INT(core::berlinBaseRoot(shell.scale(),
+                                               berlin.params(core::BerlinMode::kBass)),
+                          bass0.note);
 }
 
 // ---------------------------------------------------------------------------
@@ -752,8 +765,70 @@ static void test_berlin_preset_load_mid_play_keeps_playing() {
     TEST_ASSERT_TRUE(berlin.engine().playhead() < 16);              // wrapped, not reset
 }
 
+// ---------------------------------------------------------------------------
+// Three voices tick together and phase: Mid is 15 steps against 16, so after
+// 16 steps Bass/High wrap to 0 while Mid has drifted to 1.
+// ---------------------------------------------------------------------------
+static void test_three_voices_tick_and_phase() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // prime
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // play all
+    TEST_ASSERT_TRUE(berlin.engine(core::BerlinMode::kBass).isPlaying());
+    TEST_ASSERT_TRUE(berlin.engine(core::BerlinMode::kMid).isPlaying());
+    TEST_ASSERT_TRUE(berlin.engine(core::BerlinMode::kHigh).isPlaying());
+    for (int i = 0; i < 12 * 16; ++i) berlin.onClockTick();         // 16 steps
+    TEST_ASSERT_EQUAL_INT(0, berlin.engine(core::BerlinMode::kBass).playhead());
+    TEST_ASSERT_EQUAL_INT(1, berlin.engine(core::BerlinMode::kMid).playhead());
+    TEST_ASSERT_EQUAL_INT(0, berlin.engine(core::BerlinMode::kHigh).playhead());
+}
+
+// ---------------------------------------------------------------------------
+// Each voice emits on its own channel (defaults 1/2/3): play() emits every
+// voice's step 0 (Bass anchor + the melodic step-0 root are always active).
+// ---------------------------------------------------------------------------
+static void test_voices_emit_on_their_channels() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});
+    bool ch1 = false, ch2 = false, ch3 = false, other = false;
+    for (const auto& ev : out.events) {
+        if (!ev.isOn) continue;
+        if      (ev.channel == 1) ch1 = true;
+        else if (ev.channel == 2) ch2 = true;
+        else if (ev.channel == 3) ch3 = true;
+        else                      other = true;
+    }
+    TEST_ASSERT_TRUE(ch1);
+    TEST_ASSERT_TRUE(ch2);
+    TEST_ASSERT_TRUE(ch3);
+    TEST_ASSERT_FALSE(other);
+}
+
+// ---------------------------------------------------------------------------
+// The edit-voice accessors target one voice; setEditVoice switches them.
+// ---------------------------------------------------------------------------
+static void test_edit_voice_targets_one_voice() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    TEST_ASSERT_EQUAL_INT(core::BerlinMode::kHigh, berlin.editVoice());
+    berlin.params().density = 77;                       // edits High only
+    TEST_ASSERT_EQUAL_INT(77, berlin.params(core::BerlinMode::kHigh).density);
+    TEST_ASSERT_EQUAL_INT(30, berlin.params(core::BerlinMode::kBass).density);
+    berlin.setEditVoice(core::BerlinMode::kBass);
+    TEST_ASSERT_EQUAL_INT(30, berlin.params().density);
+}
+
 int main() {
     UNITY_BEGIN();
+    RUN_TEST(test_three_voices_tick_and_phase);
+    RUN_TEST(test_voices_emit_on_their_channels);
+    RUN_TEST(test_edit_voice_targets_one_voice);
     RUN_TEST(test_latch1_play_pause_latch2_stop);
     RUN_TEST(test_berlin_preset_restores_sequence_exactly);
     RUN_TEST(test_berlin_preset_load_mid_play_keeps_playing);
