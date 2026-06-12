@@ -879,12 +879,12 @@ static void test_mute_keeps_phase_other_voices_sound() {
     berlin.screen(2).onEncoderSw(1);                        // mute Bass
     const size_t mark = out.events.size();
     for (int i = 0; i < 12 * 8; ++i) berlin.onClockTick();
-    bool bassOn = false, otherOn = false;
+    bool otherOn = false;
     for (size_t i = mark; i < out.events.size(); ++i) {
-        if (!out.events[i].isOn) continue;
-        if (out.events[i].channel == 1) bassOn = true; else otherOn = true;
+        // Muted bass: FULLY silent — no NoteOns and no stray gate NoteOffs.
+        TEST_ASSERT_NOT_EQUAL(1, out.events[i].channel);
+        if (out.events[i].isOn) otherOn = true;
     }
-    TEST_ASSERT_FALSE(bassOn);
     TEST_ASSERT_TRUE(otherOn);
     // Muted engine kept running in phase with the others.
     TEST_ASSERT_EQUAL_INT(berlin.engine(core::BerlinMode::kHigh).playhead(),

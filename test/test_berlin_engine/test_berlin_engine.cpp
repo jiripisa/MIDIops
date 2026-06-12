@@ -665,8 +665,7 @@ static void test_engine_mute_keeps_running() {
     const int phBefore = e.playhead();
     for (int i = 0; i < 12 * 4; ++i) e.onClockTick();
     TEST_ASSERT_TRUE(e.playhead() != phBefore);            // still running
-    for (size_t i = evCount; i < out.events.size(); ++i)
-        TEST_ASSERT_FALSE(out.events[i].isOn);             // no NoteOn while muted
+    TEST_ASSERT_EQUAL_INT(evCount, out.events.size());     // muted: fully silent
 
     e.setMuted(false);
     const size_t evCount2 = out.events.size();

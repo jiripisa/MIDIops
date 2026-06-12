@@ -176,6 +176,7 @@ void BerlinMode::onRawInput(const RawInput& in) {
 // ---- Voices screen (mixer) ------------------------------------------------
 
 static const char* kVoiceNames[3] = {"BASS", "MID", "HIGH"};
+constexpr int kMutedLabelDy = 52;   // below the cell's value text
 
 void BerlinMode::VoicesScreen::onEncoder(int index, int delta) {
     if (index < 1 || index > kVoices || delta == 0) return;
@@ -200,7 +201,7 @@ void BerlinMode::VoicesScreen::render(Display& d) const {
         snprintf(buf, sizeof buf, "CH %d", mode_.voices_[v].channel);
         drawBerlinParamCell(d, v, kVoiceNames[v], buf, muted);
         if (muted)
-            d.drawText(v * kBerlinCellW + 4, kBerlinParamTop + 52, "MUTED",
+            d.drawText(v * kBerlinCellW + 4, kBerlinParamTop + kMutedLabelDy, "MUTED",
                        color::Gray, color::Black, 1);
     }
     drawBerlinParamDividers(d);

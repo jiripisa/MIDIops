@@ -22,6 +22,7 @@ void BerlinEngine::emitStep(int i) {
     const BerlinStep& s = seq_.step(i);
     stepTicks_ = 0;
     if (!s.active) return;
+    if (muted_) return;   // suppressed: nothing sounds, so no gate to arm
     emit(true, s.note, s.velocity);
     // Gate is a LIVE performance parameter: derive it from the current params
     // (like ArpEngine does) instead of the gateTicks baked at generation time.

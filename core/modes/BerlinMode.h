@@ -100,7 +100,6 @@ private:
     BerlinEngine& editEngine() { return voices_[editVoice_].engine; }
 
     void applyGenerator(int v);   // point voice v's engine at its generator
-    void applyGeneratorAll() { for (int v = 0; v < kVoices; ++v) applyGenerator(v); }
 
     class StructureScreen : public Screen {
     public:
