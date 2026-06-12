@@ -3,6 +3,7 @@
 #include "core/app/AppShell.h"
 #include "core/BerlinGen.h"           // berlinBaseRoot (Bass-invariance check)
 #include "core/modes/BerlinMode.h"
+#include "core/render/BerlinLayout.h" // kBerlinKbW
 #include "support/FakeMidiOutput.h"
 #include "support/FakeStorage.h"
 #include "support/StubDisplay.h"
@@ -960,6 +961,36 @@ static void test_dynamics_and_behavior_are_global() {
                               static_cast<int>(berlin.params(v).behavior));
 }
 
+// Phasing is visible: voices of different lengths get different column
+// widths, so after a few steps their playhead rects sit at different x.
+static void test_roll_playheads_drift_apart() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});
+    for (int i = 0; i < 12 * 10; ++i) berlin.onClockTick();   // 10 steps in
+    // Mid (len 15) and High (len 16) are both at playhead 10 but their
+    // column widths differ, so the playhead x positions must differ.
+    const int kbW = core::kBerlinKbW;
+    const int rollW = 320 - kbW;
+    const int phMid  = berlin.engine(core::BerlinMode::kMid).playhead();
+    const int phHigh = berlin.engine(core::BerlinMode::kHigh).playhead();
+    const int xMid  = kbW + phMid  * (rollW / 15);
+    const int xHigh = kbW + phHigh * (rollW / 16);
+    TEST_ASSERT_TRUE(xMid != xHigh);
+    StubDisplay d;
+    berlin.screen(0).render(d);
+    bool sawMid = false, sawHigh = false;
+    for (const auto& r : d.rects) {
+        if (r.x == xMid)  sawMid  = true;
+        if (r.x == xHigh) sawHigh = true;
+    }
+    TEST_ASSERT_TRUE(sawMid);
+    TEST_ASSERT_TRUE(sawHigh);
+}
+
 // The combined roll labels the edited voice; rendering any param screen
 // draws it (StubDisplay sees the voice name drawn by the roll).
 static void test_param_screens_draw_multi_roll_with_voice_label() {
@@ -977,6 +1008,7 @@ static void test_param_screens_draw_multi_roll_with_voice_label() {
 
 int main() {
     UNITY_BEGIN();
+    RUN_TEST(test_roll_playheads_drift_apart);
     RUN_TEST(test_param_screens_draw_multi_roll_with_voice_label);
     RUN_TEST(test_three_voices_tick_and_phase);
     RUN_TEST(test_voices_emit_on_their_channels);

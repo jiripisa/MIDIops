@@ -140,15 +140,15 @@ static void test_renderer_draws_keyboard_surface() {
     core::NoteWormModel m; m.tick(0);
     StubDisplay d;
     core::WormsRenderer::render(m, d);
-    TEST_ASSERT_TRUE(d.rects > 0);   // keyboard surface + separators at least
+    TEST_ASSERT_TRUE(d.rectCount > 0);   // keyboard surface + separators at least
 }
 static void test_live_input_worm_adds_fills() {
     core::NoteWormModel m; m.tick(0);
     StubDisplay empty; core::WormsRenderer::drawWorms(m, empty);
-    const int before = empty.rects;
+    const int before = empty.rectCount;
     m.onNoteOn(1, 60); m.tick(200);   // grow a worm a few px
     StubDisplay withWorm; core::WormsRenderer::drawWorms(m, withWorm);
-    TEST_ASSERT_TRUE(withWorm.rects > before);
+    TEST_ASSERT_TRUE(withWorm.rectCount > before);
 }
 
 // ---- MonitoringMode tests ---------------------------------------------------
@@ -159,7 +159,7 @@ static void test_glyph_draws_runs_of_set_bits() {
     const uint16_t rows[2] = {0b101, 0b111};
     StubDisplay d;
     core::drawGlyph(d, 0, 0, rows, 3, 2, core::color::White);
-    TEST_ASSERT_EQUAL_INT(3, d.rects);
+    TEST_ASSERT_EQUAL_INT(3, d.rectCount);
 }
 
 static void test_monitoring_mode_renders_injected_note() {
@@ -180,7 +180,7 @@ static void test_monitoring_mode_renders_injected_note() {
 
     StubDisplay d;
     shell.render(d);
-    TEST_ASSERT_TRUE(d.rects > 0);               // worms + keyboard drawn
+    TEST_ASSERT_TRUE(d.rectCount > 0);               // worms + keyboard drawn
     TEST_ASSERT_TRUE(d.drewText("Monitoring"));  // top bar shows mode name
 }
 
@@ -190,7 +190,7 @@ static void test_notation_draws_staff() {
     core::NoteWormModel m; m.tick(0);
     core::NotationRenderer n; n.update(m, 0);
     StubDisplay d; n.render(m, d);
-    TEST_ASSERT_TRUE(d.rects > 0);
+    TEST_ASSERT_TRUE(d.rectCount > 0);
 }
 
 static void test_notation_shows_held_note_name() {
@@ -222,7 +222,7 @@ static void test_monitoring_notes_screen_renders() {
     shell.tick(50);
     StubDisplay d;
     shell.render(d);
-    TEST_ASSERT_TRUE(d.rects > 0);                 // staff drawn
+    TEST_ASSERT_TRUE(d.rectCount > 0);                 // staff drawn
     TEST_ASSERT_TRUE(d.drewText("notes"));         // top bar shows the screen name
 }
 
