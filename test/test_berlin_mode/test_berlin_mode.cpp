@@ -236,10 +236,10 @@ static void test_structure_screen_edits_and_clamps() {
     for (int i = 0; i < 40; ++i) s.onEncoder(2, -1);
     TEST_ASSERT_EQUAL_INT(3, berlin.params().length);
 
-    // Density clamps 0..100 (step = 5)
-    for (int i = 0; i < 40; ++i) s.onEncoder(4, +1);
+    // Density clamps 0..100 (step = 5) — now Enc3 on Structure.
+    for (int i = 0; i < 40; ++i) s.onEncoder(3, +1);
     TEST_ASSERT_EQUAL_INT(100, berlin.params().density);
-    for (int i = 0; i < 40; ++i) s.onEncoder(4, -1);
+    for (int i = 0; i < 40; ++i) s.onEncoder(3, -1);
     TEST_ASSERT_EQUAL_INT(0, berlin.params().density);
 }
 
@@ -273,7 +273,8 @@ static void test_character_behavior_screens_edit_clamp() {
     TEST_ASSERT_EQUAL_INT(0, berlin.params().morph);
 
     // EvolveRate clamps 1..8 (Enc3) — editable only under the Evolve behavior.
-    berlin.params().behavior = core::BerlinBehavior::Evolve;
+    // Behavior is global (canonical in voices_[0]); set it there.
+    berlin.params(core::BerlinMode::kBass).behavior = core::BerlinBehavior::Evolve;
     for (int i = 0; i < 20; ++i) bh.onEncoder(3, +1);
     TEST_ASSERT_EQUAL_INT(8, berlin.params().evolveRate);
     for (int i = 0; i < 20; ++i) bh.onEncoder(3, -1);
@@ -281,57 +282,62 @@ static void test_character_behavior_screens_edit_clamp() {
 }
 
 // ---------------------------------------------------------------------------
-// Dynamics screen (index 2): velocity/humanize/accent + fixed SCATTER cell.
-// Scatter edits only under DrunkardWalk; the knob is locked (cell dimmed)
-// under the other algorithms.
+// Dynamics screen (index 3): velocity/humanize/accent are GLOBAL (one knob
+// writes every voice). Scatter moved to Structure Enc4 (the AlgoPrm cell): it
+// edits only under DrunkardWalk; the knob is locked under the other algorithms.
 // ---------------------------------------------------------------------------
 static void test_dynamics_screen() {
     core::AppShell shell;
     core::BerlinMode berlin(shell);
     core::Screen& dyn = berlin.screen(3);          // Dynamics now at index 3
+    core::Screen& str = berlin.screen(0);          // Structure carries AlgoPrm
 
     for (int i = 0; i < 200; ++i) dyn.onEncoder(1, +1);
     TEST_ASSERT_EQUAL_INT(126, berlin.params().velocityBase);
     for (int i = 0; i < 50; ++i) dyn.onEncoder(3, -1);
     TEST_ASSERT_EQUAL_INT(0, berlin.params().accent);
 
+    // Scatter is now Structure Enc4 (edit voice is the default High, melodic).
     berlin.params().algorithm = core::BerlinAlgorithm::DrunkardWalk;
-    for (int i = 0; i < 20; ++i) dyn.onEncoder(4, +1);
+    for (int i = 0; i < 20; ++i) str.onEncoder(4, +1);
     TEST_ASSERT_EQUAL_INT(7, berlin.params().scatter);          // clamps 1..7
     berlin.params().algorithm = core::BerlinAlgorithm::GatePitchPhasing;
     uint8_t scBefore = berlin.params().scatter;
-    for (int i = 0; i < 5; ++i) dyn.onEncoder(4, -1);
+    for (int i = 0; i < 5; ++i) str.onEncoder(4, -1);
     TEST_ASSERT_EQUAL_UINT8(scBefore, berlin.params().scatter); // locked under Phase
     berlin.params().algorithm = core::BerlinAlgorithm::DegreeWeighted;
-    for (int i = 0; i < 5; ++i) dyn.onEncoder(4, -1);
+    for (int i = 0; i < 5; ++i) str.onEncoder(4, -1);
     TEST_ASSERT_EQUAL_UINT8(scBefore, berlin.params().scatter); // locked under Degree
 }
 
 // ---------------------------------------------------------------------------
-// Behavior screen Enc4 = fixed GATELEN cell: edits only under GatePitchPhasing,
-// locked (dimmed) otherwise. Enc3 (Evolve rate) edits only under Evolve.
+// Structure Enc4 = AlgoPrm GATELEN cell: edits only under GatePitchPhasing,
+// locked otherwise. Behavior Enc3 (Evolve rate) is GLOBAL and edits only under
+// the Evolve behavior (behavior itself is global, canonical in voices_[0]).
 // ---------------------------------------------------------------------------
 static void test_behavior_screen_gatelen_and_evolve_locks() {
     core::AppShell shell;
     core::BerlinMode berlin(shell);
-    core::Screen& bh = berlin.screen(4);
+    core::Screen& str = berlin.screen(0);   // GateLen lives on Structure Enc4
+    core::Screen& bh  = berlin.screen(4);   // Evolve rate on Behavior Enc3
 
-    // GateLen edits + clamps under Phase only.
+    // GateLen edits + clamps under Phase only (edit voice = default High).
     berlin.params().algorithm = core::BerlinAlgorithm::GatePitchPhasing;
-    for (int i = 0; i < 30; ++i) bh.onEncoder(4, +1);
+    for (int i = 0; i < 30; ++i) str.onEncoder(4, +1);
     TEST_ASSERT_EQUAL_INT(16, berlin.params().gateLen);
-    for (int i = 0; i < 30; ++i) bh.onEncoder(4, -1);
+    for (int i = 0; i < 30; ++i) str.onEncoder(4, -1);
     TEST_ASSERT_EQUAL_INT(3, berlin.params().gateLen);
     berlin.params().algorithm = core::BerlinAlgorithm::DrunkardWalk;
-    for (int i = 0; i < 5; ++i) bh.onEncoder(4, +1);
+    for (int i = 0; i < 5; ++i) str.onEncoder(4, +1);
     TEST_ASSERT_EQUAL_INT(3, berlin.params().gateLen);          // locked under Walk
 
-    // Evolve rate edits only under the Evolve behavior.
-    berlin.params().behavior = core::BerlinBehavior::Locked;
+    // Evolve rate edits only under the Evolve behavior. Behavior is global, so
+    // set it on the canonical voice (Bass = voices_[0]).
+    berlin.params(core::BerlinMode::kBass).behavior = core::BerlinBehavior::Locked;
     uint8_t evBefore = berlin.params().evolveRate;
     for (int i = 0; i < 3; ++i) bh.onEncoder(3, +1);
     TEST_ASSERT_EQUAL_UINT8(evBefore, berlin.params().evolveRate);  // locked
-    berlin.params().behavior = core::BerlinBehavior::Evolve;
+    berlin.params(core::BerlinMode::kBass).behavior = core::BerlinBehavior::Evolve;
     for (int i = 0; i < 20; ++i) bh.onEncoder(3, +1);
     TEST_ASSERT_EQUAL_INT(8, berlin.params().evolveRate);           // editable + clamped
 }
@@ -506,7 +512,8 @@ static void test_velocity_edit_applies_live_and_locked_never_regens() {
 
     // Velocity is now a LIVE performance parameter: a Dynamics Enc1 edit re-stamps
     // the sequence's velocities at once, in EVERY behavior — even under Locked.
-    berlin.params().behavior = core::BerlinBehavior::Locked;
+    // Behavior is global (canonical in voices_[0]); set it there so live()==false.
+    berlin.params(core::BerlinMode::kBass).behavior = core::BerlinBehavior::Locked;
     core::BerlinSequence before = berlin.engine().sequence();
     berlin.screen(3).onEncoder(1, +1);                // velocity base +1 (live)
     bool anyVelChanged = false;
@@ -524,7 +531,7 @@ static void test_velocity_edit_applies_live_and_locked_never_regens() {
 
     // Locked + STRUCTURAL edit (Density) stays staged — no in-place edit.
     core::BerlinSequence base2 = berlin.engine().sequence();
-    berlin.screen(0).onEncoder(4, +1);                // density +5 (structural) but Locked
+    berlin.screen(0).onEncoder(3, +1);                // density +5 (structural, Enc3) but Locked
     TEST_ASSERT_EQUAL_INT(0, berlinSeqDiff(base2, berlin.engine().sequence()));
 }
 
@@ -579,7 +586,7 @@ static void test_live_density_edit_in_place() {
     const int activeBefore = activeCount(snap);
 
     core::Screen& structure = berlin.screen(0);
-    for (int i = 0; i < 8; ++i) structure.onEncoder(4, +1);        // density up to 80
+    for (int i = 0; i < 8; ++i) structure.onEncoder(3, +1);        // density (Enc3) up to 80
 
     const core::BerlinSequence& now = berlin.engine().sequence();
     TEST_ASSERT_TRUE(activeCount(now) > activeBefore);             // grew
@@ -623,8 +630,10 @@ static void test_resolution_restamps_gate_without_regen() {
     core::BerlinMode berlin(shell);
     FakeMidiOutput out; berlin.setMidiOutput(&out);
     berlin.onEnter();
-    berlin.params().behavior = core::BerlinBehavior::Locked;  // not Live
-    berlin.params().resolution = core::BerlinResolution::Sixteenth;
+    // Behavior + resolution are now GLOBAL (canonical in voices_[0]).
+    berlin.params(core::BerlinMode::kBass).behavior = core::BerlinBehavior::Locked;  // not Live
+    berlin.params(core::BerlinMode::kBass).resolution = core::BerlinResolution::Sixteenth;
+    berlin.syncGlobals();
     berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});  // prime latch absorb
     berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});   // generate
 
@@ -635,7 +644,7 @@ static void test_resolution_restamps_gate_without_regen() {
     TEST_ASSERT_TRUE(firstActive >= 0);
     const uint16_t gateBefore = snap.step(firstActive).gateTicks;
 
-    berlin.screen(0).onEncoder(3, +1);                 // Resolution 16th → 8th
+    berlin.screen(3).onEncoder(4, +1);                 // Resolution (Dynamics Enc4) 16th → 8th
 
     const core::BerlinSequence& now = berlin.engine().sequence();
     // Notes unchanged (active flags + pitches identical).
@@ -908,6 +917,49 @@ static void test_encoder_press_cycles_edit_voice() {
     TEST_ASSERT_EQUAL_INT(core::BerlinMode::kMid, berlin.editVoice());
 }
 
+// Structure Enc3 is now Density, Enc4 the algorithm-specific parameter
+// (Scatter under Walk / GateLen under Phase); ALGO and ALGOPRM are locked
+// for the Bass voice.
+static void test_structure_new_layout_and_bass_locks() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    berlin.setEditVoice(core::BerlinMode::kHigh);
+    berlin.screen(0).onEncoder(3, +2);                     // density +10
+    TEST_ASSERT_EQUAL_INT(60, berlin.params(core::BerlinMode::kHigh).density);
+    berlin.screen(0).onEncoder(4, +2);                     // Walk: scatter 3 -> 5
+    TEST_ASSERT_EQUAL_INT(5, berlin.params(core::BerlinMode::kHigh).scatter);
+    berlin.params(core::BerlinMode::kHigh).algorithm =
+        core::BerlinAlgorithm::GatePitchPhasing;
+    berlin.screen(0).onEncoder(4, +2);                     // Phase: gateLen 6 -> 8
+    TEST_ASSERT_EQUAL_INT(8, berlin.params(core::BerlinMode::kHigh).gateLen);
+
+    berlin.setEditVoice(core::BerlinMode::kBass);
+    const auto algoBefore = berlin.params(core::BerlinMode::kBass).algorithm;
+    berlin.screen(0).onEncoder(1, +1);                     // ALGO locked for Bass
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(algoBefore),
+        static_cast<int>(berlin.params(core::BerlinMode::kBass).algorithm));
+    berlin.screen(0).onEncoder(4, +2);                     // ALGOPRM locked for Bass
+    TEST_ASSERT_EQUAL_INT(3, berlin.params(core::BerlinMode::kBass).scatter);
+}
+
+// Dynamics and behavior are global: one knob writes every voice's params.
+static void test_dynamics_and_behavior_are_global() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    berlin.onEnter();
+    berlin.screen(3).onEncoder(1, +10);                    // velocity 100 -> 110
+    for (int v = 0; v < core::BerlinMode::kVoices; ++v)
+        TEST_ASSERT_EQUAL_INT(110, berlin.params(v).velocityBase);
+    berlin.screen(3).onEncoder(4, +1);                     // resolution 8th -> 16th
+    for (int v = 0; v < core::BerlinMode::kVoices; ++v)
+        TEST_ASSERT_EQUAL_INT(static_cast<int>(core::BerlinResolution::Sixteenth),
+                              static_cast<int>(berlin.params(v).resolution));
+    berlin.screen(4).onEncoder(1, +1);                     // behavior Live -> Lock
+    for (int v = 0; v < core::BerlinMode::kVoices; ++v)
+        TEST_ASSERT_EQUAL_INT(static_cast<int>(core::BerlinBehavior::Locked),
+                              static_cast<int>(berlin.params(v).behavior));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_three_voices_tick_and_phase);
@@ -940,5 +992,7 @@ int main() {
     RUN_TEST(test_voices_screen_channel_and_mute);
     RUN_TEST(test_mute_keeps_phase_other_voices_sound);
     RUN_TEST(test_encoder_press_cycles_edit_voice);
+    RUN_TEST(test_structure_new_layout_and_bass_locks);
+    RUN_TEST(test_dynamics_and_behavior_are_global);
     return UNITY_END();
 }

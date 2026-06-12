@@ -234,39 +234,53 @@ static void restampGateTicks(BerlinEngine& engine, const BerlinParams& p) {
 
 void BerlinMode::StructureScreen::onEncoder(int index, int delta) {
     BerlinParams& p = mode_.editParams();
+    const bool bass = mode_.editVoice() == kBass;
     switch (index) {
-        case 1:  // Algorithm — no live action (applies at the next Generate).
-            p.algorithm = cycleEnum(p.algorithm, delta);
+        case 1:  // Algorithm — Mid/High only; applies at the next Generate.
+            if (!bass) p.algorithm = cycleEnum(p.algorithm, delta);
             break;
         case 2: { int v = p.length + delta; if (v < 3) v = 3; if (v > 32) v = 32;
                   p.length = static_cast<uint8_t>(v);
                   if (mode_.live()) { mode_.editEngine().setParams(p); mode_.editEngine().applyLiveLength(); }
                 } break;
-        case 3:  // Resolution is inherently live in every behavior (the engine
-                 // reads the grid per tick); just re-stamp the baked gateTicks
-                 // so the piano-roll widths match. No regeneration.
-            p.resolution = cycleEnum(p.resolution, delta);
-            mode_.editEngine().setParams(p);
-            restampGateTicks(mode_.editEngine(), p);
-            break;
-        case 4: { int v = p.density + delta * 5; if (v < 0) v = 0; if (v > 100) v = 100;
+        case 3: { int v = p.density + delta * 5; if (v < 0) v = 0; if (v > 100) v = 100;
                   p.density = static_cast<uint8_t>(v);
                   if (mode_.live()) { mode_.editEngine().setParams(p); mode_.editEngine().applyLiveDensity(); }
                 } break;
+        case 4:  // AlgoPrm: Scatter under Walk, GateLen under Phase; locked for
+                 // Bass and under Degree. Applies at the next Generate.
+            if (bass) break;
+            if (p.algorithm == BerlinAlgorithm::DrunkardWalk) {
+                int v = p.scatter + delta; if (v < 1) v = 1; if (v > 7) v = 7;
+                p.scatter = static_cast<uint8_t>(v);
+            } else if (p.algorithm == BerlinAlgorithm::GatePitchPhasing) {
+                int v = p.gateLen + delta; if (v < 3) v = 3; if (v > 16) v = 16;
+                p.gateLen = static_cast<uint8_t>(v);
+            }
+            break;
     }
 }
 
 void BerlinMode::StructureScreen::onEncoderSw(int /*index*/) { mode_.cycleEditVoice(); }
 
 void BerlinMode::StructureScreen::render(Display& d) const {
-    const BerlinParams& p = mode_.editParams();
+    const BerlinParams& p = mode_.voices_[mode_.editVoice_].params;
+    const bool bass = mode_.editVoice() == kBass;
     char buf[12];
-    drawBerlinParamCell(d, 0, "ALGO",    algoName(p.algorithm));
+    drawBerlinParamCell(d, 0, "ALGO", bass ? "Bass" : algoName(p.algorithm), bass);
     snprintf(buf, sizeof buf, "%d", p.length);
     drawBerlinParamCell(d, 1, "LENGTH",  buf);
-    drawBerlinParamCell(d, 2, "RESOL",   p.resolution == BerlinResolution::Sixteenth ? "16th" : "8th");
     snprintf(buf, sizeof buf, "%d%%", p.density);
-    drawBerlinParamCell(d, 3, "DENSITY", buf);
+    drawBerlinParamCell(d, 2, "DENSITY", buf);
+    if (!bass && p.algorithm == BerlinAlgorithm::DrunkardWalk) {
+        snprintf(buf, sizeof buf, "%d", p.scatter);
+        drawBerlinParamCell(d, 3, "SCATTER", buf);
+    } else if (!bass && p.algorithm == BerlinAlgorithm::GatePitchPhasing) {
+        snprintf(buf, sizeof buf, "%d", p.gateLen);
+        drawBerlinParamCell(d, 3, "GATELEN", buf);
+    } else {
+        drawBerlinParamCell(d, 3, "ALGOPRM", "-", true);   // dimmed: not used
+    }
     drawBerlinParamDividers(d);
     drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
                         mode_.engine().soundingNote(), color::Green);
@@ -336,65 +350,40 @@ void BerlinMode::CharacterScreen::render(Display& d) const {
 // ---- Dynamics screen --------------------------------------------------------
 
 void BerlinMode::DynamicsScreen::onEncoder(int index, int delta) {
-    BerlinParams& p = mode_.editParams();
+    BerlinParams& g = mode_.voices_[0].params;             // canonical globals
     switch (index) {
-        case 1: {
-            int v = p.velocityBase + delta;
-            if (v < 1)   v = 1;
-            if (v > 126) v = 126;
-            p.velocityBase = static_cast<uint8_t>(v);
-            // Velocity/Humanize/Accent are LIVE performance parameters (like Gate):
-            // re-stamp every active step's velocity from its stable jitter + the
-            // current params, in every behavior, so the knob is audible at once.
-            mode_.editEngine().setParams(p);
-            berlinStampVelocities(mode_.editEngine().sequenceMut(), p);
+        case 1: { int v = g.velocityBase + delta;     if (v < 1) v = 1;   if (v > 126) v = 126;
+                  g.velocityBase = static_cast<uint8_t>(v); } break;
+        case 2: { int v = g.velocityHumanize + delta; if (v < 0) v = 0;   if (v > 30)  v = 30;
+                  g.velocityHumanize = static_cast<uint8_t>(v); } break;
+        case 3: { int v = g.accent + delta;           if (v < 0) v = 0;   if (v > 27)  v = 27;
+                  g.accent = static_cast<uint8_t>(v); } break;
+        case 4:  // Resolution is global (one step grid) and inherently live.
+            g.resolution = cycleEnum(g.resolution, delta);
             break;
-        }
-        case 2: {
-            int v = p.velocityHumanize + delta;
-            if (v < 0)  v = 0;
-            if (v > 30) v = 30;
-            p.velocityHumanize = static_cast<uint8_t>(v);
-            mode_.editEngine().setParams(p);
-            berlinStampVelocities(mode_.editEngine().sequenceMut(), p);
-            break;
-        }
-        case 3: {
-            int v = p.accent + delta;
-            if (v < 0)  v = 0;
-            if (v > 27) v = 27;
-            p.accent = static_cast<uint8_t>(v);
-            mode_.editEngine().setParams(p);
-            berlinStampVelocities(mode_.editEngine().sequenceMut(), p);
-            break;
-        }
-        case 4:
-            // Scatter applies to the Drunkard's Walk only; the cell is dimmed
-            // and the knob locked under the other algorithms. It parameterizes
-            // how a sequence is generated, so it takes effect at the next
-            // Generate (no immediate live action).
-            if (p.algorithm == BerlinAlgorithm::DrunkardWalk) {
-                int v = p.scatter + delta;
-                if (v < 1) v = 1;
-                if (v > 7) v = 7;
-                p.scatter = static_cast<uint8_t>(v);
-            }
-            break;
+        default: return;
+    }
+    mode_.syncGlobals();
+    // Velocity knobs re-stamp at once in every behavior; resolution re-stamps
+    // the baked gateTicks so the roll widths match. Doing both is harmless.
+    for (int v = 0; v < kVoices; ++v) {
+        berlinStampVelocities(mode_.voices_[v].engine.sequenceMut(),
+                              mode_.voices_[v].params);
+        restampGateTicks(mode_.voices_[v].engine, mode_.voices_[v].params);
     }
 }
 
 void BerlinMode::DynamicsScreen::render(Display& d) const {
-    const BerlinParams& p = mode_.editParams();
+    const BerlinParams& g = mode_.voices_[0].params;
     char buf[12];
-    snprintf(buf, sizeof buf, "%d", p.velocityBase);
+    snprintf(buf, sizeof buf, "%d", g.velocityBase);
     drawBerlinParamCell(d, 0, "VEL",   buf);
-    snprintf(buf, sizeof buf, "+-%d", p.velocityHumanize);
+    snprintf(buf, sizeof buf, "+-%d", g.velocityHumanize);
     drawBerlinParamCell(d, 1, "HUMAN", buf);
-    snprintf(buf, sizeof buf, "+%d", p.accent);
+    snprintf(buf, sizeof buf, "+%d", g.accent);
     drawBerlinParamCell(d, 2, "ACCENT", buf);
-    snprintf(buf, sizeof buf, "%d", p.scatter);
-    drawBerlinParamCell(d, 3, "SCATTER", buf,
-                        p.algorithm != BerlinAlgorithm::DrunkardWalk);
+    drawBerlinParamCell(d, 3, "RESOL",
+                        g.resolution == BerlinResolution::Sixteenth ? "16th" : "8th");
     drawBerlinParamDividers(d);
     drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
                         mode_.engine().soundingNote(), color::Green);
@@ -412,48 +401,31 @@ static const char* behaviorName(BerlinBehavior b) {
 }
 
 void BerlinMode::BehaviorScreen::onEncoder(int index, int delta) {
-    BerlinParams& p = mode_.editParams();
+    BerlinParams& g = mode_.voices_[0].params;
     switch (index) {
-        case 1: p.behavior = cycleEnum(p.behavior, delta); break;
-        case 2: { int v = p.morph + delta * 5;     if (v < 0) v = 0;  if (v > 100) v = 100;
-                  p.morph = static_cast<uint8_t>(v); } break;
+        case 1: g.behavior = cycleEnum(g.behavior, delta); break;
+        case 2: { int v = g.morph + delta * 5; if (v < 0) v = 0; if (v > 100) v = 100;
+                  g.morph = static_cast<uint8_t>(v); } break;
         case 3:
-            // Evolve rate only matters under the Evolve behavior; the cell is
-            // dimmed and the knob locked otherwise.
-            if (p.behavior == BerlinBehavior::Evolve) {
-                int v = p.evolveRate + delta;
-                if (v < 1) v = 1;
-                if (v > 8) v = 8;
-                p.evolveRate = static_cast<uint8_t>(v);
+            if (g.behavior == BerlinBehavior::Evolve) {
+                int v = g.evolveRate + delta; if (v < 1) v = 1; if (v > 8) v = 8;
+                g.evolveRate = static_cast<uint8_t>(v);
             }
             break;
-        case 4:
-            // GateLen applies to Gate/Pitch Phasing only; dimmed/locked under
-            // the other algorithms. It parameterizes how a sequence is
-            // generated, so it takes effect at the next Generate (no immediate
-            // live action).
-            if (p.algorithm == BerlinAlgorithm::GatePitchPhasing) {
-                int v = p.gateLen + delta;
-                if (v < 3)  v = 3;
-                if (v > 16) v = 16;
-                p.gateLen = static_cast<uint8_t>(v);
-            }
-            break;
+        default: return;
     }
+    mode_.syncGlobals();
 }
 
 void BerlinMode::BehaviorScreen::render(Display& d) const {
-    const BerlinParams& p = mode_.editParams();
+    const BerlinParams& g = mode_.voices_[0].params;
     char buf[12];
-    drawBerlinParamCell(d, 0, "BEHAVIOR", behaviorName(p.behavior));
-    snprintf(buf, sizeof buf, "%d%%", p.morph);
+    drawBerlinParamCell(d, 0, "BEHAVIOR", behaviorName(g.behavior));
+    snprintf(buf, sizeof buf, "%d%%", g.morph);
     drawBerlinParamCell(d, 1, "MORPH",    buf);
-    snprintf(buf, sizeof buf, "%d", p.evolveRate);
-    drawBerlinParamCell(d, 2, "EVOLVE",   buf,
-                        p.behavior != BerlinBehavior::Evolve);
-    snprintf(buf, sizeof buf, "%d", p.gateLen);
-    drawBerlinParamCell(d, 3, "GATELEN",  buf,
-                        p.algorithm != BerlinAlgorithm::GatePitchPhasing);
+    snprintf(buf, sizeof buf, "%d", g.evolveRate);
+    drawBerlinParamCell(d, 2, "EVOLVE",   buf, g.behavior != BerlinBehavior::Evolve);
+    drawBerlinParamCell(d, 3, "-", "-", true);             // unused
     drawBerlinParamDividers(d);
     drawBerlinPianoRoll(d, mode_.engine().sequence(), mode_.engine().playhead(),
                         mode_.engine().soundingNote(), color::Green);

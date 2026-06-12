@@ -72,7 +72,8 @@ public:
 
     // Live sculpting: when Behavior == Live, apply the edited parameter to the
     // existing sequence in place (no regeneration, playhead untouched).
-    bool live() const { return voices_[editVoice_].params.behavior == BerlinBehavior::Live; }
+    // Behavior is a GLOBAL parameter (canonical in voices_[0]).
+    bool live() const { return voices_[0].params.behavior == BerlinBehavior::Live; }
 
     // Edit-voice accessors (no-arg = the voice the screens currently edit).
     int  editVoice() const { return editVoice_; }
@@ -83,6 +84,25 @@ public:
     const BerlinEngine&   engine() const  { return voices_[editVoice_].engine; }
     const BerlinEngine&   engine(int v) const { return voices_[v].engine; }
     uint8_t               voiceChannel(int v) const { return voices_[v].channel; }
+
+    // Global fields (dynamics, resolution, behavior, morph, evolve) are
+    // canonical in voices_[0].params; the global screens edit them there and
+    // syncGlobals() copies them to every other voice.
+    void syncGlobals() {
+        const BerlinParams& g = voices_[0].params;
+        for (int v = 1; v < kVoices; ++v) {
+            BerlinParams& p = voices_[v].params;
+            p.velocityBase     = g.velocityBase;
+            p.velocityHumanize = g.velocityHumanize;
+            p.accent           = g.accent;
+            p.resolution       = g.resolution;
+            p.behavior         = g.behavior;
+            p.morph            = g.morph;
+            p.evolveRate       = g.evolveRate;
+            voices_[v].engine.setParams(p);
+        }
+        voices_[0].engine.setParams(voices_[0].params);
+    }
 
 private:
     AppServices&          svc_;
