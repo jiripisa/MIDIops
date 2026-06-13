@@ -30,6 +30,14 @@ BerlinMode::BerlinMode(AppServices& svc) : svc_(svc) {
     voices_[kHigh].params.length      = 16;
     voices_[kHigh].channel            = 3;
 
+    voices_[kLead].params.octaveBase  = 60;   // C4 (spans C4–C6 with range 2)
+    voices_[kLead].params.octaveRange = 2;
+    voices_[kLead].params.density     = 30;   // sparse, lots of rests
+    voices_[kLead].params.gatePercent = 85;   // legato
+    voices_[kLead].params.length      = 16;
+    voices_[kLead].channel            = 4;
+    // algorithm stays the default (DrunkardWalk), like Mid/High.
+
     for (int v = 0; v < kVoices; ++v) {
         applyGenerator(v);
         voices_[v].engine.setParams(voices_[v].params);
@@ -62,7 +70,7 @@ Screen& BerlinMode::screen(int i) {
 
 bool BerlinMode::presetUsed(int slot) {
     Storage* st = svc_.storage();
-    return st && berlinPreset2Usable(*st, slot);
+    return st && berlinPreset2Usable(*st, slot, kVoices);
 }
 
 bool BerlinMode::savePreset(int slot) {
@@ -75,14 +83,14 @@ bool BerlinMode::savePreset(int slot) {
         v[i].channel = voices_[i].channel;
         v[i].muted   = voices_[i].engine.muted();
     }
-    return saveBerlinPreset2(*st, slot, v);
+    return saveBerlinPreset2(*st, slot, v, kVoices);
 }
 
 bool BerlinMode::loadPreset(int slot) {
     Storage* st = svc_.storage();
     if (!st) return false;
     BerlinVoicePreset v[kVoices];
-    if (!loadBerlinPreset2(*st, slot, v)) return false;
+    if (!loadBerlinPreset2(*st, slot, v, kVoices)) return false;
     for (int i = 0; i < kVoices; ++i) {
         voices_[i].params  = v[i].params;
         voices_[i].channel = v[i].channel;
@@ -120,7 +128,7 @@ void BerlinMode::onEnter() {
     // The boot/first-entry stack gets the same consonance pass as Generate.
     // Only when something was actually generated — re-entering the mode must
     // never mutate sequences the user already has (Locked stays locked).
-    if (generated) enforceConsonance();
+    if (generated) { maskLeadAgainstHigh(); enforceConsonance(); }
     for (int i = 0; i < 4; ++i) latchSynced_[i] = false;  // re-absorb first delivery per index
 }
 
@@ -136,6 +144,18 @@ void BerlinMode::enforceConsonance() {
     for (int v = 0; v < kVoices; ++v)
         seqs[v] = &voices_[v].engine.sequenceMut();
     berlinEnforceConsonance(seqs, kVoices, scale_, tension);
+}
+
+// Call-and-response (spec §8): deactivate each Lead step whose aligned index
+// collides with an active High step, so Lead tends to play in High's gaps.
+// Approximate under phasing (alignment drifts over loops), applied at Generate.
+void BerlinMode::maskLeadAgainstHigh() {
+    BerlinSequence& lead = voices_[kLead].engine.sequenceMut();
+    const BerlinSequence& high = voices_[kHigh].engine.sequence();
+    const int hlen = high.length() < 1 ? 1 : high.length();
+    for (int i = 0; i < lead.length(); ++i)
+        if (lead.step(i).active && high.step(i % hlen).active)
+            lead.step(i).active = false;
 }
 
 void BerlinMode::update(uint32_t /*nowMs*/) {
@@ -219,6 +239,7 @@ void BerlinMode::onRawInput(const RawInput& in) {
                     applyGenerator(v);
                     voices_[v].engine.generate();
                 }
+                maskLeadAgainstHigh();
                 enforceConsonance();
             }
             break;
@@ -365,10 +386,15 @@ void BerlinMode::StructureScreen::render(Display& d) const {
         (active != kBass && ep.algorithm == BerlinAlgorithm::DrunkardWalk)     ? "SCATTER"
       : (active != kBass && ep.algorithm == BerlinAlgorithm::GatePitchPhasing) ? "GATELEN"
                                                                                : "ALGOPRM";
-    drawBerlinVoiceCell(d, 0, "ALGO",    algo[0], algo[1], algo[2], active);
-    drawBerlinVoiceCell(d, 1, "LENGTH",  len[0],  len[1],  len[2],  active);
-    drawBerlinVoiceCell(d, 2, "DENSITY", dens[0], dens[1], dens[2], active);
-    drawBerlinVoiceCell(d, 3, aprmName,  aprm[0], aprm[1], aprm[2], active);
+    const char* algoP[kVoices]; const char* lenP[kVoices];
+    const char* densP[kVoices]; const char* aprmP[kVoices];
+    for (int v = 0; v < kVoices; ++v) {
+        algoP[v] = algo[v]; lenP[v] = len[v]; densP[v] = dens[v]; aprmP[v] = aprm[v];
+    }
+    drawBerlinVoiceCell(d, 0, "ALGO",    algoP, kVoices, active);
+    drawBerlinVoiceCell(d, 1, "LENGTH",  lenP,  kVoices, active);
+    drawBerlinVoiceCell(d, 2, "DENSITY", densP, kVoices, active);
+    drawBerlinVoiceCell(d, 3, aprmName,  aprmP, kVoices, active);
     drawBerlinParamDividers(d);
     mode_.renderRoll(d);
 }
@@ -428,10 +454,15 @@ void BerlinMode::CharacterScreen::render(Display& d) const {
         octaveLabel(p.octaveBase, oct[v], sizeof oct[v]);
         snprintf(rng[v],  sizeof rng[v],  "%d", p.octaveRange);
     }
-    drawBerlinVoiceCell(d, 0, "GATE",    gate[0], gate[1], gate[2], active);
-    drawBerlinVoiceCell(d, 1, "TENSION", tens[0], tens[1], tens[2], active);
-    drawBerlinVoiceCell(d, 2, "OCT",     oct[0],  oct[1],  oct[2],  active);
-    drawBerlinVoiceCell(d, 3, "RANGE",   rng[0],  rng[1],  rng[2],  active);
+    const char* gateP[kVoices]; const char* tensP[kVoices];
+    const char* octP[kVoices];  const char* rngP[kVoices];
+    for (int v = 0; v < kVoices; ++v) {
+        gateP[v] = gate[v]; tensP[v] = tens[v]; octP[v] = oct[v]; rngP[v] = rng[v];
+    }
+    drawBerlinVoiceCell(d, 0, "GATE",    gateP, kVoices, active);
+    drawBerlinVoiceCell(d, 1, "TENSION", tensP, kVoices, active);
+    drawBerlinVoiceCell(d, 2, "OCT",     octP,  kVoices, active);
+    drawBerlinVoiceCell(d, 3, "RANGE",   rngP,  kVoices, active);
     drawBerlinParamDividers(d);
     mode_.renderRoll(d);
 }

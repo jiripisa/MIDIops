@@ -46,9 +46,9 @@ meaning) and the full simulator key map.
 |---|---|
 | **Monitoring** | Per-channel "worms" + notation views of incoming MIDI notes. |
 | **Arp** | Scale-aware arpeggiator; held/injected notes are arpeggiated on the clock (steps, rate, gate, direction, octave, swing, velocity; Hold/Mute/Reset). |
-| **Berlin** | Single-voice generative Berlin-School sequencer — three generators (Drunkard's Walk / Gate-Pitch Phasing / Degree-Weighted), Morph regeneration, Locked/Evolve/Live behaviors, piano-roll with a keyboard. |
+| **Berlin** | Four-voice (Bass/Mid/High/Lead) generative Berlin-School sequencer — per-voice generators (Drunkard's Walk / Gate-Pitch Phasing / Degree-Weighted, plus a root-anchor Bass), per-voice channel + mute mixer, 15-vs-16 note-phasing, Lead call-and-response, Morph regeneration, Locked/Evolve/Live behaviors, diatonic MIDI-in transposition, 20 preset slots, combined colour piano-roll. |
 | **BPM** | Large tempo display; sets the global BPM (30–300). |
-| **Settings** | Scale & root, MIDI out/in channel, clock source (Internal/External). |
+| **Settings** | Scale & root, MIDI out/in channel, clock source (Internal/External), transport (Off/Send/Recv), two-step factory reset. |
 | **Debug** | Live per-control telemetry for hardware bring-up. |
 
 Scale, root, tempo and the MIDI channels are **global** (set in Settings/BPM)

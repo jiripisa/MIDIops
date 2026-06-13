@@ -26,25 +26,24 @@ inline void drawBerlinParamCell(Display& d, int col, const char* name, const cha
                     dim ? color::DarkGray : color::White);
 }
 
-// Per-voice parameter cell (structure / character screens): the parameter
-// name on top, then the three voice values stacked High / Mid / Bass
-// (top→bottom), all size 2 so they stay readable. The active voice's value is
-// highlighted in white; the other two are darker (DarkGray). The 5x7 font
-// only scales by whole multiples, so the active/inactive distinction is by
-// brightness (a half-size inactive value was too small). v0/v1/v2 are the
-// Bass/Mid/High values; activeVoice is 0..2.
+// Per-voice parameter cell (structure / character screens): the parameter name
+// on top, then the voice values stacked top->bottom by register (the highest-
+// index voice on top). All size 2; the active voice's value is white, the
+// others DarkGray. The <=3-voice layout is preserved pixel-for-pixel; the row
+// pitch tightens for 4 so every row fits the 78px strip. vals[v] is voice v's
+// value string (v: 0=Bass ..); activeVoice is 0..count-1.
 inline void drawBerlinVoiceCell(Display& d, int col, const char* name,
-                                const char* v0, const char* v1, const char* v2,
+                                const char* const vals[], int count,
                                 int activeVoice) {
     const int x = col * kBerlinCellW;
     d.drawText(x + 4, kBerlinParamTop + 3, name, color::Gray, color::Black, 1);
-    const char* vals[3] = {v0, v1, v2};        // index 0 Bass, 1 Mid, 2 High
-    constexpr int kRowTop[3] = {22, 40, 58};   // display rows top→bottom, 18px pitch
-    for (int v = 0; v < 3; ++v) {
+    const int pitch = (count <= 3) ? 18 : 14;
+    const int first = (count <= 3) ? 22 : 18;
+    for (int v = 0; v < count; ++v) {
         const uint16_t fg = (v == activeVoice) ? color::White : color::DarkGray;
-        const int row = 2 - v;                 // High on top, Bass at the bottom
-        d.drawText(x + 4 + kValueIndent, kBerlinParamTop + kRowTop[row], vals[v],
-                   fg, color::Black, 2);
+        const int row = (count - 1) - v;       // highest-index voice on top
+        d.drawText(x + 4 + kValueIndent, kBerlinParamTop + first + row * pitch,
+                   vals[v], fg, color::Black, 2);
     }
 }
 
@@ -93,13 +92,14 @@ inline void berlinRollRange(const BerlinSequence& seq, int& lo, int& hi) {
     if (hi > 127) hi = 127;
 }
 
-// Voice identity for the multi-voice roll: index 0 Bass, 1 Mid, 2 High.
-constexpr uint16_t kBerlinVoiceColors[3] = {
+// Voice identity for the multi-voice roll: index 0 Bass, 1 Mid, 2 High, 3 Lead.
+constexpr uint16_t kBerlinVoiceColors[4] = {
     rgb565(90, 140, 255),    // Bass — blue
     color::Green,            // Mid
     rgb565(255, 150, 40),    // High — orange
+    rgb565(230, 70, 200),    // Lead — magenta
 };
-constexpr const char* kBerlinVoiceNames[3] = {"BASS", "MID", "HIGH"};
+constexpr const char* kBerlinVoiceNames[4] = {"BASS", "MID", "HIGH", "LEAD"};
 
 struct BerlinRollVoice {
     const BerlinSequence* seq = nullptr;

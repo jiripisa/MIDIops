@@ -794,6 +794,7 @@ static void test_three_voices_tick_and_phase() {
     TEST_ASSERT_EQUAL_INT(0, berlin.engine(core::BerlinMode::kBass).playhead());
     TEST_ASSERT_EQUAL_INT(1, berlin.engine(core::BerlinMode::kMid).playhead());
     TEST_ASSERT_EQUAL_INT(0, berlin.engine(core::BerlinMode::kHigh).playhead());
+    TEST_ASSERT_EQUAL_INT(0, berlin.engine(core::BerlinMode::kLead).playhead());
 }
 
 // ---------------------------------------------------------------------------
@@ -805,19 +806,28 @@ static void test_voices_emit_on_their_channels() {
     core::BerlinMode berlin(shell);
     FakeMidiOutput out; berlin.setMidiOutput(&out);
     berlin.onEnter();
-    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});
-    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});
-    bool ch1 = false, ch2 = false, ch3 = false, other = false;
+    // High sparse (only its step-0 anchor), Lead dense -> after call-and-response
+    // masking Lead still speaks in High's gaps. Regenerate so densities apply.
+    berlin.params(core::BerlinMode::kHigh).density = 0;
+    berlin.params(core::BerlinMode::kLead).density = 100;
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});  // prime Latch3
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});   // generate
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});  // prime Latch1
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // play all
+    for (int i = 0; i < 12 * 16; ++i) berlin.onClockTick();         // a full loop
+    bool ch1 = false, ch2 = false, ch3 = false, ch4 = false, other = false;
     for (const auto& ev : out.events) {
         if (!ev.isOn) continue;
         if      (ev.channel == 1) ch1 = true;
         else if (ev.channel == 2) ch2 = true;
         else if (ev.channel == 3) ch3 = true;
+        else if (ev.channel == 4) ch4 = true;
         else                      other = true;
     }
     TEST_ASSERT_TRUE(ch1);
     TEST_ASSERT_TRUE(ch2);
     TEST_ASSERT_TRUE(ch3);
+    TEST_ASSERT_TRUE(ch4);
     TEST_ASSERT_FALSE(other);
 }
 
@@ -877,6 +887,32 @@ static void test_voices_screen_channel_and_mute() {
     TEST_ASSERT_TRUE(d.drewText("HIGH"));
 }
 
+// Lead role defaults (spec §2.3): high register, sparse, legato, channel 4.
+static void test_lead_voice_defaults() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    const core::BerlinParams& p = berlin.params(core::BerlinMode::kLead);
+    TEST_ASSERT_EQUAL_INT(60, p.octaveBase);
+    TEST_ASSERT_EQUAL_INT(2,  p.octaveRange);
+    TEST_ASSERT_EQUAL_INT(30, p.density);
+    TEST_ASSERT_EQUAL_INT(85, p.gatePercent);
+    TEST_ASSERT_EQUAL_INT(4,  berlin.voiceChannel(core::BerlinMode::kLead));
+}
+
+// The voices mixer's fourth cell sets Lead's channel and mute.
+static void test_voices_screen_controls_lead() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    berlin.onEnter();
+    core::Screen& mixer = berlin.screen(2);
+    mixer.onEncoder(4, +2);                                 // Lead channel 4 -> 6
+    TEST_ASSERT_EQUAL_INT(6, berlin.voiceChannel(core::BerlinMode::kLead));
+    TEST_ASSERT_FALSE(berlin.engine(core::BerlinMode::kLead).muted());
+    mixer.onEncoderSw(4);                                   // mute Lead
+    TEST_ASSERT_TRUE(berlin.engine(core::BerlinMode::kLead).muted());
+}
+
 // Muting a voice from the mixer silences only that voice; it keeps phase and
 // resumes exactly where the others are.
 static void test_mute_keeps_phase_other_voices_sound() {
@@ -901,35 +937,26 @@ static void test_mute_keeps_phase_other_voices_sound() {
                           berlin.engine(core::BerlinMode::kBass).playhead());
 }
 
-// ---------------------------------------------------------------------------
-// On the per-voice screens (structure/character) each of Enc1/2/3 selects a
-// voice directly (Bass/Mid/High); Enc4 toggles mute of the selected voice.
-// Global screens (dynamics/behavior) ignore the press.
-// ---------------------------------------------------------------------------
-static void test_encoder_press_selects_voice_and_mutes() {
+// On the per-voice screens each of Enc1/2/3/4 selects a voice directly
+// (Bass/Mid/High/Lead). Mute lives only on the voices mixer now. Global
+// screens (dynamics/behavior) ignore the press.
+static void test_encoder_press_selects_voice() {
     core::AppShell shell;
     core::BerlinMode berlin(shell);
     TEST_ASSERT_EQUAL_INT(core::BerlinMode::kHigh, berlin.editVoice());
-
-    berlin.screen(0).onEncoderSw(1);                       // structure Enc1 -> Bass
+    berlin.screen(0).onEncoderSw(1);
     TEST_ASSERT_EQUAL_INT(core::BerlinMode::kBass, berlin.editVoice());
-    berlin.screen(1).onEncoderSw(2);                       // character Enc2 -> Mid
+    berlin.screen(1).onEncoderSw(2);
     TEST_ASSERT_EQUAL_INT(core::BerlinMode::kMid, berlin.editVoice());
-    berlin.screen(0).onEncoderSw(3);                       // structure Enc3 -> High
+    berlin.screen(0).onEncoderSw(3);
     TEST_ASSERT_EQUAL_INT(core::BerlinMode::kHigh, berlin.editVoice());
-
-    // Enc4 toggles mute of the SELECTED voice (High here).
-    TEST_ASSERT_FALSE(berlin.engine(core::BerlinMode::kHigh).muted());
-    berlin.screen(0).onEncoderSw(4);
-    TEST_ASSERT_TRUE(berlin.engine(core::BerlinMode::kHigh).muted());
-    berlin.screen(1).onEncoderSw(4);                       // character Enc4 also toggles
-    TEST_ASSERT_FALSE(berlin.engine(core::BerlinMode::kHigh).muted());
-
-    // Global screens ignore the press: voice stays High, no mute change.
-    berlin.screen(3).onEncoderSw(1);                       // dynamics
-    TEST_ASSERT_EQUAL_INT(core::BerlinMode::kHigh, berlin.editVoice());
-    berlin.screen(4).onEncoderSw(4);                       // behavior
-    TEST_ASSERT_FALSE(berlin.engine(core::BerlinMode::kHigh).muted());
+    berlin.screen(1).onEncoderSw(4);
+    TEST_ASSERT_EQUAL_INT(core::BerlinMode::kLead, berlin.editVoice());
+    // Enc4 selects, it does NOT mute.
+    TEST_ASSERT_FALSE(berlin.engine(core::BerlinMode::kLead).muted());
+    // Global screens ignore the press.
+    berlin.screen(3).onEncoderSw(1);
+    TEST_ASSERT_EQUAL_INT(core::BerlinMode::kLead, berlin.editVoice());
 }
 
 // Structure Enc3 is now Density, Enc4 the algorithm-specific parameter
@@ -1017,15 +1044,14 @@ static void test_per_voice_cells_show_all_three_highlighted() {
     character.render(d);
     TEST_ASSERT_TRUE(d.drewText("C1"));        // Bass octave shown
     TEST_ASSERT_TRUE(d.drewText("C3"));        // Mid
-    TEST_ASSERT_TRUE(d.drewText("C4"));        // High
-    TEST_ASSERT_EQUAL_HEX16(core::color::White,    d.textColor("C4"));   // High active
-    TEST_ASSERT_EQUAL_HEX16(core::color::DarkGray, d.textColor("C1"));   // Bass dimmed
+    TEST_ASSERT_TRUE(d.drewText("C4"));        // High (and Lead share C4)
 
-    character.onEncoderSw(1);                   // select Bass
+    // Select Mid (C3 is unique to Mid): active=white, an inactive (Bass C1)=dim.
+    character.onEncoderSw(2);
     StubDisplay d2;
     character.render(d2);
-    TEST_ASSERT_EQUAL_HEX16(core::color::White,    d2.textColor("C1"));  // Bass now active
-    TEST_ASSERT_EQUAL_HEX16(core::color::DarkGray, d2.textColor("C4"));  // High dimmed
+    TEST_ASSERT_EQUAL_HEX16(core::color::White,    d2.textColor("C3"));
+    TEST_ASSERT_EQUAL_HEX16(core::color::DarkGray, d2.textColor("C1"));
 }
 
 // The combined roll labels the edited voice; rendering any param screen
@@ -1106,6 +1132,30 @@ static void test_roll_reflects_transpose() {
     TEST_ASSERT_TRUE(differ);
 }
 
+// Call-and-response: after Generate, no Lead active step coincides (by aligned
+// index) with an active High step. Forcing both dense guarantees collisions to
+// mask: High is all-active, so Lead must end up all rests.
+static void test_call_response_lead_avoids_high() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    berlin.onEnter();
+    berlin.params(core::BerlinMode::kHigh).density = 100;
+    berlin.params(core::BerlinMode::kLead).density = 100;
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});  // prime
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});   // Generate
+
+    const core::BerlinSequence& lead = berlin.engine(core::BerlinMode::kLead).sequence();
+    const core::BerlinSequence& high = berlin.engine(core::BerlinMode::kHigh).sequence();
+    const int hlen = high.length() < 1 ? 1 : high.length();
+    int leadActive = 0;
+    for (int i = 0; i < lead.length(); ++i) {
+        if (!lead.step(i).active) continue;
+        ++leadActive;
+        TEST_ASSERT_FALSE(high.step(i % hlen).active);   // never coincides
+    }
+    TEST_ASSERT_EQUAL_INT(0, leadActive);                // dense High masks all Lead steps
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_roll_playheads_drift_apart);
@@ -1138,12 +1188,15 @@ int main() {
     RUN_TEST(test_resolution_restamps_gate_without_regen);
     RUN_TEST(test_berlin_screen_order_with_voices);
     RUN_TEST(test_voices_screen_channel_and_mute);
+    RUN_TEST(test_lead_voice_defaults);
+    RUN_TEST(test_voices_screen_controls_lead);
     RUN_TEST(test_mute_keeps_phase_other_voices_sound);
-    RUN_TEST(test_encoder_press_selects_voice_and_mutes);
+    RUN_TEST(test_encoder_press_selects_voice);
     RUN_TEST(test_per_voice_cells_show_all_three_highlighted);
     RUN_TEST(test_structure_new_layout_and_bass_locks);
     RUN_TEST(test_dynamics_and_behavior_are_global);
     RUN_TEST(test_midi_in_transposes_all_voices);
     RUN_TEST(test_roll_reflects_transpose);
+    RUN_TEST(test_call_response_lead_avoids_high);
     return UNITY_END();
 }

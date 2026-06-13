@@ -50,16 +50,20 @@ The six modes (boot order = `addMode()` order in the mains):
 * **Arp** — arpeggiator. Hold notes, configure pattern/octaves/gate per
   screen; Latch1 = Hold, Latch2 = Mute, Latch3 = Reset. A fifth
   "presets" screen saves/loads/deletes the params in 20 slots.
-* **Berlin** — generative Berlin-School sequencer with three voices —
-  **Bass** (root-anchor "heartbeat" via its own generator), **Mid** and
-  **High** (see the spec reference below). Each voice has its own MIDI
-  channel (defaults 1/2/3, set on the `voices` mixer screen) and a mute
-  flag; per-voice lengths (Mid's 15 against 16) drift to give the genre's
-  signature note-phasing. Latch1 = Play, Latch2 = Stop, Latch3 = Generate
-  (regenerates all three voices, then runs a vertical consonance check
-  across the stack). Its "presets" screen stores the whole three-voice
-  stack — all params, channels, mutes and the three realized sequences —
-  in 20 slots; loading mid-play swaps seamlessly (each playhead wraps).
+* **Berlin** — generative Berlin-School sequencer with four voices —
+  **Bass** (root-anchor "heartbeat" via its own generator), **Mid**,
+  **High** and **Lead** (see the spec reference below). Lead is a sparse
+  high-register voice doing call-and-response with High (its colliding
+  steps are deactivated at Generate, `maskLeadAgainstHigh`). On the
+  per-voice screens Enc1/2/3/4 select Bass/Mid/High/Lead; mute is on the
+  mixer. Each voice has its own MIDI channel (defaults 1/2/3/4, set on the
+  `voices` mixer screen) and a mute flag; per-voice lengths (Mid's 15
+  against 16) drift to give the genre's signature note-phasing. Latch1 =
+  Play, Latch2 = Stop, Latch3 = Generate (regenerates all four voices,
+  then runs a vertical consonance check across the stack). Its "presets"
+  screen stores all four voices (v3 blob) — all params, channels, mutes
+  and the realized sequences — in 20 slots; loading mid-play swaps
+  seamlessly (each playhead wraps).
   Berlin uses its per-voice channels, not the global Settings out channel.
   Incoming notes on the global MIDI-in channel transpose the whole stack
   diatonically (latched; silent control input), via `BerlinMode::onMidiIn` →
@@ -75,8 +79,8 @@ Control scheme (roles are assigned at runtime by the active mode/screen,
 not by the pin names):
   * **Enc1–Enc4** — the per-screen parameter knobs (rotate to edit,
     press for the screen's secondary action). On Berlin's per-voice
-    screens (`structure`, `character`) Enc1/2/3 press selects the voice
-    (Bass/Mid/High) and Enc4 press toggles mute of the selected voice.
+    screens (`structure`, `character`) Enc1/2/3/4 press selects the voice
+    (Bass/Mid/High/Lead); mute lives on the `voices` mixer screen.
   * **Enc5** — rotate to switch screen within a mode; press to open the
     mode-select overlay (rotate to pick a mode, press to confirm).
   * **Latch1–Latch3** — stateless transport buttons: every mechanical flip

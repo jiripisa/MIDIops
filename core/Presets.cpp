@@ -9,8 +9,10 @@ namespace {
 constexpr uint8_t kPresetVersion = 1;
 
 constexpr int kArpBlobLen    = 5 + 9;                                   // 14
-constexpr int kBerlinVoiceBlock = 16 + 1 + core::BerlinSequence::kMaxSteps * 6 + 2;  // 211
-constexpr int kBerlinBlobLen2   = 5 + 3 * kBerlinVoiceBlock;                          // 638
+constexpr int     kBerlinVoiceBlock    = 16 + 1 + core::BerlinSequence::kMaxSteps * 6 + 2;  // 211
+constexpr int     kBerlinMaxVoices     = 4;
+constexpr int     kBerlinBlobMax       = 5 + kBerlinMaxVoices * kBerlinVoiceBlock;  // 849
+constexpr uint8_t kBerlinPresetVersion = 3;
 
 bool validSlot(int slot) { return slot >= 0 && slot < core::kPresetSlots; }
 
@@ -203,38 +205,43 @@ static bool decodeBerlinVoice(const uint8_t* b, BerlinVoicePreset& v) {
     return true;
 }
 
-bool saveBerlinPreset2(Storage& st, int slot, const BerlinVoicePreset v[3]) {
-    if (!validSlot(slot)) return false;
-    uint8_t b[kBerlinBlobLen2] = {'M', 'B', 'E', 'R', 2};
-    for (int i = 0; i < 3; ++i)
+bool saveBerlinPreset2(Storage& st, int slot, const BerlinVoicePreset* v, int count) {
+    if (!validSlot(slot) || count < 1 || count > kBerlinMaxVoices) return false;
+    const int len = 5 + count * kBerlinVoiceBlock;
+    uint8_t b[kBerlinBlobMax] = {'M', 'B', 'E', 'R', kBerlinPresetVersion};
+    for (int i = 0; i < count; ++i)
         encodeBerlinVoice(b + 5 + i * kBerlinVoiceBlock, v[i]);
     char key[24];
     presetKey("berlin", slot, key, sizeof key);
-    return st.save(key, b, kBerlinBlobLen2);
+    return st.save(key, b, len);
 }
 
-bool loadBerlinPreset2(Storage& st, int slot, BerlinVoicePreset v[3]) {
-    if (!validSlot(slot)) return false;
+bool loadBerlinPreset2(Storage& st, int slot, BerlinVoicePreset* v, int count) {
+    if (!validSlot(slot) || count < 1 || count > kBerlinMaxVoices) return false;
+    const int len = 5 + count * kBerlinVoiceBlock;
     char key[24];
     presetKey("berlin", slot, key, sizeof key);
-    uint8_t b[kBerlinBlobLen2];
-    if (!st.load(key, b, kBerlinBlobLen2)) return false;   // v1 size fails here
-    if (b[0] != 'M' || b[1] != 'B' || b[2] != 'E' || b[3] != 'R' || b[4] != 2)
+    uint8_t b[kBerlinBlobMax];
+    if (!st.load(key, b, len)) return false;   // wrong size (other count) fails here
+    if (b[0] != 'M' || b[1] != 'B' || b[2] != 'E' || b[3] != 'R' ||
+        b[4] != kBerlinPresetVersion)
         return false;
-    BerlinVoicePreset tmp[3];
-    for (int i = 0; i < 3; ++i)
+    BerlinVoicePreset tmp[kBerlinMaxVoices];
+    for (int i = 0; i < count; ++i)
         if (!decodeBerlinVoice(b + 5 + i * kBerlinVoiceBlock, tmp[i])) return false;
-    for (int i = 0; i < 3; ++i) v[i] = tmp[i];             // never a partial apply
+    for (int i = 0; i < count; ++i) v[i] = tmp[i];   // never a partial apply
     return true;
 }
 
-bool berlinPreset2Usable(Storage& st, int slot) {
-    if (!validSlot(slot)) return false;
+bool berlinPreset2Usable(Storage& st, int slot, int count) {
+    if (!validSlot(slot) || count < 1 || count > kBerlinMaxVoices) return false;
+    const int len = 5 + count * kBerlinVoiceBlock;
     char key[24];
     presetKey("berlin", slot, key, sizeof key);
-    uint8_t b[kBerlinBlobLen2];
-    if (!st.load(key, b, kBerlinBlobLen2)) return false;
-    return b[0] == 'M' && b[1] == 'B' && b[2] == 'E' && b[3] == 'R' && b[4] == 2;
+    uint8_t b[kBerlinBlobMax];
+    if (!st.load(key, b, len)) return false;
+    return b[0] == 'M' && b[1] == 'B' && b[2] == 'E' && b[3] == 'R' &&
+           b[4] == kBerlinPresetVersion;
 }
 
 } // namespace core

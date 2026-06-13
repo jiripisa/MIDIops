@@ -69,11 +69,11 @@ static void test_berlin_preset2_round_trip_three_voices() {
             s.velJitter = static_cast<int8_t>(i - 5);
         }
     }
-    TEST_ASSERT_FALSE(core::berlinPreset2Usable(st, 3));
-    TEST_ASSERT_TRUE(core::saveBerlinPreset2(st, 3, in));
-    TEST_ASSERT_TRUE(core::berlinPreset2Usable(st, 3));
+    TEST_ASSERT_FALSE(core::berlinPreset2Usable(st, 3, 3));
+    TEST_ASSERT_TRUE(core::saveBerlinPreset2(st, 3, in, 3));
+    TEST_ASSERT_TRUE(core::berlinPreset2Usable(st, 3, 3));
     core::BerlinVoicePreset out[3];
-    TEST_ASSERT_TRUE(core::loadBerlinPreset2(st, 3, out));
+    TEST_ASSERT_TRUE(core::loadBerlinPreset2(st, 3, out, 3));
     for (int v = 0; v < 3; ++v) {
         TEST_ASSERT_EQUAL_INT(in[v].params.length, out[v].params.length);
         TEST_ASSERT_EQUAL_INT(in[v].params.density, out[v].params.density);
@@ -92,9 +92,9 @@ static void test_berlin_preset2_round_trip_three_voices() {
 static void test_berlin_v1_blob_reads_as_empty() {
     FakeStorage st;
     st.data["berlin.s01"] = std::vector<uint8_t>(214, 0);  // v1-sized junk
-    TEST_ASSERT_FALSE(core::berlinPreset2Usable(st, 0));
+    TEST_ASSERT_FALSE(core::berlinPreset2Usable(st, 0, 3));
     core::BerlinVoicePreset out[3];
-    TEST_ASSERT_FALSE(core::loadBerlinPreset2(st, 0, out));
+    TEST_ASSERT_FALSE(core::loadBerlinPreset2(st, 0, out, 3));
 }
 
 static void test_corrupt_preset_loads_as_empty() {
