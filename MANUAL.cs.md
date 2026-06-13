@@ -322,6 +322,14 @@ přepsat.
 > aby připojený DAW následoval přehrávání zařízení: stisk play posílá Start (nebo
 > Continue při obnovení po pauze); stisk Stop posílá Stop.
 
+**MIDI transpozice.** Když jsi v Berlinu, noty přicházející na globálním **MIDI In
+kanálu** (Settings → MIDI) transponují celý tříhlasý stack **diatonicky** — vše
+zůstane v aktuální stupnici. Transpozice je **zamčená**: poslední nota nastaví
+nové tonální centrum a to drží až do další noty. Zahráním **rootu stupnice kolem
+středního C** se vrátíš domů; vyšší/nižší nota posune melodii nahoru/dolů po
+stupních stupnice (včetně celých oktáv). Příchozí nota je tichý ovládací vstup —
+nezní. Piano-roll se posune spolu s transpozicí.
+
 ### 5.4 BPM
 
 Velké zobrazení tempa. **Enc1** nastavuje globální **BPM** (30–300, výchozí 120).

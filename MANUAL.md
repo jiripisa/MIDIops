@@ -323,6 +323,14 @@ update (firmware v0.15) appear empty** and can simply be overwritten.
 > so a connected DAW follows the device's playback: a play press sends Start (or
 > Continue when resuming from pause); a Stop press sends Stop.
 
+**MIDI transposition.** While in Berlin, notes arriving on the global **MIDI In
+channel** (Settings → MIDI) transpose the whole three-voice stack **diatonically**
+— everything stays in the current scale. The transposition is **latched**: the
+last note sets the new key centre and it holds until the next note. Playing the
+**scale root around middle C** returns home; playing higher/lower shifts the
+melody up/down by scale degrees (whole octaves included). The incoming note is a
+silent control — it is not sounded. The piano-roll moves with the transposition.
+
 ### 5.4 BPM
 
 A large tempo display. **Enc1** sets the global **BPM** (30–300, default 120).

@@ -48,6 +48,9 @@ public:
     void onClockTick() override {
         for (int v = 0; v < kVoices; ++v) voices_[v].engine.onClockTick();
     }
+    // Incoming notes on the global MIDI-in channel transpose the whole stack
+    // diatonically (latched). See docs/specs/2026-06-13-berlin-midi-transpose-design.md.
+    void onMidiIn(const MidiMessage& msg) override;
     // Drives engine transport from the shell (Receive mapping + external-clock
     // Stop safety): Play → run, Pause → silence + hold position, Reset/Stop →
     // rewind + silence. Under an external clock the gate-off normally fired in
@@ -125,6 +128,7 @@ private:
     GatePitchPhasingGenerator phasingGen_;
     Voice                 voices_[kVoices];
     int                   editVoice_ = kHigh;
+    int                   transposeDegrees_ = 0;
     BassAnchorGenerator   bassGen_;
     Scale                 scale_{};
     bool                  lastLatch_[4]   = {false, false, false, false};  // index 1..3 edge-detect

@@ -61,6 +61,9 @@ The six modes (boot order = `addMode()` order in the mains):
   stack — all params, channels, mutes and the three realized sequences —
   in 20 slots; loading mid-play swaps seamlessly (each playhead wraps).
   Berlin uses its per-voice channels, not the global Settings out channel.
+  Incoming notes on the global MIDI-in channel transpose the whole stack
+  diatonically (latched; silent control input), via `BerlinMode::onMidiIn` →
+  per-engine `setTransposeDegrees` + `Scale::degreeIndex`.
 * **BPM** — large tempo display; Enc1 sets BPM (read-only while the
   clock source is External).
 * **Settings** — global settings on three screens (MIDI: out channel /
