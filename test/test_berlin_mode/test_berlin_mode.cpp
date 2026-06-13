@@ -1132,6 +1132,30 @@ static void test_roll_reflects_transpose() {
     TEST_ASSERT_TRUE(differ);
 }
 
+// Call-and-response: after Generate, no Lead active step coincides (by aligned
+// index) with an active High step. Forcing both dense guarantees collisions to
+// mask: High is all-active, so Lead must end up all rests.
+static void test_call_response_lead_avoids_high() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    berlin.onEnter();
+    berlin.params(core::BerlinMode::kHigh).density = 100;
+    berlin.params(core::BerlinMode::kLead).density = 100;
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, false});  // prime
+    berlin.onRawInput({core::RawInput::Kind::Latch, 3, 0, true});   // Generate
+
+    const core::BerlinSequence& lead = berlin.engine(core::BerlinMode::kLead).sequence();
+    const core::BerlinSequence& high = berlin.engine(core::BerlinMode::kHigh).sequence();
+    const int hlen = high.length() < 1 ? 1 : high.length();
+    int leadActive = 0;
+    for (int i = 0; i < lead.length(); ++i) {
+        if (!lead.step(i).active) continue;
+        ++leadActive;
+        TEST_ASSERT_FALSE(high.step(i % hlen).active);   // never coincides
+    }
+    TEST_ASSERT_EQUAL_INT(0, leadActive);                // dense High masks all Lead steps
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_roll_playheads_drift_apart);
@@ -1173,5 +1197,6 @@ int main() {
     RUN_TEST(test_dynamics_and_behavior_are_global);
     RUN_TEST(test_midi_in_transposes_all_voices);
     RUN_TEST(test_roll_reflects_transpose);
+    RUN_TEST(test_call_response_lead_avoids_high);
     return UNITY_END();
 }

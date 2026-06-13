@@ -135,6 +135,7 @@ private:
 
     void applyGenerator(int v);   // point voice v's engine at its generator
     void enforceConsonance();     // spec §2.4 step 3 across the stack
+    void maskLeadAgainstHigh();   // call-and-response: Lead plays in High's gaps
 
     class StructureScreen : public Screen {
     public:

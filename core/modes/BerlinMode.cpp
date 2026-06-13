@@ -128,7 +128,7 @@ void BerlinMode::onEnter() {
     // The boot/first-entry stack gets the same consonance pass as Generate.
     // Only when something was actually generated — re-entering the mode must
     // never mutate sequences the user already has (Locked stays locked).
-    if (generated) enforceConsonance();
+    if (generated) { maskLeadAgainstHigh(); enforceConsonance(); }
     for (int i = 0; i < 4; ++i) latchSynced_[i] = false;  // re-absorb first delivery per index
 }
 
@@ -144,6 +144,18 @@ void BerlinMode::enforceConsonance() {
     for (int v = 0; v < kVoices; ++v)
         seqs[v] = &voices_[v].engine.sequenceMut();
     berlinEnforceConsonance(seqs, kVoices, scale_, tension);
+}
+
+// Call-and-response (spec §8): deactivate each Lead step whose aligned index
+// collides with an active High step, so Lead tends to play in High's gaps.
+// Approximate under phasing (alignment drifts over loops), applied at Generate.
+void BerlinMode::maskLeadAgainstHigh() {
+    BerlinSequence& lead = voices_[kLead].engine.sequenceMut();
+    const BerlinSequence& high = voices_[kHigh].engine.sequence();
+    const int hlen = high.length() < 1 ? 1 : high.length();
+    for (int i = 0; i < lead.length(); ++i)
+        if (lead.step(i).active && high.step(i % hlen).active)
+            lead.step(i).active = false;
 }
 
 void BerlinMode::update(uint32_t /*nowMs*/) {
@@ -227,6 +239,7 @@ void BerlinMode::onRawInput(const RawInput& in) {
                     applyGenerator(v);
                     voices_[v].engine.generate();
                 }
+                maskLeadAgainstHigh();
                 enforceConsonance();
             }
             break;
