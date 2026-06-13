@@ -676,6 +676,45 @@ static void test_engine_mute_keeps_running() {
     TEST_ASSERT_TRUE(gotOn);
 }
 
+// setTransposeDegrees(n) shifts every emitted note by n scale degrees; the
+// matching NoteOff targets the SAME transposed note; offset 0 is home.
+static void test_engine_transpose_shifts_emitted_note() {
+    core::Scale scale(core::Scale::Type::Major, 0);   // C major
+    core::DrunkardWalkGenerator gen;
+    FakeMidiOutput out;
+    core::BerlinEngine e;
+    core::BerlinParams p; p.density = 100;             // every step active
+    e.setOutput(&out); e.setScale(&scale); e.setGenerator(&gen);
+    e.setParams(p); e.seed(1); e.generate();
+    TEST_ASSERT_EQUAL_INT(0, e.transposeDegrees());
+
+    // Home: capture step 0's emitted note.
+    e.play();
+    const uint8_t homeNote = out.events.front().note;
+    e.stop();
+
+    // +1 scale degree.
+    out.events.clear();
+    e.setTransposeDegrees(1);
+    TEST_ASSERT_EQUAL_INT(1, e.transposeDegrees());
+    e.play();
+    const uint8_t shifted = out.events.front().note;
+    TEST_ASSERT_EQUAL_INT(scale.degreeNote(homeNote, 1), shifted);
+
+    // The matching NoteOff (on stop) targets the same transposed note.
+    out.events.clear();
+    e.stop();
+    TEST_ASSERT_FALSE(out.events.empty());
+    TEST_ASSERT_FALSE(out.events.back().isOn);
+    TEST_ASSERT_EQUAL_INT(shifted, out.events.back().note);
+
+    // Back to home.
+    out.events.clear();
+    e.setTransposeDegrees(0);
+    e.play();
+    TEST_ASSERT_EQUAL_INT(homeNote, out.events.front().note);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_resolution_ticks);
@@ -707,5 +746,6 @@ int main() {
     RUN_TEST(test_velocity_knobs_apply_live);
     RUN_TEST(test_jitter_stable_across_stamps);
     RUN_TEST(test_engine_mute_keeps_running);
+    RUN_TEST(test_engine_transpose_shifts_emitted_note);
     return UNITY_END();
 }

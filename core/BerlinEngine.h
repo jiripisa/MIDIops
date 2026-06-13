@@ -34,6 +34,12 @@ public:
     }
     bool muted() const { return muted_; }
 
+    // Diatonic transpose applied at emit (BerlinMode drives this from MIDI-in).
+    // The stored sequence stays untransposed ("home"); the offset shifts the
+    // emitted pitch by N scale degrees via the scale. 0 = home.
+    void setTransposeDegrees(int d) { transposeDegrees_ = d; }
+    int  transposeDegrees() const { return transposeDegrees_; }
+
     // Transport.
     void play();    // run (emits the current step if starting from silence)
     void pause();   // hold playhead, stop advancing
@@ -86,6 +92,7 @@ private:
     BerlinSequence seq_{};
     bool  playing_   = false;
     bool  muted_     = false;
+    int   transposeDegrees_ = 0;
     int   playhead_  = 0;
     int   stepTicks_ = 0;
     int   loopCount_ = 0;    // completed loops since the last generate()/stop()

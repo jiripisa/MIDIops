@@ -23,14 +23,21 @@ void BerlinEngine::emitStep(int i) {
     stepTicks_ = 0;
     if (!s.active) return;
     if (muted_) return;   // suppressed: nothing sounds, so no gate to arm
-    emit(true, s.note, s.velocity);
+    // Diatonic transpose (live, non-destructive): the stored note is "home",
+    // the emitted pitch is shifted by transposeDegrees_ scale steps. The gate
+    // is armed with the SAME transposed note so its NoteOff matches even if the
+    // offset changes mid-gate.
+    const uint8_t outNote = (scale_ && transposeDegrees_ != 0)
+                                ? scale_->degreeNote(s.note, transposeDegrees_)
+                                : s.note;
+    emit(true, outNote, s.velocity);
     // Gate is a LIVE performance parameter: derive it from the current params
     // (like ArpEngine does) instead of the gateTicks baked at generation time.
     // Turning the Gate knob is audible immediately in every behavior, and the
     // gate always matches the current resolution (no stale baked values). The
     // baked step gateTicks remain in the sequence for the piano-roll widths.
     const int gateTicks = stepLenTicks() * params_.gatePercent / 100;
-    gate_.arm(s.note, gateTicks);   // arm() clamps to >= 1
+    gate_.arm(outNote, gateTicks);   // arm() clamps to >= 1
 }
 
 void BerlinEngine::play() {
