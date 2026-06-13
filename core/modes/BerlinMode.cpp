@@ -62,7 +62,7 @@ Screen& BerlinMode::screen(int i) {
 
 bool BerlinMode::presetUsed(int slot) {
     Storage* st = svc_.storage();
-    return st && berlinPreset2Usable(*st, slot);
+    return st && berlinPreset2Usable(*st, slot, kVoices);
 }
 
 bool BerlinMode::savePreset(int slot) {
@@ -75,14 +75,14 @@ bool BerlinMode::savePreset(int slot) {
         v[i].channel = voices_[i].channel;
         v[i].muted   = voices_[i].engine.muted();
     }
-    return saveBerlinPreset2(*st, slot, v);
+    return saveBerlinPreset2(*st, slot, v, kVoices);
 }
 
 bool BerlinMode::loadPreset(int slot) {
     Storage* st = svc_.storage();
     if (!st) return false;
     BerlinVoicePreset v[kVoices];
-    if (!loadBerlinPreset2(*st, slot, v)) return false;
+    if (!loadBerlinPreset2(*st, slot, v, kVoices)) return false;
     for (int i = 0; i < kVoices; ++i) {
         voices_[i].params  = v[i].params;
         voices_[i].channel = v[i].channel;
