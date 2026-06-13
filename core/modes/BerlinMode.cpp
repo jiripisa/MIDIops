@@ -103,12 +103,14 @@ bool BerlinMode::deletePresetSlot(int slot) {
 
 void BerlinMode::onEnter() {
     scale_ = svc_.scale();
+    transposeDegrees_ = 0;
     bool generated = false;
     for (int v = 0; v < kVoices; ++v) {
         Voice& vc = voices_[v];
         vc.engine.setScale(&scale_);
         vc.engine.setParams(vc.params);
         vc.engine.setOutChannel(vc.channel);
+        vc.engine.setTransposeDegrees(0);
         applyGenerator(v);
         if (!vc.engine.sequence().step(0).active) {       // ensure something to show/play
             vc.engine.generate();
@@ -157,6 +159,20 @@ void BerlinMode::onTransport(Transport t) {
             case Transport::Stop:  e.stop();  break;
         }
     }
+}
+
+void BerlinMode::onMidiIn(const MidiMessage& msg) {
+    // Diatonic transposition control (latched): a NoteOn sets the new key
+    // centre; a NoteOff -- or a NoteOn with velocity 0 -- is ignored, so the
+    // last note's transposition persists. The note is a silent control input
+    // (never echoed out). "Home" is the scale root in the octave at MIDI 60.
+    if (msg.type != MidiType::NoteOn || msg.data2 == 0) return;
+    const Scale& sc = svc_.scale();
+    const int r0 = 60 + static_cast<int>(sc.root());
+    transposeDegrees_ = sc.degreeIndex(msg.data1) -
+                        sc.degreeIndex(static_cast<uint8_t>(r0));
+    for (int v = 0; v < kVoices; ++v)
+        voices_[v].engine.setTransposeDegrees(transposeDegrees_);
 }
 
 void BerlinMode::onRawInput(const RawInput& in) {
