@@ -365,10 +365,15 @@ void BerlinMode::StructureScreen::render(Display& d) const {
         (active != kBass && ep.algorithm == BerlinAlgorithm::DrunkardWalk)     ? "SCATTER"
       : (active != kBass && ep.algorithm == BerlinAlgorithm::GatePitchPhasing) ? "GATELEN"
                                                                                : "ALGOPRM";
-    drawBerlinVoiceCell(d, 0, "ALGO",    algo[0], algo[1], algo[2], active);
-    drawBerlinVoiceCell(d, 1, "LENGTH",  len[0],  len[1],  len[2],  active);
-    drawBerlinVoiceCell(d, 2, "DENSITY", dens[0], dens[1], dens[2], active);
-    drawBerlinVoiceCell(d, 3, aprmName,  aprm[0], aprm[1], aprm[2], active);
+    const char* algoP[kVoices]; const char* lenP[kVoices];
+    const char* densP[kVoices]; const char* aprmP[kVoices];
+    for (int v = 0; v < kVoices; ++v) {
+        algoP[v] = algo[v]; lenP[v] = len[v]; densP[v] = dens[v]; aprmP[v] = aprm[v];
+    }
+    drawBerlinVoiceCell(d, 0, "ALGO",    algoP, kVoices, active);
+    drawBerlinVoiceCell(d, 1, "LENGTH",  lenP,  kVoices, active);
+    drawBerlinVoiceCell(d, 2, "DENSITY", densP, kVoices, active);
+    drawBerlinVoiceCell(d, 3, aprmName,  aprmP, kVoices, active);
     drawBerlinParamDividers(d);
     mode_.renderRoll(d);
 }
@@ -428,10 +433,15 @@ void BerlinMode::CharacterScreen::render(Display& d) const {
         octaveLabel(p.octaveBase, oct[v], sizeof oct[v]);
         snprintf(rng[v],  sizeof rng[v],  "%d", p.octaveRange);
     }
-    drawBerlinVoiceCell(d, 0, "GATE",    gate[0], gate[1], gate[2], active);
-    drawBerlinVoiceCell(d, 1, "TENSION", tens[0], tens[1], tens[2], active);
-    drawBerlinVoiceCell(d, 2, "OCT",     oct[0],  oct[1],  oct[2],  active);
-    drawBerlinVoiceCell(d, 3, "RANGE",   rng[0],  rng[1],  rng[2],  active);
+    const char* gateP[kVoices]; const char* tensP[kVoices];
+    const char* octP[kVoices];  const char* rngP[kVoices];
+    for (int v = 0; v < kVoices; ++v) {
+        gateP[v] = gate[v]; tensP[v] = tens[v]; octP[v] = oct[v]; rngP[v] = rng[v];
+    }
+    drawBerlinVoiceCell(d, 0, "GATE",    gateP, kVoices, active);
+    drawBerlinVoiceCell(d, 1, "TENSION", tensP, kVoices, active);
+    drawBerlinVoiceCell(d, 2, "OCT",     octP,  kVoices, active);
+    drawBerlinVoiceCell(d, 3, "RANGE",   rngP,  kVoices, active);
     drawBerlinParamDividers(d);
     mode_.renderRoll(d);
 }
