@@ -199,9 +199,8 @@ hlas). Na obou per-voice obrazovkách **stisk Enc1 / Enc2 / Enc3 vybere přímo
 hlas** (Bass / Mid / High) a **stisk Enc4 přepne mute** vybraného hlasu; jméno
 editovaného hlasu je vpravo nahoře nad piano-rollem v jeho barvě. Každá
 per-voice buňka zobrazuje **hodnoty všech tří hlasů pod sebou** (nahoře High,
-pak Mid, dole Bass): hodnota vybraného hlasu je zvýrazněná — větší a bílá —
-zatímco zbylé dvě jsou menší a tmavší, takže máš všechny hlasy na očích naráz a
-ten aktivní vyniká.
+pak Mid, dole Bass): hodnota vybraného hlasu je zvýrazněná bíle, zatímco zbylé
+dvě jsou tmavší, takže máš všechny hlasy na očích naráz a ten aktivní vyniká.
 
 **Obrazovka `structure`** (po hlasech):
 

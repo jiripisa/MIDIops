@@ -201,8 +201,8 @@ voice directly** (Bass / Mid / High), and **pressing Enc4 toggles mute** of the
 selected voice; the edited voice's name is shown at the top-right of the
 piano-roll in its colour. Each per-voice cell shows **all three voices' values
 stacked** (High on top, then Mid, then Bass): the selected voice's value is
-highlighted — larger and white — while the other two are smaller and darker, so
-you see every voice at a glance with the active one standing out.
+highlighted in white while the other two are darker, so you see every voice at a
+glance with the active one standing out.
 
 **Screen `structure`** (per voice):
 
