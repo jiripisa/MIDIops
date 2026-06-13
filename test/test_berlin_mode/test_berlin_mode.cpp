@@ -706,6 +706,51 @@ static void test_external_stop_silences_engine() {
 }
 
 // ---------------------------------------------------------------------------
+// Clock-source switch safety: changing the clock substrate while a note sounds
+// must silence the active mode. On Internal, the engine closes gates from the
+// internal clock ticks routed in tick(); switching to External stops that
+// internal clock master (setClockBpm(0)), so a tick-scheduled gate-off would
+// never fire and the note would ring forever. setClockSource must Pause the
+// active mode (same idea as the external-Stop safety) so it silences.
+// ---------------------------------------------------------------------------
+static void test_clock_source_switch_silences_engine() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out;
+    berlin.setMidiOutput(&out);
+    shell.setMidiOutput(&out);
+    shell.addMode(&berlin);
+    shell.begin();
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::ClockSource::Internal),
+                          static_cast<int>(shell.clockSource()));
+
+    // Prime the first-frame latch absorb with the opposite level, then play.
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, false});
+    berlin.onRawInput({core::RawInput::Kind::Latch, 1, 0, true});   // play
+    TEST_ASSERT_TRUE(berlin.engine().isPlaying());
+
+    // Drive internal clock ticks until a note is actively sounding (gate open).
+    for (int i = 0; i < 96 && berlin.engine().soundingNote() < 0; ++i) {
+        berlin.onClockTick();
+    }
+    TEST_ASSERT_GREATER_OR_EQUAL(0, berlin.engine().soundingNote());   // a note is sounding
+
+    int noteOffsBefore = 0;
+    for (const auto& e : out.events) { if (!e.isOn) ++noteOffsBefore; }
+
+    // The user switches Internal -> External in Settings. The internal clock
+    // master stops, so the tick-scheduled gate-off never arrives — unless the
+    // switch first Pauses the active mode, flushing the sounding note.
+    shell.setClockSource(core::ClockSource::External);
+
+    int noteOffsAfter = 0;
+    for (const auto& e : out.events) { if (!e.isOn) ++noteOffsAfter; }
+    TEST_ASSERT_GREATER_THAN(noteOffsBefore, noteOffsAfter);          // NoteOff was sent
+    TEST_ASSERT_EQUAL_INT(-1, berlin.engine().soundingNote());        // nothing sounding
+    TEST_ASSERT_FALSE(berlin.engine().isPlaying());                   // engine paused
+}
+
+// ---------------------------------------------------------------------------
 // Presets: a saved slot restores params AND the exact realized sequence.
 // ---------------------------------------------------------------------------
 static void test_berlin_preset_restores_sequence_exactly() {
@@ -1171,6 +1216,7 @@ int main() {
     RUN_TEST(test_berlin_latch2_emits_stop_under_send);
     RUN_TEST(test_berlin_latches_silent_under_off);
     RUN_TEST(test_external_stop_silences_engine);
+    RUN_TEST(test_clock_source_switch_silences_engine);
     RUN_TEST(test_held_latch_edge_detect);
     RUN_TEST(test_latch3_generate_on_each_flip);
     RUN_TEST(test_latch3_resync_on_reentry);

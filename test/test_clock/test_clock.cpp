@@ -96,10 +96,11 @@ static void test_bpm_readonly_under_external_clock() {
 // Document-by-test: switching clock source Internal→External mid-note.
 //
 // (a) Internal stopped: setClockBpm(0) → FakeMidiOutput::lastBpm == 0.
-// (b) The sounding note's gate-off is DEFERRED until external pulses arrive
-//     (v1 limitation documented in AppShell::setClockSource comment): the note
-//     keeps sounding immediately after the switch, and NoteOff only arrives once
-//     external Clock messages drive onClockTick().
+// (b) The sounding note is SILENCED at the switch (audit fix): switching the
+//     clock substrate would otherwise strand the note — the internal master is
+//     stopped and no external clock may yet be present, so a tick-scheduled
+//     gate-off would never arrive. setClockSource Pauses the active mode (same
+//     idea as the external-Stop safety), so the note's gate-off fires at once.
 // (c) Switching back to Internal resumes: setClockBpm(bpm) → lastBpm == bpm.
 //
 // Setup mirrors test_external_stop_silences_engine in test_berlin_mode.cpp.
@@ -128,30 +129,23 @@ static void test_clock_source_switch_mid_note() {
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, berlin.engine().soundingNote(),
         "a note must be sounding before switching clock source");
 
+    int noteOffsBefore = 0;
+    for (const auto& ev : out.events) { if (!ev.isOn) ++noteOffsBefore; }
+
     // (a) Switch to External: internal clock master must stop (setClockBpm(0)).
     shell.setClockSource(core::ClockSource::External);
     TEST_ASSERT_EQUAL_UINT16_MESSAGE(0, out.lastBpm,
         "switching to External must call setClockBpm(0) to stop internal generation");
 
-    // (b) Immediately after the switch the note is still sounding — the gate-off
-    // is deferred until external pulses arrive (v1 limitation).
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, berlin.engine().soundingNote(),
-        "gate-off must be deferred until external clock pulses arrive");
-
-    // Count NoteOffs before feeding external pulses.
-    int noteOffsBefore = 0;
-    for (const auto& ev : out.events) { if (!ev.isOn) ++noteOffsBefore; }
-
-    // Feed external Clock messages through the shell (mirrors the live code path).
-    // Each Clock → AppShell::onMidiIn → mode->onClockTick() → engine_.onClockTick().
-    // The gate timer will fire the NoteOff within gateTicks pulses.
-    core::MidiMessage clk{}; clk.type = core::MidiType::Clock;
-    for (int i = 0; i < 96; ++i) shell.onMidiIn(clk);
-
+    // (b) The sounding note is silenced at the switch (audit fix): a NoteOff
+    // fires immediately so the note cannot ring forever once the internal clock
+    // (and thus the tick-scheduled gate-off) is gone.
     int noteOffsAfter = 0;
     for (const auto& ev : out.events) { if (!ev.isOn) ++noteOffsAfter; }
     TEST_ASSERT_GREATER_THAN_MESSAGE(noteOffsBefore, noteOffsAfter,
-        "NoteOff must arrive once external clock pulses drive the gate timer");
+        "switching the clock source must silence the sounding note at once");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(-1, berlin.engine().soundingNote(),
+        "no note must be sounding after the clock-source switch");
 
     // (c) Switch back to Internal: internal master must resume at the current BPM.
     shell.setClockSource(core::ClockSource::Internal);
