@@ -426,7 +426,7 @@ automatically ~2 s after the last edit and survives a power cycle.
 
 | Knob | Parameter | Range | Default | Meaning |
 |---|---|---|---|---|
-| Enc1 | **Scale** | Major, Minor, Aug, Dim, Pent+, Pent− | Major | The scale all notes are quantized to. |
+| Enc1 | **Scale** | Major, Minor, Aug, Dim, Pent+, Pent−, Dor, Phr, HMin | Major | The scale all notes are quantized to. |
 | Enc2 | **Root** | C … B | C | The tonal centre. |
 
 **Screen `system`:**

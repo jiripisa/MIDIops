@@ -15,8 +15,11 @@ const char* scaleTypeName(core::Scale::Type t) {
         case core::Scale::Type::Aug:        return "Aug";
         case core::Scale::Type::Dim:        return "Dim";
         case core::Scale::Type::PentaMajor: return "Pent+";
-        case core::Scale::Type::PentaMinor: return "Pent-";
-        default:                            return "?";
+        case core::Scale::Type::PentaMinor:    return "Pent-";
+        case core::Scale::Type::Dorian:        return "Dor";
+        case core::Scale::Type::Phrygian:      return "Phr";
+        case core::Scale::Type::HarmonicMinor: return "HMin";
+        default:                               return "?";
     }
 }
 

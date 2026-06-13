@@ -334,6 +334,27 @@ static void test_consonance_check_respects_phasing_alignment() {
     TEST_ASSERT_TRUE(ic != 1 && ic != 6 && ic != 11);
 }
 
+// Dorian / Phrygian / Harmonic minor: verify a couple of in-scale and
+// out-of-scale pitch classes (root C = 0) and that each has 7 degrees.
+static void test_new_scales_intervals() {
+    core::Scale dor(core::Scale::Type::Dorian, 0);       // 0 2 3 5 7 9 10
+    TEST_ASSERT_EQUAL_INT(7, dor.degreeCount());
+    TEST_ASSERT_TRUE(dor.contains(60 + 3));   // Eb in C dorian
+    TEST_ASSERT_TRUE(dor.contains(60 + 9));   // A in C dorian
+    TEST_ASSERT_FALSE(dor.contains(60 + 4));  // E natural not in dorian
+
+    core::Scale phr(core::Scale::Type::Phrygian, 0);     // 0 1 3 5 7 8 10
+    TEST_ASSERT_EQUAL_INT(7, phr.degreeCount());
+    TEST_ASSERT_TRUE(phr.contains(60 + 1));   // Db (flat 2) in C phrygian
+    TEST_ASSERT_FALSE(phr.contains(60 + 2));  // D natural not in phrygian
+
+    core::Scale hm(core::Scale::Type::HarmonicMinor, 0); // 0 2 3 5 7 8 11
+    TEST_ASSERT_EQUAL_INT(7, hm.degreeCount());
+    TEST_ASSERT_TRUE(hm.contains(60 + 11));   // B (leading tone) in C harmonic minor
+    TEST_ASSERT_TRUE(hm.contains(60 + 8));    // Ab in C harmonic minor
+    TEST_ASSERT_FALSE(hm.contains(60 + 10));  // Bb not in harmonic minor
+}
+
 // degreeIndex: +1 per scale step, +degreeCount() per octave, signed across
 // the root; consistent with degreeNote (its inverse over a degree delta).
 static void test_scale_degree_index() {
@@ -372,6 +393,7 @@ int main() {
     RUN_TEST(test_consonance_check_moves_clashing_high_note);
     RUN_TEST(test_consonance_check_skipped_at_high_tension);
     RUN_TEST(test_consonance_check_respects_phasing_alignment);
+    RUN_TEST(test_new_scales_intervals);
     RUN_TEST(test_scale_degree_index);
     return UNITY_END();
 }

@@ -7,7 +7,8 @@ namespace core {
 class Scale {
 public:
     enum class Type : uint8_t {
-        Major = 0, Minor, Aug, Dim, PentaMajor, PentaMinor, kCount
+        Major = 0, Minor, Aug, Dim, PentaMajor, PentaMinor,
+        Dorian, Phrygian, HarmonicMinor, kCount
     };
 
     Scale() = default;
