@@ -16,8 +16,8 @@ namespace core {
 
 class MidiOutput;
 
-// BerlinMode — multi-voice generative Berlin-School sequencer (Bass/Mid/High,
-// each = engine + params + MIDI channel; the screens edit one voice at a time).
+// BerlinMode — multi-voice generative Berlin-School sequencer (Bass/Mid/High/
+// Lead, each = engine + params + MIDI channel; the screens edit one voice at a time).
 // Screens: Structure / Character / Voices / Dynamics / Behavior / Presets. The
 // parameter screens draw their top parameter row plus the shared bottom
 // piano-roll (drawn every screen so the visualization persists across screen
@@ -32,7 +32,7 @@ public:
     int     screenCount() const override { return 6; }
     Screen& screen(int i) override;
 
-    // PresetOps — one slot stores the whole three-voice stack (each voice's
+    // PresetOps — one slot stores the whole four-voice stack (each voice's
     // params + realized sequence + channel + mute), keys "berlin.s01".."berlin.s20".
     // A load mid-play swaps seamlessly: every playhead keeps running, wrapped
     // into the new length.
@@ -161,7 +161,7 @@ private:
 
     // Mixer: one cell per voice — rotate sets the voice's MIDI channel,
     // press toggles its mute (the engine keeps running so unmuting re-enters
-    // in phase). Enc4 unused.
+    // in phase). One cell per voice (Bass/Mid/High/Lead).
     class VoicesScreen : public Screen {
     public:
         explicit VoicesScreen(BerlinMode& m) : mode_(m) {}

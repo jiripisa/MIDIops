@@ -29,7 +29,7 @@ inline void drawBerlinParamCell(Display& d, int col, const char* name, const cha
 // Per-voice parameter cell (structure / character screens): the parameter name
 // on top, then the voice values stacked top->bottom by register (the highest-
 // index voice on top). All size 2; the active voice's value is white, the
-// others DarkGray. The 3-voice layout is preserved pixel-for-pixel; the row
+// others DarkGray. The <=3-voice layout is preserved pixel-for-pixel; the row
 // pitch tightens for 4 so every row fits the 78px strip. vals[v] is voice v's
 // value string (v: 0=Bass ..); activeVoice is 0..count-1.
 inline void drawBerlinVoiceCell(Display& d, int col, const char* name,
