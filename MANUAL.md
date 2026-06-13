@@ -14,6 +14,27 @@ walkthrough see [`HARDWARE.md`](HARDWARE.md) and [`ASSEMBLY.md`](ASSEMBLY.md).
 
 ---
 
+## Quick start
+
+1. **Power on.** The device boots straight into **Berlin** with a four-voice
+   pattern already generated. Press **Latch1** (Play/Pause) to start and stop it.
+2. **Hear it.** Berlin's four voices are sent on **MIDI channels 1, 2, 3 and 4**
+   by default (Bass, Mid, High, Lead). Route those channels to four instruments
+   — or to one multitimbral synth — to hear the full texture. The hardware
+   appears over USB as **`MIDIops`**; the simulator opens a virtual MIDI port
+   named **`MIDIops Sim`**.
+3. **Make it yours.** In **Settings → Scale** pick a key and scale. Back in
+   Berlin, press **Latch3** (Generate) to roll a fresh pattern, and — with
+   **Behavior = Live** (the default) — turn the parameter knobs to reshape it
+   while it keeps playing.
+4. **Get around.** Rotate **Enc5** to change screen within a mode; **press
+   Enc5** to open the mode picker, then rotate to a mode and press again.
+
+> New to the terms used here (voices, phasing, the latches, Live sculpting)?
+> See the **Glossary** below.
+
+---
+
 ## 1. Controls at a glance
 
 The front panel has **five rotary encoders** (Enc1–Enc5, each also a push
@@ -22,7 +43,7 @@ button) and **three latching switches** (Latch1–Latch3).
 | Control | Role |
 |---|---|
 | **Enc1–Enc4** (rotate) | Edit the four parameters of the current screen (one knob per cell, left→right). |
-| **Enc1–Enc4** (press) | Reserved (no function in normal modes yet). |
+| **Enc1–Enc4** (press) | A **per-screen secondary action** where one exists — e.g. select a Berlin voice (`structure`/`character`), mute a voice (Berlin `voices`), arm the factory reset (Settings `system`), or confirm a preset slot. No effect on screens that define none. |
 | **Enc5** (rotate) | **Switch screens** within the current mode. |
 | **Enc5** (press) | Open the **mode-select overlay** (see §3). |
 | **Latch1–Latch3** | **Transport buttons** — each press is one click; the software toggles/acts by its current state (the switch's physical position and LED carry no meaning). Their meaning depends on the active mode (see each mode below). |
@@ -40,11 +61,12 @@ channel those notes are sent on; `Esc` quits.
 A 10-pixel **top bar** is always shown:
 
 ```
-Berlin  -  structure (1/4)        ♩120  ▶
+Berlin  -  structure (1/6)        ♩120  ▶
 ```
 
 It shows the **mode name**, the **current screen** and its index
-(`1/4` = screen 1 of 4), the **tempo (BPM)** and the **transport state**.
+(`1/6` = screen 1 of 6 — Berlin has six), the **tempo (BPM)** and the
+**transport state**.
 
 Most parameter screens show a grid of **cells**, each a parameter: a small
 **name** above a large **value**. Visualization screens (worms, notation,
@@ -106,6 +128,32 @@ colours so input and output read at a glance.
 
 ---
 
+## Glossary
+
+Terms used throughout this manual:
+
+- **Capturing vs non-capturing modes.** **Arp** and **Berlin** *capture* the
+  three latches for their own functions (listed in each section). In every other
+  mode the latches are the **global transport**: Latch1 = Play/Pause,
+  Latch2 = Stop, Latch3 = Reset (these emit MIDI transport when Transport = Send).
+- **The edited voice** (Berlin). The `structure` and `character` screens edit
+  one voice at a time; press **Enc1/2/3/4** to choose Bass/Mid/High/Lead. The
+  edited voice's name shows on the piano-roll in its colour.
+- **Note-phasing** (Berlin). The voices share one tempo but have different loop
+  lengths (Mid 15 against the others' 16), so they drift in and out of alignment
+  over many bars — the genre's signature "evolving but repeating" motion.
+- **Generate / Morph** (Berlin). **Generate** (Latch3) rolls new sequences;
+  **Morph** sets how different the new pattern is from the old (0 % ≈ keep the
+  parts, 100 % = brand new).
+- **Live sculpting** (Berlin, Behavior = Live). Turning a knob reshapes the
+  *existing* sequence in place without restarting it — see §5.3.
+- **In-phase muting** (Berlin). A muted voice keeps running silently, so
+  unmuting drops it back in time with the others.
+- **Scale quantize.** Every generated or arpeggiated note is snapped to the
+  global scale (Settings → Scale), so nothing ever plays out of key.
+
+---
+
 ## 5. Modes
 
 ### 5.1 Monitoring
@@ -125,6 +173,13 @@ which sends MIDI Start/Stop/Continue when **Transport** is set to **Send**.
 A scale-aware arpeggiator. Hold or inject notes; the engine plays them back as
 an arpeggio on the **MIDI Out channel**, locked to the clock. Notes queue
 **FIFO** so they never overlap.
+
+**How you'd use it.** Hold a chord (or, on the simulator, the `z x c v b n m`
+keys) and the arp plays it in time. Press **Latch1 (Hold)** to latch the
+notes so you can let go and keep both hands free for the knobs; shape the motion
+live with **Rate / Gate / Direction / Octave / Swing**; press **Latch2 (Mute)**
+to drop the arp out without losing the pattern, and **Latch3 (Reset)** to
+restart it on the beat. Save a setup you like to a preset slot.
 
 **Screens:** `params1` · `params2` · `worms` · `notes` · `presets`.
 
@@ -193,6 +248,17 @@ different lengths, so they drift in and out of alignment over many bars.
 You drive playback with the latches and shape the music with five parameter
 screens. The bottom of every screen shows a **piano-roll** of all four voices
 at once (see below).
+
+**A typical session.** Pick a key in **Settings → Scale**. Back in Berlin,
+press **Latch1** to start and **Latch3 (Generate)** until you land on a stack
+you like — keep **Morph** (on `behavior`) high to roll something brand new, or
+lower it to keep the parts and only nudge them. With **Behavior = Live** (the
+default) sculpt each voice on `structure`/`character` — thin the **Density**,
+open the **Octave range**, raise **Tension** — and it changes under your fingers
+without restarting. Use the **`voices`** mixer to drop voices in and out (mute)
+and to put each on its own MIDI channel. Save the whole four-voice patch to a
+**preset** slot, and perform by sending notes on the **MIDI-in channel** to
+transpose the entire stack diatonically (see *MIDI transposition* below).
 
 **Screens:** `structure` · `character` · `voices` · `dynamics` · `behavior` ·
 `presets` (the piano-roll stays visible on the parameter screens — only the
@@ -399,6 +465,14 @@ moved. No MIDI output.
   beginning; Continue resumes from the held position; Stop halts and silences
   the sounding note immediately. Messages are consumed and not re-emitted.
 - **Off**: the device neither sends nor follows transport messages.
+
+**Two common setups:**
+
+- **MIDIops as the master.** Clock = **Internal**, Transport = **Send**: set the
+  tempo in **BPM** mode; your DAW follows the device's clock and play/stop.
+- **MIDIops as a follower.** Clock = **External**, Transport = **Recv**: the DAW
+  runs the clock and transport, and Berlin/Arp lock to it (the displayed BPM
+  follows the incoming tempo). See the README for the macOS IAC routing steps.
 
 **Safety (always active):** under an **External** clock source, an incoming MIDI
 Stop always silences the sounding note immediately — regardless of the Transport
