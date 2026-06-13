@@ -197,7 +197,10 @@ naráz** (*editovaný hlas*); `dynamics` a `behavior` jsou **globální** a plat
 pro všechny tři hlasy společně. Obrazovka `voices` je mixer (jedna buňka na
 hlas). Na obou per-voice obrazovkách **stisk Enc1 / Enc2 / Enc3 vybere přímo
 hlas** (Bass / Mid / High) a **stisk Enc4 přepne mute** vybraného hlasu; jméno
-editovaného hlasu je vpravo nahoře nad piano-rollem v jeho barvě.
+editovaného hlasu je vpravo nahoře nad piano-rollem v jeho barvě. Každá
+per-voice buňka zobrazuje **hodnoty všech tří hlasů pod sebou** (nahoře Bass,
+pak Mid, pak High): hodnota vybraného hlasu je zvýrazněná bíle a zbylé dvě jsou
+zašedlé, takže máš všechny hlasy na očích naráz.
 
 **Obrazovka `structure`** (po hlasech):
 

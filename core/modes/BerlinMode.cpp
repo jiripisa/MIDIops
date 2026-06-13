@@ -315,23 +315,35 @@ void BerlinMode::StructureScreen::onEncoder(int index, int delta) {
 void BerlinMode::StructureScreen::onEncoderSw(int index) { mode_.onVoiceScreenPress(index); }
 
 void BerlinMode::StructureScreen::render(Display& d) const {
-    const BerlinParams& p = mode_.voices_[mode_.editVoice_].params;
-    const bool bass = mode_.editVoice() == kBass;
-    char buf[12];
-    drawBerlinParamCell(d, 0, "ALGO", bass ? "Bass" : algoName(p.algorithm), bass);
-    snprintf(buf, sizeof buf, "%d", p.length);
-    drawBerlinParamCell(d, 1, "LENGTH",  buf);
-    snprintf(buf, sizeof buf, "%d%%", p.density);
-    drawBerlinParamCell(d, 2, "DENSITY", buf);
-    if (!bass && p.algorithm == BerlinAlgorithm::DrunkardWalk) {
-        snprintf(buf, sizeof buf, "%d", p.scatter);
-        drawBerlinParamCell(d, 3, "SCATTER", buf);
-    } else if (!bass && p.algorithm == BerlinAlgorithm::GatePitchPhasing) {
-        snprintf(buf, sizeof buf, "%d", p.gateLen);
-        drawBerlinParamCell(d, 3, "GATELEN", buf);
-    } else {
-        drawBerlinParamCell(d, 3, "ALGOPRM", "-", true);   // dimmed: not used
+    const int active = mode_.editVoice();
+    // Build all three voices' values per cell; drawBerlinVoiceCell stacks them
+    // Bass / Mid / High with the active voice highlighted.
+    char algo[kVoices][12], len[kVoices][8], dens[kVoices][8], aprm[kVoices][8];
+    for (int v = 0; v < kVoices; ++v) {
+        const BerlinParams& p = mode_.voices_[v].params;
+        // Bass always uses its own anchor generator: its algorithm is fixed.
+        snprintf(algo[v], sizeof algo[v], "%s",
+                 v == kBass ? "Bass" : algoName(p.algorithm));
+        snprintf(len[v],  sizeof len[v],  "%d", p.length);
+        snprintf(dens[v], sizeof dens[v], "%d%%", p.density);
+        if (v != kBass && p.algorithm == BerlinAlgorithm::DrunkardWalk)
+            snprintf(aprm[v], sizeof aprm[v], "%d", p.scatter);
+        else if (v != kBass && p.algorithm == BerlinAlgorithm::GatePitchPhasing)
+            snprintf(aprm[v], sizeof aprm[v], "%d", p.gateLen);
+        else
+            snprintf(aprm[v], sizeof aprm[v], "-");
     }
+    // The AlgoPrm cell name follows the active voice's algorithm (what Enc4
+    // edits): Scatter under Walk, GateLen under Phase, else generic.
+    const BerlinParams& ep = mode_.voices_[active].params;
+    const char* aprmName =
+        (active != kBass && ep.algorithm == BerlinAlgorithm::DrunkardWalk)     ? "SCATTER"
+      : (active != kBass && ep.algorithm == BerlinAlgorithm::GatePitchPhasing) ? "GATELEN"
+                                                                               : "ALGOPRM";
+    drawBerlinVoiceCell(d, 0, "ALGO",    algo[0], algo[1], algo[2], active);
+    drawBerlinVoiceCell(d, 1, "LENGTH",  len[0],  len[1],  len[2],  active);
+    drawBerlinVoiceCell(d, 2, "DENSITY", dens[0], dens[1], dens[2], active);
+    drawBerlinVoiceCell(d, 3, aprmName,  aprm[0], aprm[1], aprm[2], active);
     drawBerlinParamDividers(d);
     mode_.renderRoll(d);
 }
@@ -382,16 +394,19 @@ void BerlinMode::CharacterScreen::onEncoder(int index, int delta) {
 void BerlinMode::CharacterScreen::onEncoderSw(int index) { mode_.onVoiceScreenPress(index); }
 
 void BerlinMode::CharacterScreen::render(Display& d) const {
-    const BerlinParams& p = mode_.editParams();
-    char buf[12];
-    snprintf(buf, sizeof buf, "%d%%", p.gatePercent);
-    drawBerlinParamCell(d, 0, "GATE",    buf);
-    snprintf(buf, sizeof buf, "%d%%", p.tension);
-    drawBerlinParamCell(d, 1, "TENSION", buf);
-    octaveLabel(p.octaveBase, buf, sizeof buf);
-    drawBerlinParamCell(d, 2, "OCT",     buf);
-    snprintf(buf, sizeof buf, "%d", p.octaveRange);
-    drawBerlinParamCell(d, 3, "RANGE",   buf);
+    const int active = mode_.editVoice();
+    char gate[kVoices][8], tens[kVoices][8], oct[kVoices][8], rng[kVoices][8];
+    for (int v = 0; v < kVoices; ++v) {
+        const BerlinParams& p = mode_.voices_[v].params;
+        snprintf(gate[v], sizeof gate[v], "%d%%", p.gatePercent);
+        snprintf(tens[v], sizeof tens[v], "%d%%", p.tension);
+        octaveLabel(p.octaveBase, oct[v], sizeof oct[v]);
+        snprintf(rng[v],  sizeof rng[v],  "%d", p.octaveRange);
+    }
+    drawBerlinVoiceCell(d, 0, "GATE",    gate[0], gate[1], gate[2], active);
+    drawBerlinVoiceCell(d, 1, "TENSION", tens[0], tens[1], tens[2], active);
+    drawBerlinVoiceCell(d, 2, "OCT",     oct[0],  oct[1],  oct[2],  active);
+    drawBerlinVoiceCell(d, 3, "RANGE",   rng[0],  rng[1],  rng[2],  active);
     drawBerlinParamDividers(d);
     mode_.renderRoll(d);
 }

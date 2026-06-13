@@ -26,6 +26,24 @@ inline void drawBerlinParamCell(Display& d, int col, const char* name, const cha
                     dim ? color::DarkGray : color::White);
 }
 
+// Per-voice parameter cell (structure / character screens): the parameter
+// name on top, then the three voice values stacked in Bass / Mid / High
+// order. The active voice's value is white (highlighted); the other two are
+// greyed, so the cell shows all three voices at once. activeVoice is 0..2.
+inline void drawBerlinVoiceCell(Display& d, int col, const char* name,
+                                const char* v0, const char* v1, const char* v2,
+                                int activeVoice) {
+    const int x = col * kBerlinCellW;
+    d.drawText(x + 4, kBerlinParamTop + 3, name, color::Gray, color::Black, 1);
+    const char* vals[3] = {v0, v1, v2};
+    constexpr int kRowDy[3] = {20, 39, 58};   // Bass / Mid / High rows, size-2
+    for (int i = 0; i < 3; ++i) {
+        const uint16_t fg = (i == activeVoice) ? color::White : color::Gray;
+        d.drawText(x + 4 + kValueIndent, kBerlinParamTop + kRowDy[i], vals[i],
+                   fg, color::Black, 2);
+    }
+}
+
 inline void drawBerlinParamDividers(Display& d) {
     for (int c = 1; c < 4; ++c)
         d.fillRect(c * kBerlinCellW, kBerlinParamTop, 1, kBerlinParamH, color::DarkGray);

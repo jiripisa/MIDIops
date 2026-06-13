@@ -1005,6 +1005,29 @@ static void test_roll_playheads_drift_apart() {
     TEST_ASSERT_TRUE(sawHigh);
 }
 
+// Per-voice cells show all three voice values stacked (Bass/Mid/High); the
+// active voice's value is white, the other two greyed. Uses the OCT cell,
+// whose three values (Bass C1 / Mid C3 / High C4) are all distinct.
+static void test_per_voice_cells_show_all_three_highlighted() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);            // edit voice defaults to High
+    core::Screen& character = berlin.screen(1);
+
+    StubDisplay d;
+    character.render(d);
+    TEST_ASSERT_TRUE(d.drewText("C1"));        // Bass octave shown
+    TEST_ASSERT_TRUE(d.drewText("C3"));        // Mid
+    TEST_ASSERT_TRUE(d.drewText("C4"));        // High
+    TEST_ASSERT_EQUAL_HEX16(core::color::White, d.textColor("C4"));   // High active
+    TEST_ASSERT_EQUAL_HEX16(core::color::Gray,  d.textColor("C1"));   // Bass greyed
+
+    character.onEncoderSw(1);                   // select Bass
+    StubDisplay d2;
+    character.render(d2);
+    TEST_ASSERT_EQUAL_HEX16(core::color::White, d2.textColor("C1"));  // Bass now active
+    TEST_ASSERT_EQUAL_HEX16(core::color::Gray,  d2.textColor("C4"));  // High greyed
+}
+
 // The combined roll labels the edited voice; rendering any param screen
 // draws it (StubDisplay sees the voice name drawn by the roll).
 static void test_param_screens_draw_multi_roll_with_voice_label() {
@@ -1054,6 +1077,7 @@ int main() {
     RUN_TEST(test_voices_screen_channel_and_mute);
     RUN_TEST(test_mute_keeps_phase_other_voices_sound);
     RUN_TEST(test_encoder_press_selects_voice_and_mutes);
+    RUN_TEST(test_per_voice_cells_show_all_three_highlighted);
     RUN_TEST(test_structure_new_layout_and_bass_locks);
     RUN_TEST(test_dynamics_and_behavior_are_global);
     return UNITY_END();

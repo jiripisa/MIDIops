@@ -199,7 +199,10 @@ to all three voices together. The `voices` screen is the mixer (one cell per
 voice). On the two per-voice screens, **pressing Enc1 / Enc2 / Enc3 selects the
 voice directly** (Bass / Mid / High), and **pressing Enc4 toggles mute** of the
 selected voice; the edited voice's name is shown at the top-right of the
-piano-roll in its colour.
+piano-roll in its colour. Each per-voice cell shows **all three voices' values
+stacked** (Bass on top, then Mid, then High): the selected voice's value is
+highlighted in white and the other two are greyed, so you see every voice at a
+glance.
 
 **Screen `structure`** (per voice):
 
