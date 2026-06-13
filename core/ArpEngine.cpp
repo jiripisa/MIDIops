@@ -214,8 +214,12 @@ void ArpEngine::beginStep() {
     if (seqLen_ <= 0 || qCount_ == 0) { active_ = false; latchHasPending_ = false; return; }
 
     // --- 4. Emit current step. ---
+    // The accent fires on the first emitted step of each cycle (the downbeat),
+    // regardless of direction. activeCycleSteps_ is 0 only for that step (it
+    // resets on promotion and at every cycle boundary).
+    const bool cycleFirst = (activeCycleSteps_ == 0);
     uint8_t note = seq_[seqPos_];
-    uint8_t vel  = velocityForStep(seqPos_);
+    uint8_t vel  = velocityForStep(cycleFirst);
     emit(true, note, vel);
 
     // Tick bookkeeping for the new step. Gate is computed from the un-swung
@@ -295,7 +299,7 @@ int ArpEngine::nextSeqIndex() {
     }
 }
 
-uint8_t ArpEngine::velocityForStep(int seqPos) const {
+uint8_t ArpEngine::velocityForStep(bool cycleFirst) const {
     switch (params_.velocityMode) {
         case ArpVelocityMode::Fixed:
             return params_.fixedVelocity;
@@ -305,7 +309,7 @@ uint8_t ArpEngine::velocityForStep(int seqPos) const {
 
         case ArpVelocityMode::Accent: {
             uint8_t base = params_.fixedVelocity;
-            if (seqPos == 0) {
+            if (cycleFirst) {
                 int accented = static_cast<int>(base) + 30;
                 return static_cast<uint8_t>(accented > 127 ? 127 : accented);
             }
