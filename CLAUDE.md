@@ -72,8 +72,8 @@ Control scheme (roles are assigned at runtime by the active mode/screen,
 not by the pin names):
   * **Enc1–Enc4** — the per-screen parameter knobs (rotate to edit,
     press for the screen's secondary action). On Berlin's per-voice
-    screens (`structure`, `character`) a press cycles the edited voice
-    Bass → Mid → High instead.
+    screens (`structure`, `character`) Enc1/2/3 press selects the voice
+    (Bass/Mid/High) and Enc4 press toggles mute of the selected voice.
   * **Enc5** — rotate to switch screen within a mode; press to open the
     mode-select overlay (rotate to pick a mode, press to confirm).
   * **Latch1–Latch3** — stateless transport buttons: every mechanical flip

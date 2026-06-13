@@ -195,9 +195,9 @@ na každé obrazovce je **piano-roll** všech tří hlasů naráz (viz níže).
 **Po hlasech vs. globální.** `structure` a `character` editují **jeden hlas
 naráz** (*editovaný hlas*); `dynamics` a `behavior` jsou **globální** a platí
 pro všechny tři hlasy společně. Obrazovka `voices` je mixer (jedna buňka na
-hlas). Na obou per-voice obrazovkách **stisk kteréhokoli z Enc1–Enc4 přepíná
-editovaný hlas** Bass → Mid → High → Bass; jméno editovaného hlasu je vpravo
-nahoře nad piano-rollem v jeho barvě.
+hlas). Na obou per-voice obrazovkách **stisk Enc1 / Enc2 / Enc3 vybere přímo
+hlas** (Bass / Mid / High) a **stisk Enc4 přepne mute** vybraného hlasu; jméno
+editovaného hlasu je vpravo nahoře nad piano-rollem v jeho barvě.
 
 **Obrazovka `structure`** (po hlasech):
 

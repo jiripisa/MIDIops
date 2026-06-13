@@ -902,20 +902,34 @@ static void test_mute_keeps_phase_other_voices_sound() {
 }
 
 // ---------------------------------------------------------------------------
-// Pressing any Enc1-4 on a per-voice screen cycles the edited voice
-// Bass -> Mid -> High -> Bass; the selection is shared across screens.
-// Global screens (dynamics/behavior) do not cycle.
+// On the per-voice screens (structure/character) each of Enc1/2/3 selects a
+// voice directly (Bass/Mid/High); Enc4 toggles mute of the selected voice.
+// Global screens (dynamics/behavior) ignore the press.
 // ---------------------------------------------------------------------------
-static void test_encoder_press_cycles_edit_voice() {
+static void test_encoder_press_selects_voice_and_mutes() {
     core::AppShell shell;
     core::BerlinMode berlin(shell);
     TEST_ASSERT_EQUAL_INT(core::BerlinMode::kHigh, berlin.editVoice());
-    berlin.screen(0).onEncoderSw(1);                       // structure: High -> Bass
+
+    berlin.screen(0).onEncoderSw(1);                       // structure Enc1 -> Bass
     TEST_ASSERT_EQUAL_INT(core::BerlinMode::kBass, berlin.editVoice());
-    berlin.screen(1).onEncoderSw(4);                       // character: Bass -> Mid
+    berlin.screen(1).onEncoderSw(2);                       // character Enc2 -> Mid
     TEST_ASSERT_EQUAL_INT(core::BerlinMode::kMid, berlin.editVoice());
-    berlin.screen(3).onEncoderSw(1);                       // dynamics: global, no cycle
-    TEST_ASSERT_EQUAL_INT(core::BerlinMode::kMid, berlin.editVoice());
+    berlin.screen(0).onEncoderSw(3);                       // structure Enc3 -> High
+    TEST_ASSERT_EQUAL_INT(core::BerlinMode::kHigh, berlin.editVoice());
+
+    // Enc4 toggles mute of the SELECTED voice (High here).
+    TEST_ASSERT_FALSE(berlin.engine(core::BerlinMode::kHigh).muted());
+    berlin.screen(0).onEncoderSw(4);
+    TEST_ASSERT_TRUE(berlin.engine(core::BerlinMode::kHigh).muted());
+    berlin.screen(1).onEncoderSw(4);                       // character Enc4 also toggles
+    TEST_ASSERT_FALSE(berlin.engine(core::BerlinMode::kHigh).muted());
+
+    // Global screens ignore the press: voice stays High, no mute change.
+    berlin.screen(3).onEncoderSw(1);                       // dynamics
+    TEST_ASSERT_EQUAL_INT(core::BerlinMode::kHigh, berlin.editVoice());
+    berlin.screen(4).onEncoderSw(4);                       // behavior
+    TEST_ASSERT_FALSE(berlin.engine(core::BerlinMode::kHigh).muted());
 }
 
 // Structure Enc3 is now Density, Enc4 the algorithm-specific parameter
@@ -1039,7 +1053,7 @@ int main() {
     RUN_TEST(test_berlin_screen_order_with_voices);
     RUN_TEST(test_voices_screen_channel_and_mute);
     RUN_TEST(test_mute_keeps_phase_other_voices_sound);
-    RUN_TEST(test_encoder_press_cycles_edit_voice);
+    RUN_TEST(test_encoder_press_selects_voice_and_mutes);
     RUN_TEST(test_structure_new_layout_and_bass_locks);
     RUN_TEST(test_dynamics_and_behavior_are_global);
     return UNITY_END();

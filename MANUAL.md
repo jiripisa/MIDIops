@@ -196,9 +196,10 @@ top parameter row changes).
 **Per-voice vs. global.** `structure` and `character` edit **one voice at a
 time** (the *edited voice*); `dynamics` and `behavior` are **global** and apply
 to all three voices together. The `voices` screen is the mixer (one cell per
-voice). On the two per-voice screens, **pressing any of Enc1–Enc4 cycles the
-edited voice** Bass → Mid → High → Bass; the edited voice's name is shown at the
-top-right of the piano-roll in its colour.
+voice). On the two per-voice screens, **pressing Enc1 / Enc2 / Enc3 selects the
+voice directly** (Bass / Mid / High), and **pressing Enc4 toggles mute** of the
+selected voice; the edited voice's name is shown at the top-right of the
+piano-roll in its colour.
 
 **Screen `structure`** (per voice):
 

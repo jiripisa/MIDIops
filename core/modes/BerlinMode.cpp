@@ -312,7 +312,7 @@ void BerlinMode::StructureScreen::onEncoder(int index, int delta) {
     }
 }
 
-void BerlinMode::StructureScreen::onEncoderSw(int /*index*/) { mode_.cycleEditVoice(); }
+void BerlinMode::StructureScreen::onEncoderSw(int index) { mode_.onVoiceScreenPress(index); }
 
 void BerlinMode::StructureScreen::render(Display& d) const {
     const BerlinParams& p = mode_.voices_[mode_.editVoice_].params;
@@ -379,7 +379,7 @@ void BerlinMode::CharacterScreen::onEncoder(int index, int delta) {
     }
 }
 
-void BerlinMode::CharacterScreen::onEncoderSw(int /*index*/) { mode_.cycleEditVoice(); }
+void BerlinMode::CharacterScreen::onEncoderSw(int index) { mode_.onVoiceScreenPress(index); }
 
 void BerlinMode::CharacterScreen::render(Display& d) const {
     const BerlinParams& p = mode_.editParams();

@@ -83,7 +83,16 @@ public:
     // Edit-voice accessors (no-arg = the voice the screens currently edit).
     int  editVoice() const { return editVoice_; }
     void setEditVoice(int v) { if (v >= 0 && v < kVoices) editVoice_ = v; }
-    void cycleEditVoice() { editVoice_ = (editVoice_ + 1) % kVoices; }
+    // Per-voice screen press: Enc1/2/3 select Bass/Mid/High directly; Enc4
+    // toggles mute of the currently selected voice.
+    void onVoiceScreenPress(int index) {
+        if (index >= 1 && index <= kVoices) {
+            setEditVoice(index - 1);
+        } else if (index == 4) {
+            BerlinEngine& e = voices_[editVoice_].engine;
+            e.setMuted(!e.muted());
+        }
+    }
     BerlinParams&         params()        { return voices_[editVoice_].params; }
     BerlinParams&         params(int v)   { return voices_[v].params; }
     const BerlinEngine&   engine() const  { return voices_[editVoice_].engine; }
