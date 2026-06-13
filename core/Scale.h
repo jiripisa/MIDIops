@@ -24,6 +24,10 @@ public:
     // degrees may exceed the scale length, wrapping through octaves. degrees=0
     // returns fromNote quantized. Result clamped to 0..127.
     uint8_t degreeNote(uint8_t fromNote, int degrees) const;
+    // Absolute scale-degree index of `note` (signed), including octaves:
+    // octave * degreeCount() + position-in-octave, after quantizing to scale.
+    // Differences between two indices give the signed scale-degree distance.
+    int degreeIndex(uint8_t note) const;
     int degreeCount() const;                     // number of notes in the scale (5..8)
 
 private:

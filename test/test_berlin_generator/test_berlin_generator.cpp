@@ -334,6 +334,25 @@ static void test_consonance_check_respects_phasing_alignment() {
     TEST_ASSERT_TRUE(ic != 1 && ic != 6 && ic != 11);
 }
 
+// degreeIndex: +1 per scale step, +degreeCount() per octave, signed across
+// the root; consistent with degreeNote (its inverse over a degree delta).
+static void test_scale_degree_index() {
+    core::Scale cmaj(core::Scale::Type::Major, 0);   // C major, 7 notes
+    const int n = cmaj.degreeCount();                // 7
+    // One scale step up (C->D = 60->62) is +1.
+    TEST_ASSERT_EQUAL_INT(1, cmaj.degreeIndex(62) - cmaj.degreeIndex(60));
+    // One octave up (60->72) is +degreeCount.
+    TEST_ASSERT_EQUAL_INT(n, cmaj.degreeIndex(72) - cmaj.degreeIndex(60));
+    // One octave down is -degreeCount.
+    TEST_ASSERT_EQUAL_INT(-n, cmaj.degreeIndex(48) - cmaj.degreeIndex(60));
+    // Round-trip: stepping degreeNote by the index delta lands on the note.
+    const int d = cmaj.degreeIndex(67) - cmaj.degreeIndex(60);   // C->G = +4
+    TEST_ASSERT_EQUAL_INT(67, cmaj.degreeNote(60, d));
+    // Non-C root stays consistent (A minor: A->B is +1).
+    core::Scale amin(core::Scale::Type::Minor, 9);   // root A (pc 9)
+    TEST_ASSERT_EQUAL_INT(1, amin.degreeIndex(71) - amin.degreeIndex(69));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_walk_starts_on_root_and_stays_in_scale);
@@ -353,5 +372,6 @@ int main() {
     RUN_TEST(test_consonance_check_moves_clashing_high_note);
     RUN_TEST(test_consonance_check_skipped_at_high_tension);
     RUN_TEST(test_consonance_check_respects_phasing_alignment);
+    RUN_TEST(test_scale_degree_index);
     return UNITY_END();
 }

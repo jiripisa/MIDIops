@@ -104,6 +104,21 @@ uint8_t Scale::degreeNote(uint8_t fromNote, int degrees) const {
     return static_cast<uint8_t>(result);
 }
 
+int Scale::degreeIndex(uint8_t note) const {
+    const uint8_t* ivs = nullptr;
+    int len = intervals(&ivs);
+    uint8_t qnote = quantize(note);
+    uint8_t pc = static_cast<uint8_t>((static_cast<int>(qnote) - root_ + 120) % 12);
+    int idx = 0;
+    for (int i = 0; i < len; ++i) {
+        if (ivs[i] == pc) { idx = i; break; }
+    }
+    // base_note = root of qnote's octave; (base_note - root_) is a multiple of 12.
+    int base_note = static_cast<int>(qnote) - static_cast<int>(ivs[idx]);
+    int oct = (base_note - static_cast<int>(root_)) / 12;
+    return oct * len + idx;
+}
+
 int Scale::degreeCount() const {
     const uint8_t* ivs = nullptr;
     return intervals(&ivs);
