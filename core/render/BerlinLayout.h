@@ -27,20 +27,25 @@ inline void drawBerlinParamCell(Display& d, int col, const char* name, const cha
 }
 
 // Per-voice parameter cell (structure / character screens): the parameter
-// name on top, then the three voice values stacked in Bass / Mid / High
-// order. The active voice's value is white (highlighted); the other two are
-// greyed, so the cell shows all three voices at once. activeVoice is 0..2.
+// name on top, then the three voice values stacked High / Mid / Bass
+// (top→bottom). The active voice's value is highlighted — larger (size 2)
+// and white; the other two are smaller (size 1) and darker (DarkGray), each
+// vertically centred in its row, so the cell shows all three voices at once.
+// v0/v1/v2 are the Bass/Mid/High values; activeVoice is 0..2.
 inline void drawBerlinVoiceCell(Display& d, int col, const char* name,
                                 const char* v0, const char* v1, const char* v2,
                                 int activeVoice) {
     const int x = col * kBerlinCellW;
     d.drawText(x + 4, kBerlinParamTop + 3, name, color::Gray, color::Black, 1);
-    const char* vals[3] = {v0, v1, v2};
-    constexpr int kRowDy[3] = {20, 39, 58};   // Bass / Mid / High rows, size-2
-    for (int i = 0; i < 3; ++i) {
-        const uint16_t fg = (i == activeVoice) ? color::White : color::Gray;
-        d.drawText(x + 4 + kValueIndent, kBerlinParamTop + kRowDy[i], vals[i],
-                   fg, color::Black, 2);
+    const char* vals[3] = {v0, v1, v2};        // index 0 Bass, 1 Mid, 2 High
+    constexpr int kRowTop[3] = {22, 40, 58};   // display rows top→bottom, 18px pitch
+    for (int v = 0; v < 3; ++v) {
+        const bool active = (v == activeVoice);
+        const int  size   = active ? 2 : 1;
+        const uint16_t fg = active ? color::White : color::DarkGray;
+        const int row = 2 - v;                 // High on top, Bass at the bottom
+        const int y = kBerlinParamTop + kRowTop[row] + (14 - 7 * size) / 2;
+        d.drawText(x + 4 + kValueIndent, y, vals[v], fg, color::Black, size);
     }
 }
 

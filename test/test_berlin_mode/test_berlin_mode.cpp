@@ -1018,14 +1018,14 @@ static void test_per_voice_cells_show_all_three_highlighted() {
     TEST_ASSERT_TRUE(d.drewText("C1"));        // Bass octave shown
     TEST_ASSERT_TRUE(d.drewText("C3"));        // Mid
     TEST_ASSERT_TRUE(d.drewText("C4"));        // High
-    TEST_ASSERT_EQUAL_HEX16(core::color::White, d.textColor("C4"));   // High active
-    TEST_ASSERT_EQUAL_HEX16(core::color::Gray,  d.textColor("C1"));   // Bass greyed
+    TEST_ASSERT_EQUAL_HEX16(core::color::White,    d.textColor("C4"));   // High active
+    TEST_ASSERT_EQUAL_HEX16(core::color::DarkGray, d.textColor("C1"));   // Bass dimmed
 
     character.onEncoderSw(1);                   // select Bass
     StubDisplay d2;
     character.render(d2);
-    TEST_ASSERT_EQUAL_HEX16(core::color::White, d2.textColor("C1"));  // Bass now active
-    TEST_ASSERT_EQUAL_HEX16(core::color::Gray,  d2.textColor("C4"));  // High greyed
+    TEST_ASSERT_EQUAL_HEX16(core::color::White,    d2.textColor("C1"));  // Bass now active
+    TEST_ASSERT_EQUAL_HEX16(core::color::DarkGray, d2.textColor("C4"));  // High dimmed
 }
 
 // The combined roll labels the edited voice; rendering any param screen
