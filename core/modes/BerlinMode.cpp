@@ -30,6 +30,14 @@ BerlinMode::BerlinMode(AppServices& svc) : svc_(svc) {
     voices_[kHigh].params.length      = 16;
     voices_[kHigh].channel            = 3;
 
+    voices_[kLead].params.octaveBase  = 60;   // C4 (spans C4–C6 with range 2)
+    voices_[kLead].params.octaveRange = 2;
+    voices_[kLead].params.density     = 30;   // sparse, lots of rests
+    voices_[kLead].params.gatePercent = 85;   // legato
+    voices_[kLead].params.length      = 16;
+    voices_[kLead].channel            = 4;
+    // algorithm stays the default (DrunkardWalk), like Mid/High.
+
     for (int v = 0; v < kVoices; ++v) {
         applyGenerator(v);
         voices_[v].engine.setParams(voices_[v].params);

@@ -69,8 +69,8 @@ public:
         for (int v = 0; v < kVoices; ++v) voices_[v].engine.setOutput(o);
     }
 
-    static constexpr int kVoices = 3;
-    enum VoiceId { kBass = 0, kMid = 1, kHigh = 2 };
+    static constexpr int kVoices = 4;
+    enum VoiceId { kBass = 0, kMid = 1, kHigh = 2, kLead = 3 };
 
     struct Voice {
         BerlinEngine engine;
@@ -86,15 +86,10 @@ public:
     // Edit-voice accessors (no-arg = the voice the screens currently edit).
     int  editVoice() const { return editVoice_; }
     void setEditVoice(int v) { if (v >= 0 && v < kVoices) editVoice_ = v; }
-    // Per-voice screen press: Enc1/2/3 select Bass/Mid/High directly; Enc4
-    // toggles mute of the currently selected voice.
+    // Per-voice screen press: Enc1/2/3/4 select Bass/Mid/High/Lead directly.
+    // (Mute lives on the voices mixer screen.)
     void onVoiceScreenPress(int index) {
-        if (index >= 1 && index <= kVoices) {
-            setEditVoice(index - 1);
-        } else if (index == 4) {
-            BerlinEngine& e = voices_[editVoice_].engine;
-            e.setMuted(!e.muted());
-        }
+        if (index >= 1 && index <= kVoices) setEditVoice(index - 1);
     }
     BerlinParams&         params()        { return voices_[editVoice_].params; }
     BerlinParams&         params(int v)   { return voices_[v].params; }
