@@ -24,13 +24,19 @@ inline E cycleEnum(E current, int delta) {
 // geometry (the 2x2 grid and the Berlin 1x4 row use different offsets).
 // nameFg / valueFg allow a dimmed variant for parameters that the current
 // configuration ignores.
+// The value is indented one base-character (6 px) further right than the
+// name, so the large value reads as inset from the cell's left edge. Kept at
+// one small character (not one value-sized character) so the narrow Berlin
+// cells don't overflow on the longest values ("Degree", "Evolve").
+constexpr int kValueIndent = 6;
+
 inline void drawParamCellAt(Display& d, int x, int y, const char* name,
                             const char* value, int pad, int nameDy,
                             int valueDy, int valueSize,
                             uint16_t nameFg = color::Gray,
                             uint16_t valueFg = color::White) {
     d.drawText(x + pad, y + nameDy,  name,  nameFg,  color::Black, 1);
-    d.drawText(x + pad, y + valueDy, value, valueFg, color::Black, valueSize);
+    d.drawText(x + pad + kValueIndent, y + valueDy, value, valueFg, color::Black, valueSize);
 }
 
 // Draws one grid cell: parameter name (small) above its value (large).
