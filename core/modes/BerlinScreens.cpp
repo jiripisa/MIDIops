@@ -99,8 +99,8 @@ void BerlinMode::StructureScreen::onEncoderSw(int index) { mode_.onVoiceScreenPr
 
 void BerlinMode::StructureScreen::render(Display& d) const {
     const int active = mode_.editVoice();
-    // Build all three voices' values per cell; drawBerlinVoiceCell stacks them
-    // Bass / Mid / High with the active voice highlighted.
+    // Build all four voices' values per cell; drawBerlinVoiceCell stacks them
+    // Bass / Mid / High / Lead with the active voice highlighted.
     char algo[kVoices][12], len[kVoices][8], dens[kVoices][8], aprm[kVoices][8];
     for (int v = 0; v < kVoices; ++v) {
         const BerlinParams& p = mode_.voices_[v].params;

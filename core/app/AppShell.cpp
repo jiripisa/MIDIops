@@ -311,7 +311,7 @@ void AppShell::loadSettings() {
     if (root > 11) return;
     if (outCh < 1 || outCh > 16) return;
     if (inCh > 16) return;
-    if (clock > static_cast<uint8_t>(ClockSource::External)) return;
+    if (clock >= static_cast<uint8_t>(ClockSource::kCount)) return;
     if (transport >= static_cast<uint8_t>(TransportMode::kCount)) return;
     if (bpm < 30 || bpm > 300) return;
     setScaleType(static_cast<Scale::Type>(scaleType));
