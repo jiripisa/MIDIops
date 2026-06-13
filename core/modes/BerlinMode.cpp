@@ -229,11 +229,20 @@ void BerlinMode::onRawInput(const RawInput& in) {
 
 void BerlinMode::renderRoll(Display& d) const {
     BerlinRollVoice rv[kVoices];
+    BerlinSequence  disp[kVoices];   // transposed display copies (home stays put)
     for (int v = 0; v < kVoices; ++v) {
         const BerlinEngine& e = voices_[v].engine;
-        rv[v].seq          = &e.sequence();
+        const BerlinSequence& src = e.sequence();
+        disp[v].setLength(src.length());
+        for (int i = 0; i < BerlinSequence::kMaxSteps; ++i) {
+            BerlinStep s = src.step(i);
+            if (s.active && transposeDegrees_ != 0)
+                s.note = scale_.degreeNote(s.note, transposeDegrees_);
+            disp[v].step(i) = s;
+        }
+        rv[v].seq          = &disp[v];
         rv[v].playhead     = e.playhead();
-        rv[v].soundingNote = e.soundingNote();
+        rv[v].soundingNote = e.soundingNote();   // already transposed (gate armed transposed)
         rv[v].color        = kBerlinVoiceColors[v];
         rv[v].muted        = e.muted();
         rv[v].edited       = (v == editVoice_);

@@ -1085,6 +1085,27 @@ static void test_midi_in_transposes_all_voices() {
     TEST_ASSERT_EQUAL_INT(0, berlin.engine(core::BerlinMode::kHigh).transposeDegrees());
 }
 
+// The roll moves with the transpose: rendering the same screen before and
+// after a one-octave transpose produces different note rectangles.
+static void test_roll_reflects_transpose() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    berlin.onEnter();
+    StubDisplay before;
+    berlin.screen(0).render(before);
+
+    core::MidiMessage up{}; up.type = core::MidiType::NoteOn;
+    up.channel = 1; up.data1 = 62; up.data2 = 100;   // D4 = +1 diatonic degree above tonic 60
+    berlin.onMidiIn(up);
+    StubDisplay after;
+    berlin.screen(0).render(after);
+
+    bool differ = before.rects.size() != after.rects.size();
+    for (size_t i = 0; !differ && i < before.rects.size(); ++i)
+        if (before.rects[i].y != after.rects[i].y) differ = true;
+    TEST_ASSERT_TRUE(differ);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_roll_playheads_drift_apart);
@@ -1123,5 +1144,6 @@ int main() {
     RUN_TEST(test_structure_new_layout_and_bass_locks);
     RUN_TEST(test_dynamics_and_behavior_are_global);
     RUN_TEST(test_midi_in_transposes_all_voices);
+    RUN_TEST(test_roll_reflects_transpose);
     return UNITY_END();
 }
