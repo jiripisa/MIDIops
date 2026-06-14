@@ -73,7 +73,9 @@ static void test_walk_respects_scatter_and_register() {
 static void test_walk_register_holds_for_all_roots() {
     core::DrunkardWalkGenerator gen;
     for (int root = 0; root < 12; ++root) {
-        for (core::Scale::Type t : {core::Scale::Type::Minor, core::Scale::Type::PentaMajor}) {
+        for (core::Scale::Type t : {core::Scale::Type::Minor, core::Scale::Type::PentaMajor,
+                                    core::Scale::Type::Dorian, core::Scale::Type::Phrygian,
+                                    core::Scale::Type::HarmonicMinor}) {
             core::Scale scale(t, static_cast<uint8_t>(root));
             core::BerlinParams p = baseParams(); p.octaveBase = 48; p.octaveRange = 1; p.scatter = 5;
             const int lo = p.octaveBase, hi = p.octaveBase + 12 * p.octaveRange;
@@ -374,6 +376,33 @@ static void test_scale_degree_index() {
     TEST_ASSERT_EQUAL_INT(1, amin.degreeIndex(71) - amin.degreeIndex(69));
 }
 
+// HarmonicMinor {0,2,3,5,7,8,11}: the augmented-2nd step (8→11) is exercised
+// via degreeNote; Phrygian {0,1,3,5,7,8,10}: flat-2 step is exercised.
+// quantize() must return a note that the scale actually contains.
+static void test_new_scales_quantize_and_degree() {
+    // --- HarmonicMinor (C root, intervals: 0 2 3 5 7 8 11) ---
+    core::Scale hm(core::Scale::Type::HarmonicMinor, 0);   // C harmonic minor
+
+    // degree indices: 0→0, 2→1, 3→2, 5→3, 7→4, 8→5, 11→6
+    // degreeNote(60+8=Ab, +1) should move the augmented-2nd up to 60+11=B.
+    TEST_ASSERT_EQUAL_INT(60 + 11, hm.degreeNote(60 + 8, +1));
+    // degreeNote(60+11=B, -1) should step back down the aug-2nd to 60+8=Ab.
+    TEST_ASSERT_EQUAL_INT(60 + 8,  hm.degreeNote(60 + 11, -1));
+    // quantize(60+9=A): nearest in-scale are 60+8 (dist 1) and 60+11 (dist 2) → 60+8.
+    const uint8_t qhm = hm.quantize(60 + 9);
+    TEST_ASSERT_TRUE(hm.contains(qhm));
+
+    // --- Phrygian (C root, intervals: 0 1 3 5 7 8 10) ---
+    core::Scale phr(core::Scale::Type::Phrygian, 0);        // C phrygian
+
+    // degree indices: 0→0, 1→1, 3→2, 5→3, 7→4, 8→5, 10→6
+    // degreeNote(60=C, +1) should jump the flat-2 step to 60+1=Db.
+    TEST_ASSERT_EQUAL_INT(60 + 1, phr.degreeNote(60, +1));
+    // quantize(60+2=D): nearest in-scale are 60+1 (dist 1) and 60+3 (dist 1) → ties→lower=60+1.
+    const uint8_t qphr = phr.quantize(60 + 2);
+    TEST_ASSERT_TRUE(phr.contains(qphr));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_walk_starts_on_root_and_stays_in_scale);
@@ -395,5 +424,6 @@ int main() {
     RUN_TEST(test_consonance_check_respects_phasing_alignment);
     RUN_TEST(test_new_scales_intervals);
     RUN_TEST(test_scale_degree_index);
+    RUN_TEST(test_new_scales_quantize_and_degree);
     return UNITY_END();
 }

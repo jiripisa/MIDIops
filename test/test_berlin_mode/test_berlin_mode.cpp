@@ -1177,6 +1177,40 @@ static void test_roll_reflects_transpose() {
     TEST_ASSERT_TRUE(differ);
 }
 
+// The MIDI-in channel filter (shell.setMidiInChannel) must gate transpose:
+// notes on a non-matching channel are dropped before reaching BerlinMode.
+// The shell routes to the active mode; setting Berlin as the active mode
+// ensures its onMidiIn is called when the channel matches.
+static void test_transpose_respects_midi_in_channel() {
+    core::AppShell shell;
+    core::BerlinMode berlin(shell);
+    FakeMidiOutput out; berlin.setMidiOutput(&out);
+    shell.addMode(&berlin);
+    shell.begin();       // berlin is the only mode → active index 0
+    shell.setMidiInChannel(3);
+    berlin.onEnter();
+
+    // NoteOn on channel 1 (not 3): shell drops it → transposeDegrees stays 0.
+    core::MidiMessage on1{};
+    on1.type   = core::MidiType::NoteOn;
+    on1.channel = 1;
+    on1.data1  = 62;    // D above tonic 60 → would be +1 degree
+    on1.data2  = 100;
+    shell.onMidiIn(on1);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, berlin.engine(core::BerlinMode::kHigh).transposeDegrees(),
+        "NoteOn on non-matching channel must be filtered out");
+
+    // NoteOn on channel 3 (matches): shell passes it through → transposeDegrees non-zero.
+    core::MidiMessage on3{};
+    on3.type    = core::MidiType::NoteOn;
+    on3.channel = 3;
+    on3.data1   = 62;
+    on3.data2   = 100;
+    shell.onMidiIn(on3);
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(0, berlin.engine(core::BerlinMode::kHigh).transposeDegrees(),
+        "NoteOn on matching channel must pass through and transpose");
+}
+
 // Call-and-response: after Generate, no Lead active step coincides (by aligned
 // index) with an active High step. Forcing both dense guarantees collisions to
 // mask: High is all-active, so Lead must end up all rests.
@@ -1244,5 +1278,6 @@ int main() {
     RUN_TEST(test_midi_in_transposes_all_voices);
     RUN_TEST(test_roll_reflects_transpose);
     RUN_TEST(test_call_response_lead_avoids_high);
+    RUN_TEST(test_transpose_respects_midi_in_channel);
     return UNITY_END();
 }
