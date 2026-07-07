@@ -99,7 +99,7 @@ bool loadArpPreset(Storage& st, int slot, ArpParams& out) {
 }
 
 // ---------------------------------------------------------------------------
-// Berlin (v2: one slot = the whole three-voice stack)
+// Berlin (v2: one slot = the whole four-voice stack)
 // ---------------------------------------------------------------------------
 
 // One 211-byte voice block: 16 params bytes (same order as v1), seq length,
@@ -174,7 +174,7 @@ static bool decodeBerlinVoice(const uint8_t* b, BerlinVoicePreset& v) {
     if (behavior >= static_cast<uint8_t>(BerlinBehavior::kCount)) return false;
     if (p.morph > 100) return false;
     if (p.evolveRate < 1 || p.evolveRate > 8) return false;
-    if (seqLen < 1 || seqLen > BerlinSequence::kMaxSteps) return false;
+    if (seqLen < 3 || seqLen > BerlinSequence::kMaxSteps) return false;
     const uint8_t* steps = b + o;
     for (int i = 0; i < BerlinSequence::kMaxSteps; ++i) {
         const uint8_t* s = steps + i * 6;

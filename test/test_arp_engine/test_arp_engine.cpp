@@ -459,6 +459,46 @@ static void test_velocity_accent() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: Velocity=Accent with Down direction — the accent lands on the FIRST
+// emitted note of the cycle (the downbeat), not on pitch-array index 0.
+// For Down with seq=[60,64,67] the cycle plays 67,64,60; the accent must fall
+// on 67 (first emitted), and a later note (60) must carry the base velocity.
+// ---------------------------------------------------------------------------
+static void test_velocity_accent_down_direction() {
+    core::ArpParams p;
+    p.steps         = 3;
+    p.rate          = core::ArpRate::Sixteenth;
+    p.gatePercent   = 80;
+    p.direction     = core::ArpDirection::Down;
+    p.velocityMode  = core::ArpVelocityMode::Accent;
+    p.fixedVelocity = 80;
+    p.swingPercent  = 50;
+    g_eng->setParams(p);
+
+    const int kStep = core::arpRateTicks(p.rate);  // Sixteenth = 6
+
+    g_eng->noteOn(60, 100);
+    clocks(*g_eng, kStep);
+    clocks(*g_eng, kStep);
+
+    // Collect (note, velocity) for each NoteOn over the cycle.
+    std::vector<FakeMidiOutput::Ev> ons;
+    for (auto& e : g_out->events) {
+        if (e.isOn) ons.push_back(e);
+    }
+    TEST_ASSERT_EQUAL_INT(3, (int)ons.size());
+
+    // Down cycle order: 67 (first), 64, 60 (last).
+    TEST_ASSERT_EQUAL_INT(67, ons[0].note);
+    TEST_ASSERT_EQUAL_INT(60, ons[2].note);
+
+    // The first emitted note (downbeat) carries the accent boost; a later note
+    // carries only the base velocity.
+    TEST_ASSERT_GREATER_THAN(ons[2].vel, ons[0].vel);
+    TEST_ASSERT_EQUAL_INT(p.fixedVelocity, ons[2].vel);
+}
+
+// ---------------------------------------------------------------------------
 // Test: stop() sends NoteOff for sounding note and sets active=false
 // ---------------------------------------------------------------------------
 static void test_stop_kills_active_note() {
@@ -1718,6 +1758,7 @@ int main() {
     RUN_TEST(test_velocity_fixed);
     RUN_TEST(test_velocity_follow_input);
     RUN_TEST(test_velocity_accent);
+    RUN_TEST(test_velocity_accent_down_direction);
     RUN_TEST(test_stop_kills_active_note);
     RUN_TEST(test_updown_single_step_no_crash);
     RUN_TEST(test_downup_single_step_no_crash);

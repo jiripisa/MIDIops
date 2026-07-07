@@ -426,7 +426,7 @@ automaticky ~2 s po poslední úpravě a přežije vypnutí.
 
 | Knob | Parametr | Rozsah | Výchozí | Význam |
 |---|---|---|---|---|
-| Enc1 | **Scale** | Major, Minor, Aug, Dim, Pent+, Pent− | Major | Stupnice, do které se kvantizují všechny noty. |
+| Enc1 | **Scale** | Major, Minor, Aug, Dim, Pent+, Pent−, Dor, Phr, HMin | Major | Stupnice, do které se kvantizují všechny noty. |
 | Enc2 | **Root** | C … B | C | Tónální centrum. |
 
 **Obrazovka `system`:**

@@ -12,6 +12,9 @@ static const uint8_t kAug[]        = {0, 2, 4, 6, 8, 10};      // 6 notes (whole
 static const uint8_t kDim[]        = {0, 1, 3, 4, 6, 7, 9, 10};// 8 notes (octatonic half-whole)
 static const uint8_t kPentaMajor[] = {0, 2, 4, 7, 9};          // 5 notes
 static const uint8_t kPentaMinor[] = {0, 3, 5, 7, 10};         // 5 notes
+static const uint8_t kDorian[]     = {0, 2, 3, 5, 7, 9, 10};  // 7 notes
+static const uint8_t kPhrygian[]   = {0, 1, 3, 5, 7, 8, 10};  // 7 notes
+static const uint8_t kHarmMinor[]  = {0, 2, 3, 5, 7, 8, 11};  // 7 notes (harmonic minor)
 
 int Scale::intervals(const uint8_t** out) const {
     switch (type_) {
@@ -20,8 +23,11 @@ int Scale::intervals(const uint8_t** out) const {
         case Type::Aug:        *out = kAug;        return 6;
         case Type::Dim:        *out = kDim;        return 8;
         case Type::PentaMajor: *out = kPentaMajor; return 5;
-        case Type::PentaMinor: *out = kPentaMinor; return 5;
-        default:               *out = kMajor;      return 7;
+        case Type::PentaMinor:    *out = kPentaMinor; return 5;
+        case Type::Dorian:        *out = kDorian;     return 7;
+        case Type::Phrygian:      *out = kPhrygian;   return 7;
+        case Type::HarmonicMinor: *out = kHarmMinor;  return 7;
+        default:                  *out = kMajor;      return 7;
     }
 }
 

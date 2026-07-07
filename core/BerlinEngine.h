@@ -63,7 +63,10 @@ public:
     // load mid-play swaps the pattern seamlessly.
     void setSequence(const BerlinSequence& s) {
         seq_ = s;
-        if (playhead_ >= seq_.length()) playhead_ %= seq_.length();
+        // Guard the length to >= 1 before the modulo. length() is always >= 1
+        // today; this keeps the wrap safe against a zero-length sequence.
+        const int n = seq_.length() < 1 ? 1 : seq_.length();
+        if (playhead_ >= n) playhead_ %= n;
     }
 
     void onClockTick();      // advance one 24-PPQN tick

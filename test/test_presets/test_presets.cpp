@@ -89,6 +89,73 @@ static void test_berlin_preset2_round_trip_three_voices() {
 }
 
 // A v1-sized blob under the same key reads as EMPTY, never as garbage.
+static void test_berlin_preset2_round_trip_four_voices() {
+    FakeStorage st;
+    core::BerlinVoicePreset in[4];
+    for (int v = 0; v < 4; ++v) {
+        in[v].params.length  = static_cast<uint8_t>(8 + v * 3);
+        in[v].params.density = static_cast<uint8_t>(20 + v * 15);
+        in[v].channel        = static_cast<uint8_t>(1 + v);
+        in[v].muted          = (v % 2 == 1);
+        in[v].seq.setLength(8 + v * 3);
+        for (int i = 0; i < in[v].seq.length(); ++i) {
+            core::BerlinStep& s = in[v].seq.step(i);
+            s.active    = (i % 3) != 2;
+            s.note      = static_cast<uint8_t>(24 + v * 10 + i);
+            s.velocity  = static_cast<uint8_t>(60 + v * 5 + i);
+            s.gateTicks = static_cast<uint16_t>(4 + v);
+            s.velJitter = static_cast<int8_t>(v * 3 - i);
+        }
+    }
+    TEST_ASSERT_FALSE(core::berlinPreset2Usable(st, 7, 4));
+    TEST_ASSERT_TRUE(core::saveBerlinPreset2(st, 7, in, 4));
+    TEST_ASSERT_TRUE(core::berlinPreset2Usable(st, 7, 4));
+    core::BerlinVoicePreset out[4];
+    TEST_ASSERT_TRUE(core::loadBerlinPreset2(st, 7, out, 4));
+    for (int v = 0; v < 4; ++v) {
+        TEST_ASSERT_EQUAL_INT(in[v].params.length,  out[v].params.length);
+        TEST_ASSERT_EQUAL_INT(in[v].params.density, out[v].params.density);
+        TEST_ASSERT_EQUAL_INT(in[v].channel,        out[v].channel);
+        TEST_ASSERT_EQUAL_INT(in[v].muted ? 1 : 0,  out[v].muted ? 1 : 0);
+        TEST_ASSERT_EQUAL_INT(in[v].seq.length(),   out[v].seq.length());
+        for (int i = 0; i < in[v].seq.length(); ++i) {
+            TEST_ASSERT_EQUAL_INT(in[v].seq.step(i).note,     out[v].seq.step(i).note);
+            TEST_ASSERT_EQUAL_INT(in[v].seq.step(i).velocity, out[v].seq.step(i).velocity);
+            TEST_ASSERT_EQUAL_INT(in[v].seq.step(i).velJitter,out[v].seq.step(i).velJitter);
+        }
+    }
+}
+
+static void test_berlin_preset_cross_count_reads_empty() {
+    FakeStorage st;
+    // Save with count 4, then query/load with count 3 → must fail.
+    core::BerlinVoicePreset in4[4];
+    for (int v = 0; v < 4; ++v) {
+        in4[v].params.length  = 12;
+        in4[v].params.density = 50;
+        in4[v].channel = static_cast<uint8_t>(v + 1);
+        in4[v].seq.setLength(12);
+    }
+    TEST_ASSERT_TRUE(core::saveBerlinPreset2(st, 5, in4, 4));
+    TEST_ASSERT_FALSE(core::berlinPreset2Usable(st, 5, 3));
+    core::BerlinVoicePreset out3[3];
+    TEST_ASSERT_FALSE(core::loadBerlinPreset2(st, 5, out3, 3));
+
+    // Save with count 3, then query/load with count 4 → must fail.
+    FakeStorage st2;
+    core::BerlinVoicePreset in3[3];
+    for (int v = 0; v < 3; ++v) {
+        in3[v].params.length  = 10;
+        in3[v].params.density = 40;
+        in3[v].channel = static_cast<uint8_t>(v + 1);
+        in3[v].seq.setLength(10);
+    }
+    TEST_ASSERT_TRUE(core::saveBerlinPreset2(st2, 2, in3, 3));
+    TEST_ASSERT_FALSE(core::berlinPreset2Usable(st2, 2, 4));
+    core::BerlinVoicePreset out4[4];
+    TEST_ASSERT_FALSE(core::loadBerlinPreset2(st2, 2, out4, 4));
+}
+
 static void test_berlin_v1_blob_reads_as_empty() {
     FakeStorage st;
     st.data["berlin.s01"] = std::vector<uint8_t>(214, 0);  // v1-sized junk
@@ -240,6 +307,8 @@ int main() {
     RUN_TEST(test_preset_key_naming);
     RUN_TEST(test_arp_preset_round_trip);
     RUN_TEST(test_berlin_preset2_round_trip_three_voices);
+    RUN_TEST(test_berlin_preset2_round_trip_four_voices);
+    RUN_TEST(test_berlin_preset_cross_count_reads_empty);
     RUN_TEST(test_berlin_v1_blob_reads_as_empty);
     RUN_TEST(test_corrupt_preset_loads_as_empty);
     RUN_TEST(test_picker_open_rotate_confirm_save);

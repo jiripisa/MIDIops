@@ -9,7 +9,7 @@ namespace core {
 
 class Storage;
 
-enum class ClockSource : uint8_t { Internal = 0, External = 1 };
+enum class ClockSource : uint8_t { Internal = 0, External = 1, kCount };
 
 enum class TransportMode : uint8_t { Off = 0, Send, Receive, kCount };
 

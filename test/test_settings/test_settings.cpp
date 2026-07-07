@@ -38,6 +38,17 @@ static void test_scale_screen_edits_and_renders() {
     TEST_ASSERT_TRUE(d.drewText("Maj"));
 }
 
+static void test_scale_screen_shows_dorian_name() {
+    core::AppShell shell; core::SettingsMode s(shell);
+    // Enc1 on the scale screen cycles the scale type (cycleEnum with kCount=9).
+    // Default is Major (index 0); +6 detents → Dorian (index 6).
+    s.screen(1).onEncoder(1, +6);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Scale::Type::Dorian),
+                          static_cast<int>(shell.scale().type()));
+    StubDisplay d; s.screen(1).render(d);
+    TEST_ASSERT_TRUE(d.drewText("Dor"));
+}
+
 static void test_midi_screen_renders_omni() {
     core::AppShell shell; core::SettingsMode s(shell);
     StubDisplay d; s.screen(0).render(d);
@@ -120,6 +131,7 @@ int main() {
     RUN_TEST(test_settings_screens);
     RUN_TEST(test_midi_screen_edits);
     RUN_TEST(test_scale_screen_edits_and_renders);
+    RUN_TEST(test_scale_screen_shows_dorian_name);
     RUN_TEST(test_midi_screen_renders_omni);
     RUN_TEST(test_midi_screen_transport_cycles);
     RUN_TEST(test_system_screen_arm_confirm_resets);

@@ -98,7 +98,10 @@ private:
     void     beginStep();
 
     int      nextSeqIndex();              // advance seqPos_ per direction
-    uint8_t  velocityForStep(int seqPos) const;
+    // Velocity for the step about to be emitted. cycleFirst marks the first
+    // emitted step of the cycle (the downbeat) so Accent fires there for every
+    // direction, not on pitch-array index 0.
+    uint8_t  velocityForStep(bool cycleFirst) const;
 
     // ---------------------------------------------------------------------------
     // State

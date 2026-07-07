@@ -235,14 +235,20 @@ void AppShell::setBpm(uint16_t bpm) {
 }
 
 void AppShell::setClockSource(ClockSource s) {
+    if (s == clockSource_) return;            // no-op if unchanged
+    // Switching the clock substrate would otherwise strand a sounding note: a
+    // tick-scheduled gate-off never arrives across the switch (the internal
+    // clock master stops, and no external clock may yet be present). Pause the
+    // active mode first so it silences (same idea as the external-Stop safety).
+    if (modeCount_ > 0) modes_[activeMode_]->onTransport(Transport::Pause);
     clockSource_ = s;
     markSettingsDirty();
     if (out_) {
         if (s == ClockSource::External) {
             out_->setClockBpm(0);     // stop the internal clock master
-            // When External is selected and no external clock is arriving, the
-            // arp advances only on incoming pulses — a sounding note's gate-off
-            // (fired in onClockTick) is deferred until clock resumes. Intended for v1.
+            // Under External the engine advances only on incoming pulses; any
+            // note sounding at the switch was already silenced by the Pause
+            // above, so it cannot hang while waiting for the first pulse.
             clockFollower_.reset();
         } else {
             out_->setClockBpm(bpm_);  // resume internal generation
@@ -305,7 +311,7 @@ void AppShell::loadSettings() {
     if (root > 11) return;
     if (outCh < 1 || outCh > 16) return;
     if (inCh > 16) return;
-    if (clock > static_cast<uint8_t>(ClockSource::External)) return;
+    if (clock >= static_cast<uint8_t>(ClockSource::kCount)) return;
     if (transport >= static_cast<uint8_t>(TransportMode::kCount)) return;
     if (bpm < 30 || bpm > 300) return;
     setScaleType(static_cast<Scale::Type>(scaleType));

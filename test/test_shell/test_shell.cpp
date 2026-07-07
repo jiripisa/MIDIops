@@ -388,6 +388,21 @@ static void test_corrupt_or_out_of_range_blob_keeps_defaults() {
     }
 }
 
+static void test_out_of_range_scale_type_keeps_default() {
+    // scaleType = 255 is way beyond the highest valid enum value — shell must
+    // reject the entire blob and keep all defaults.
+    FakeStorage st;
+    seedSettingsBlob(st, /*scaleType*/255, /*root*/0, /*outCh*/1, /*inCh*/0,
+                     /*clock*/0, /*transport*/1, /*bpm*/120);
+    core::AppShell shell;
+    FakeMode a("a", 1);
+    shell.addMode(&a);
+    shell.setStorage(&st);
+    shell.begin();
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(core::Scale::Type::Major),
+                          static_cast<int>(shell.scale().type()));
+}
+
 static void test_settings_edit_saves_once_after_debounce() {
     FakeStorage st;
     core::AppShell shell;
@@ -622,6 +637,7 @@ int main() {
     RUN_TEST(test_overlay_carousel_wraps_shortest_path);
     RUN_TEST(test_settings_loaded_at_boot);
     RUN_TEST(test_corrupt_or_out_of_range_blob_keeps_defaults);
+    RUN_TEST(test_out_of_range_scale_type_keeps_default);
     RUN_TEST(test_settings_edit_saves_once_after_debounce);
     RUN_TEST(test_settings_rapid_edits_collapse_to_single_save);
     RUN_TEST(test_factory_reset_restores_defaults_and_erases);

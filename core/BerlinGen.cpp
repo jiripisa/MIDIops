@@ -22,6 +22,10 @@ int berlinGateTicks(const BerlinParams& p) {
 }
 
 int berlinFoldIntoRegister(int note, int lo, int hi) {
+    // A span narrower than an octave cannot hold every pitch class, so octave
+    // folding would ping-pong forever for an out-of-range note. Clamp instead.
+    // (Unreachable today: the register span is always >= 12 semitones.)
+    if (hi - lo < 12) return note < lo ? lo : (note > hi ? hi : note);
     while (note > hi) note -= 12;
     while (note < lo) note += 12;
     return note;
